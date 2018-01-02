@@ -31,19 +31,19 @@ Examples will be drawn from ecology, economics, epidemiology, finance and elsewh
     + Phone: 647 5457 
     + E-mail: ionides@umich.edu 
     + Web: dept.stat.lsa.umich.edu/~ionides
-    + Office hours:  TBA
-* GSI: TBA
+    + Office hours: Monday 4-5pm, Wednesday 3-4pm
+* GSI: Joonha Park
     + Office hours: TBA
     + Computing support: inquire by email, with a detailed description of the problem, what you did, and what error message you obtained.
-    + E-mail: TBA
+    + E-mail: joonhap@umich.edu
 * Textbook: R. Shumway and D. Stoffer "Time Series Analysis and its Applications" 4th edition. 
 A pdf is available using the UM Library's Springer subscription.
 An updated pdf is available free from [David Stoffer's website](http://www.stat.pitt.edu/stoffer/tsa4/tsa4.pdf)
-* Pre-requisites: Stat 426 (Introduction to Theoretical
- Statistics) or equivalent. For review, see "Mathematical
- Statistics and Data Analysis" by J. A. Rice. A certain amount
- of basic linear algebra will be required. For review, see 
-[www.sosmath.com/matrix/matrix.html](http://www.sosmath.com/matrix/matrix.html)
+* Pre-requisites:
+    + Theoretical statistics. STATS 426 or equivalent. For review, see "Mathematical Statistics and Data Analysis" by J. A. Rice. 
+    + Linear algebra. A certain amount of basic linear algebra will be required. For review, see 
+[www.sosmath.com/matrix/matrix.html](http://www.sosmath.com/matrix/matrix.html).
+    + R programming. There is no formal R prerequisite, but we will be working with R extensively and so you should allow extra time for this course if you are new to R programming.
 
 -----------
 
@@ -67,15 +67,16 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 * Homework will not be graded on correctness, to encourage independent work. The GSI may provide some feedback on correctness, but students are responsible for checking their work against posted solutions.
 
-* The midterm and final projects must take care to properly reference sources. For projects, no specific source and explanation request statements are requested.
+* The midterm and final projects must take care to properly reference all sources. For projects, no specific source and explanation request statements are requested.
 
 ----------
 
 ## Class notes
 
-<!--
 
 1. [Introduction](notes01/intro.html). [(R script)](notes01/intro.R)
+
+<!--
 
 2. [Definitions and trend estimation by least squares](notes02/trend.html). [(R script)](notes02/trend.R)
 
@@ -120,29 +121,30 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 ## Homework assignments
 
+
+* [Homework 0](hw00/hw00.html), due in class on 1/10. Setting up your computational environment.
+
 <!--
 
-* [Homework 0](hw/hw00.html), due in class on 1/12. Setting up your computational environment.
+* [Homework 1](hw01/hw01.html), due in class on 1/19. [Solution](hw/sol01.html).
 
-* [Homework 1](hw/hw01.html), due in class on 1/19. [Solution](hw/sol01.html).
+* [Homework 2](hw02/hw02.html), due in class on 1/26. [Solution](hw/sol02.html).
 
-* [Homework 2](hw/hw02.html), due in class on 1/26. [Solution](hw/sol02.html).
+* [Homework 3](hw03/hw03.html), due midnight on 2/2. [Solution](hw/sol03.html). See also [Chapter 7.3](http://ionides.github.io/531w18/notes7/notes7.html#some-data-analysis-using-the-frequency-domain).
 
-* [Homework 3](hw/hw03.html), due midnight on 2/2. [Solution](hw/sol03.html). See also [Chapter 7.3](http://ionides.github.io/531w16/notes7/notes7.html#some-data-analysis-using-the-frequency-domain).
+* [Homework 4](hw04/hw04.html), due in class on 2/9. [Solution](hw/sol04.html).
 
-* [Homework 4](hw/hw04.html), due in class on 2/9. [Solution](hw/sol04.html).
+* [Homework 5](hw05/hw05.html), due in class on 2/16. [Solution](hw/sol05.html).
 
-* [Homework 5](hw/hw05.html), due in class on 2/16. [Solution](hw/sol05.html).
+* [Homework 6](hw06/hw06.html), due in class on 2/23. [Responses](hw/summary06.html).
 
-* [Homework 6](hw/hw06.html), due in class on 2/23. [Responses](hw/summary06.html).
+* [Homework 7](hw07/hw07.html), a single slide due midnight on 3/21, for a presentation in class on 3/22 or 3/24.
 
-* [Homework 7](hw/hw07.html), a single slide due midnight on 3/21, for a presentation in class on 3/22 or 3/24.
+* [Homework 8](hw08/hw08.html), due on 3/29. [Reponses to time survey](hw/summary08.html). [Solution](hw/sol08.html).
 
-* [Homework 8](hw/hw08.html), due on 3/29. [Reponses to time survey](hw/summary08.html). [Solution](hw/sol08.html).
+* [Homework 9](hw09/hw09.html), due on 4/7. [Solution](hw/sol09.html).
 
-* [Homework 9](hw/hw09.html), due on 4/7. [Solution](hw/sol09.html).
-
-* [Homework 10](hw/hw10.html), due on 4/14.
+* [Homework 10](hw10/hw10.html), due on 4/14.
 
 -->
 
