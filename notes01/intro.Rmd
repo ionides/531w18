@@ -544,7 +544,7 @@ git clone https://github.com/ionides/531w18
 
 * The local repository remembers the address of the remote repository it was cloned from.
 
-    + You can pull any changes from the remote repository to your local repository using **git pull**.
+* You can pull any changes from the remote repository to your local repository using **git pull**.
 
 ```
 $ git pull
