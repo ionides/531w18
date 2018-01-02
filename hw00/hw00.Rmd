@@ -8,9 +8,7 @@ output:
 csl: ecology.csl
 ---
 
-Welcome to STATS 531 (Analysis of Timeseries). Homework 0 involves getting your laptop ready for the computing environment we'll be using. Specifically, your assignment is to complete a signup on the class Github site (task 1 below) and install R and RStudio if you do not already have them (tasks 2 and 3 below). There is nothing to turn in for this homework apart from completing the pull request in task 1 below.
-
-STATS 531 emphasizes data analysis, as well as the theory of time series inference. You are welcome to bring your laptop to class, and follow along with data analysis in real time. Class notes will be in a web format, which may not be convenient to print out. You may like to bring a notebook to class to make annotations. 
+This assignment involves getting your laptop ready for the computing environment we'll be using. Specifically, your assignment is to complete a signup on the class Github site (task 1 below) and install R and RStudio if you do not already have them (tasks 2 and 3 below). There is nothing to turn in for this homework apart from completing the pull request in task 1 below.
 
 We will be using the following data analysis tools. Computing assistance is available if you run into difficulties. Please email the GSI (Joonha Park, joonhap@umich.edu) with a detailed description of your question. Alternatively, you can come to either the GSI or instructor office hours. 
 
