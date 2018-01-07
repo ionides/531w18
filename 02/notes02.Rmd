@@ -1,5 +1,5 @@
 ---
-title: "2. Time series models, and least squares estimation of trend"
+title: "2. Time series models, trend and autocovariance"
 author: "Edward Ionides"
 date: "1/4/2018"
 output:
@@ -11,7 +11,7 @@ output:
     pandoc_args: [
       "--number-offset=2"
     ]
-bibliography: trend.bib
+bibliography: notes02.bib
 csl: ecology.csl
 ---
 
