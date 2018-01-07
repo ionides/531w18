@@ -1,7 +1,7 @@
 ---
 title: "2. Time series models, trend and autocovariance"
 author: "Edward Ionides"
-date: "1/4/2018"
+date: "1/7/2018"
 output:
   html_document:
     theme: flatly
@@ -23,6 +23,7 @@ csl: ecology.csl
 \newcommand\loglik{\ell}
 \newcommand\R{\mathbb{R}}
 \newcommand\data[1]{#1^*}
+\newcommand\estimate[1]{\data{#1}}
 \newcommand\given{\, ; \,}
 \newcommand\transpose{\scriptsize{T}}
 \newcommand\mycolon{\,{:}\,}
@@ -154,7 +155,7 @@ What is expected value? How is it defined? How can it fail to exist for a proper
 
 * We define the **mean function** by
 $$ \mu_n = \E[Y_n] = \int_{-\infty}^\infty y_n \, f^{}_{Y_n}(y_n)\, dy_n$$
-for $n\in 1:N$. 
+for $n\in 1{\mycolon}N$. 
 
 * We use the words "mean function" and "trend" interchangeably.
 
@@ -297,7 +298,7 @@ y &=& (y_1,y_2,\dots,y_N)^\transpose,\\
 The ordinary least squares (OLS) estimator of $\beta$ is
 $$\hat\beta_{OLS}(y_{1:N}) = (Z^\transpose Z)^{-1}Z^\transpose y,$$
 with corresponding OLS estimate
-$$\data{\beta}=\hat\beta_{OLS}(\data{y_{1:N}}) = (Z^\transpose Z)^{-1}Z^\transpose \data{y}.$$
+$$\estimate{\hat\beta}=\hat\beta_{OLS}(\data{y_{1:N}}) = (Z^\transpose Z)^{-1}Z^\transpose \data{y}.$$
 We can carry out this computation in R by
 ```{r glob_temp_lm}
 lm_fit <- lm(Annual~Year+I(Year^2),data=global_temp)
