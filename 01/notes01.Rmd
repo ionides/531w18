@@ -11,7 +11,7 @@ output:
     pandoc_args: [
       "--number-offset=1"
     ]
-bibliography: intro.bib
+bibliography: notes01.bib
 csl: ecology.csl
 ---
 
@@ -213,7 +213,7 @@ $$\estimate{\hat\mu_1}= \frac{1}{N}\sum_{n=1}^Ny^*_n, \hspace{2cm}
 
 ```{r mean}
 mu1 <- mean(y$Low,na.rm=TRUE)
-se1 <- sd(y$Low,na.rm=TRUE)/sqrt(length(!is.na(y$Low)))
+se1 <- sd(y$Low,na.rm=TRUE)/sqrt(sum(!is.na(y$Low)))
 cat("mu1 =", mu1, ",  se1 =", se1, "\n")
 ```
 

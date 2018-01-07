@@ -33,7 +33,7 @@ Examples will be drawn from ecology, economics, epidemiology, finance and elsewh
     + Web: dept.stat.lsa.umich.edu/~ionides
     + Office hours: Monday 4-5pm, Wednesday 3-4pm
 * GSI: Joonha Park
-    + Office hours: TBA
+    + Office hours: Friday 9:30-11am in 2165 USB.
     + Computing support: inquire by email, with a detailed description of the problem, what you did, and what error message you obtained.
     + E-mail: joonhap@umich.edu
 * Textbook: R. Shumway and D. Stoffer "Time Series Analysis and its Applications" 4th edition. 
@@ -74,11 +74,11 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 ## Class notes
 
 
-1. [Introduction](notes01/intro.html). [(R script)](notes01/intro.R)
+1. [Introduction](01/notes01.html). [(R script)](01/notes01.R)
+
+2. [Time series models, trend and autocovariance](02/notes02.html). [(R script)](02/notes02.R)
 
 <!--
-
-2. [Definitions and trend estimation by least squares](notes02/trend.html). [(R script)](notes02/trend.R)
 
 3. [Stationarity, white noise, and some basic time series models](notes03/notes3.html). [(R script)](notes03/notes3.R)
 
