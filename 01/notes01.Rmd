@@ -638,6 +638,7 @@ If you have forked and cloned the repository and would like to keep your forked 
 
 
 * Type `git pull upstream master`. This pulls the changes in the upstream repository (the original repository) into the master branch on your local computer
+    * If you have already made changes to your local repository, there *might* be conflicts when you pull because the upsteam repository doesn't have those changes. You'll have to manage these manually if this occurs.
 
 * Type `git push origin master`. This, as mentioned above, pushes changes from your local repository, which now contains updates from the original repository, to your repository on github. Now, both your local repository and your github repository should be updated.
 
