@@ -26,7 +26,7 @@ csl: ecology.csl
 \newcommand\R{\mathbb{R}}
 \newcommand\data[1]{#1^*}
 \newcommand\estimate[1]{\data{#1}}
-\newcommand\predict[1]{#1^{P\,*}}
+\newcommand\predict[1]{#1^{P*}}
 \newcommand\given{\, ; \,}
 \newcommand\transpose{\scriptsize{T}}
 
@@ -313,7 +313,7 @@ The naive standard error needs to be inflated by $100(\SE_2/\SE_1-1)=$ `r round(
 
 * We should do **diagnostic analysis**. The first thing to do is to look at the residuals. For an ARMA model, the residual $\data{r_n}$ at time $t_n$ is defined to be the difference between the data, $\data{y_n}$, and a one-step ahead prediction of $\data{y_n}$ based on $\data{y_{1:n-1}}$, written as $\predict{y_n}$. From the ARMA(1,1) definition, 
 $$ Y_n = \mu + \alpha(Y_{n-1}-\mu) + \epsilon_n + \beta \epsilon_{n-1},$$
-a basic one-step-ahead predicted value corresponding to parameter estimates $\hat{\mu}$ and $\hat{\alpha}$ could be
+a basic one-step-ahead predicted value corresponding to parameter estimates $\estimate{\hat\mu}$ and $\estimate{\hat\alpha}$ could be
 $$\predict{y_n} = \estimate{\hat{\mu}} + \estimate{\hat{\alpha}}(\data{y_{n-1}}-\estimate{\hat{\mu}}).$$
 A so-called residual time series, $\{\data{r_n}\}$, is then given by
 $$ \data{r_n} = \data{y_n} - \predict{y_n}.$$
