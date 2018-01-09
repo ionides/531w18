@@ -26,7 +26,7 @@ csl: ecology.csl
 \newcommand\R{\mathbb{R}}
 \newcommand\data[1]{#1^*}
 \newcommand\estimate[1]{\data{#1}}
-\newcommand\predict[1]{#1^{P\,*}}
+\newcommand\predict[1]{#1^{P*}}
 \newcommand\given{\, ; \,}
 \newcommand\transpose{\scriptsize{T}}
 
@@ -313,7 +313,7 @@ The naive standard error needs to be inflated by $100(\SE_2/\SE_1-1)=$ `r round(
 
 * We should do **diagnostic analysis**. The first thing to do is to look at the residuals. For an ARMA model, the residual $\data{r_n}$ at time $t_n$ is defined to be the difference between the data, $\data{y_n}$, and a one-step ahead prediction of $\data{y_n}$ based on $\data{y_{1:n-1}}$, written as $\predict{y_n}$. From the ARMA(1,1) definition, 
 $$ Y_n = \mu + \alpha(Y_{n-1}-\mu) + \epsilon_n + \beta \epsilon_{n-1},$$
-a basic one-step-ahead predicted value corresponding to parameter estimates $\hat{\mu}$ and $\hat{\alpha}$ could be
+a basic one-step-ahead predicted value corresponding to parameter estimates $\estimate{\hat\mu}$ and $\estimate{\hat\alpha}$ could be
 $$\predict{y_n} = \estimate{\hat{\mu}} + \estimate{\hat{\alpha}}(\data{y_{n-1}}-\estimate{\hat{\mu}}).$$
 A so-called residual time series, $\{\data{r_n}\}$, is then given by
 $$ \data{r_n} = \data{y_n} - \predict{y_n}.$$
@@ -618,6 +618,29 @@ git push
 7. On the github web site for the `my_username/531w18` fork, click `New pull request` and follow instructions. 
 When you have successfully placed your pull request, the owner of the forked repository (in this case, ionides@umich.edu) will be notified. 
 I will then pull the modifications from your fork into `ionides/531w18`.
+
+
+<br>
+
+----------------
+
+---------------
+
+#### Optional: upstream
+
+If you have forked and cloned the repository and would like to keep your forked repository up to date, here is a common way of doing so:
+
+
+* Go to your local repository via the terminal.
+
+* Type `git remote add upstream https://github.com/ionides/531w18`
+    * This allows you to have 2 remote branches, 'origin' which points to the forked repository that you have, and 'upstream' which is the original repository. Recall that remote branches are references (pointers) to the state of branches in remote repositories. Thus, you can pull via 'upstream' to update the local repository on your machine, then push from your updated local repository to the one on github.
+
+
+* Type `git pull upstream master`. This pulls the changes in the upstream repository (the original repository) into the master branch on your local computer
+    * If you have already made changes to your local repository, there *might* be conflicts when you pull because the upsteam repository doesn't have those changes. You'll have to manage these manually if this occurs.
+
+* Type `git push origin master`. This, as mentioned above, pushes changes from your local repository, which now contains updates from the original repository, to your repository on github. Now, both your local repository and your github repository should be updated.
 
 
 <br>
