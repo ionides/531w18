@@ -368,6 +368,8 @@ acf(resid(lm_fit))
 
 ### Question: How does R construct these horizontal dashed lines?
 
+* Solving this question is in Homework 1.
+
 * How would you check what R actually does when it constructs these dashed lines? What approximation is being made? When is that approximation appropriate?
 
 Hint: If you type `acf` in R, you get the source code for the acf function. You'll see that the plotting is done by a service function `plot.acf`. This service function is part of the package, and is not immediately accessible to you. Nevertheless, you can check the source code as follows
