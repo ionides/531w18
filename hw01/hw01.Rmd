@@ -17,6 +17,8 @@ csl: ecology.csl
 
 Solutions for this homework can be hand-written or typed. Later in the course, we will be using Rmarkdown for projects, so you might like to use that also for homeworks. In that case, the source code for this assignment is available on github and might help get you started. 
 
+Recall from the syllabus that homework will be graded on completeness, together with the sources and feedback statements. If necessary, you can read solutions from the 531w16 course. In this case, please include in your source statement how far you got before resorting to this.
+
 --------
 
 **<big>Question 1.1</big>**. Recall the basic properties of covariance, $\cov(X,Y) = E\big[(X-\E[X])(Y-\E[Y])\big]$, following the convention that upper case letters are random variables and lower case letters are constants:
@@ -37,7 +39,7 @@ $$\var\big(\hat\mu(X_{1:N})\big) = \frac{1}{N}\gamma_0 + \frac{2}{N^2}\sum_{h=1}
 
 -------------------
 
-**<big>Question 1.2</big>**.  We investigate how R represents chance variation in the plot of the sample autocorrelation function produced by the `acf` function.  We seek to check what R actually does when it constructs the dashed horizontal lines in this plot. What approximation is being made? How should the lines be interpreted statistically?
+**<big>Question 1.2</big>**.  The sample autocorrelation is perhaps the second most common type of plot in time series analysis, after simply plotting the data. We investigate how R represents chance variation in the plot of the sample autocorrelation function produced by the `acf` function.  We seek to check what R actually does when it constructs the dashed horizontal lines in this plot. What approximation is being made? How should the lines be interpreted statistically?
 
 If you type `acf` in R, you get the source code for the acf function. You'll see that the plotting is done by a service function `plot.acf`. This service function is part of the package, and is not immediately accessible to you. Nevertheless, you can check the source code as follows:
 
