@@ -622,6 +622,29 @@ I will then pull the modifications from your fork into `ionides/531w18`.
 
 <br>
 
+----------------
+
+---------------
+
+#### Optional: upstream
+
+If you have forked and cloned the repository and would like to keep your forked repository up to date, here is a common way of doing so:
+
+
+* Go to your local repository via the terminal.
+
+* Type `git remote add upstream https://github.com/ionides/531w18`
+    * This allows you to have 2 remote branches, 'origin' which points to the forked repository that you have, and 'upstream' which is the original repository. Recall that remote branches are references (pointers) to the state of branches in remote repositories. Thus, you can pull via 'upstream' to update the local repository on your machine, then push from your updated local repository to the one on github.
+
+
+* Type `git pull upstream master`. This pulls the changes in the upstream repository (the original repository) into the master branch on your local computer
+    * If you have already made changes to your local repository, there *might* be conflicts when you pull because the upsteam repository doesn't have those changes. You'll have to manage these manually if this occurs.
+
+* Type `git push origin master`. This, as mentioned above, pushes changes from your local repository, which now contains updates from the original repository, to your repository on github. Now, both your local repository and your github repository should be updated.
+
+
+<br>
+
 ----------------------
 
 ----------------
