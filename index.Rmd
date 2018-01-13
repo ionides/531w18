@@ -33,7 +33,7 @@ Examples will be drawn from ecology, economics, epidemiology, finance and elsewh
     + Web: dept.stat.lsa.umich.edu/~ionides
     + Office hours: Monday 4-5pm, Wednesday 3-4pm
 * GSI: Joonha Park
-    + Office hours: TBA
+    + Office hours: Friday 9:30-11am in 2165 USB.
     + Computing support: inquire by email, with a detailed description of the problem, what you did, and what error message you obtained.
     + E-mail: joonhap@umich.edu
 * Textbook: R. Shumway and D. Stoffer "Time Series Analysis and its Applications" 4th edition. 
@@ -74,13 +74,13 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 ## Class notes
 
 
-1. [Introduction](notes01/intro.html). [(R script)](notes01/intro.R)
+1. [Introduction](01/notes01.html). [(R script)](01/notes01.R)
+
+2. [Time series models, trend and autocovariance](02/notes02.html). [(R script)](02/notes02.R)
+
+3. [Stationarity, white noise, and some basic time series models](03/notes03.html). [(R script)](03/notes03.R)
 
 <!--
-
-2. [Definitions and trend estimation by least squares](notes02/trend.html). [(R script)](notes02/trend.R)
-
-3. [Stationarity, white noise, and some basic time series models](notes03/notes3.html). [(R script)](notes03/notes3.R)
 
 4. [Linear time series models and the algebra of ARMA models](notes04/notes4.html). [(R script)](notes04/notes4.R)
 
@@ -124,9 +124,11 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 * [Homework 0](hw00/hw00.html), due in class on 1/10. Setting up your computational environment.
 
-<!--
+* [Homework 1](hw01/hw01.html), due in class on 1/17. 
 
-* [Homework 1](hw01/hw01.html), due in class on 1/19. [Solution](hw/sol01.html).
+<!-- [Solution](hw/sol01.html).>
+
+<!--
 
 * [Homework 2](hw02/hw02.html), due in class on 1/26. [Solution](hw/sol02.html).
 
