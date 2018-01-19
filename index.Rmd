@@ -159,43 +159,25 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 ## Midterm exam information
 
-<!--
 
 * The midterm exam will involve reasoning about a data analysis using the theoretical and computational techniques we have studied in class. 
 
-* The exam may include techniques covered in homeworks 1-5 and will assume familiarity with Chapters 1-10 of the notes. For Chapter 9, you do not need to review algebraic manipulation of state space models beyond what was in homework 5. 
+* The exam may include techniques covered in homeworks and will assume familiarity with the notes. 
+You do not need to review algebraic manipulation of state space models beyond what was in homework. 
 
 * You should bring to the exam just pens and/or pencils. The exam will be taken without any electronic devices, books or notes.
 
-* The best predictor of the style of the exam may be the following two past papers from a somewhat similar course:
+* The best predictor of the style of the exam is the past papers from the Winter 2016 version of this course:
 
-    +  [Midterm exam for Stats531 Winter 2016](exam/w16/mt531w16.pdf). [Solutions](exam/w16/mt531w16sol.pdf).
-
-    +  [Midterm exam for Stats531 Winter 2009](exam/w09/mt531w09.pdf). [Solutions](exam/w09/mt531w09sol.pdf).
-
-    + [Midterm exam for Stats531 Winter 2007](exam/w07/mt531w07.pdf). [Solutions](exam/w07/mt531w07sol.pdf).
-
--->
+    +  [Midterm exam for STATS 531 Winter 2016](exam/w16/mt531w16.pdf). [Solutions](exam/w16/mt531w16sol.pdf).
 
 -------------------
 
 ## Midterm project
 
-* Information to follow.
-
-* You're welcome to browse previous midterm projects [available online](http://ionides.github.io/531w16/midterm_project/)
-
-<!--
-
 * [Information](midterm_project/midterm_project_info.html)
 
-* [Projects](midterm_project/index.html)
-
-* [Plagiarism and midterm project grades](midterm_project/plagiarism.html)
-
-* [Postscript on plagiarism in the midterm project](midterm_project/postscript_on_plagiarism.html)
-
--->
+* You're also welcome to browse previous midterm projects [available online](http://ionides.github.io/531w16/midterm_project/)
 
 -------------
 
