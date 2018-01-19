@@ -1,9 +1,9 @@
 default: r-scripts html-docs
 # default: r-scripts html-docs   to make both
 
-r-scripts: notes4.R
+r-scripts: notes04.R
 
-html-docs: notes4.html
+html-docs: notes04.html
 
 %.html: %.Rmd
 	Rscript --vanilla -e "rmarkdown::render(\"$*.Rmd\",output_format=\"html_document\")"
