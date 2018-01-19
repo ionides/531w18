@@ -80,7 +80,6 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 3. [Stationarity, white noise, and some basic time series models](03/notes03.html). [(R script)](03/notes03.R)
 
-
 4. [Linear time series models and the algebra of ARMA models](04/notes04.html). [(R script)](04/notes04.R)
 
 <!--
