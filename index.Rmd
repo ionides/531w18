@@ -162,8 +162,12 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 * The midterm exam will involve reasoning about a data analysis using the theoretical and computational techniques we have studied in class. 
 
-* The exam may include techniques covered in homeworks and will assume familiarity with the notes. 
-You do not need to review algebraic manipulation of state space models beyond what was in homework. 
+* The exam may include techniques covered in homeworks and will assume familiarity with the notes.
+Reading the textbook is not mandatory for the exam, but may be useful to get a broader perspective.
+
+<!-- Any parts of the notes that are not examinable will be specified before the exam. -->
+
+<!-- You do not need to review algebraic manipulation of state space models beyond what was in homework. -->
 
 * You should bring to the exam just pens and/or pencils. The exam will be taken without any electronic devices, books or notes.
 
