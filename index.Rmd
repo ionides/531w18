@@ -80,10 +80,9 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 3. [Stationarity, white noise, and some basic time series models](03/notes03.html). [(R script)](03/notes03.R)
 
+4. [Linear time series models and the algebra of ARMA models](notes04/notes04.html). [(R script)](notes04/notes04.R)
+
 <!--
-
-4. [Linear time series models and the algebra of ARMA models](notes04/notes4.html). [(R script)](notes04/notes4.R)
-
 5. [Parameter estimation and model identification for ARMA models](notes05/notes5.html). [(R script)](notes05/notes5.R)
 
 6. [Extending the ARMA model: Seasonality and trend](notes06/notes6.html). [(R script)](notes06/notes6.R)
