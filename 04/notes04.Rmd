@@ -212,8 +212,17 @@ $$\begin{eqnarray}
 &=& (1-2B+B^2) Y_n = Y_n - 2Y_{n-1} + Y_{n-2}.
 \end{eqnarray}$$
  
-* The backshift operator is linear, i.e., 
-$$(\alpha +\beta B)Y_n = \alpha Y_n + \beta BY_n = \alpha Y_n + \beta Y_{n-1}.$$
+* The backshift operator is linear, i.e.,  
+\[
+B(\alpha X_n + \beta Y_n) = \alpha BX_n +\beta BY_n = \alpha X_{n-1} +\beta Y_{n-1}
+\]
+
+* Backshift operators and their powers can be added, multiplied by each other, and multiplied by a scalar. 
+Mathematically, this forms an [algebra](https://en.wikipedia.org/wiki/Algebra_over_a_field) equivalent to polynomial functions. For example, a distributive rule for $\alpha+\beta B$ is
+\[
+(\alpha +\beta B)Y_n = (\alpha B^0 +\beta B^1)Y_n = \alpha Y_n + \beta BY_n = \alpha Y_n + \beta Y_{n-1}.
+\]
+For this reason, we can take advantage of mathematical properties that we know about polynomials to study the algebra of backshift operators.  
 
 * The AR, MA and linear process model equations can all be written in terms of polynomials in the backshift operator.
 
