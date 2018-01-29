@@ -22,6 +22,7 @@ csl: ecology.csl
 \newcommand\loglik{\ell}
 \newcommand\R{\mathbb{R}}
 \newcommand\data[1]{#1^*}
+\newcommand\estimate[1]{\data{#1}}
 \newcommand\params{\, ; \,}
 \newcommand\transpose{\scriptsize{T}}
 \newcommand\eqspace{\quad\quad\quad}
@@ -129,7 +130,7 @@ where $\arg\max_\theta g(\theta)$ means a value of argument $\theta$ at which th
  
 
 * The maximum likelihood estimate (also known as the MLE) is
-$$\begin{eqnarray} \data{\theta} &=& \hat\theta(\data{y_{1:N}})
+$$\begin{eqnarray} \estimate{\hat\theta} &=& \hat\theta(\data{y_{1:N}})
 \\
 &=& \arg\max_\theta \lik(\theta)
 \\
@@ -151,7 +152,7 @@ $$
 
 -----
 
-* We can write $\hat\theta_{MLE}$ and $\data{\theta_{MLE}}$ if we are considering various alternative estimation methods. However, in this course, we will most often be using maximum likelihood estimation so we let $\hat\theta$ and $\data{\theta}$ correspond to this approach.
+* We can write $\hat\theta_{MLE}$ and $\estimate{\hat\theta_{MLE}}$ if we are considering various alternative estimation methods. However, in this course, we will most often be using maximum likelihood estimation so we let $\hat\theta$ and $\estimate{\hat\theta}$ correspond to this approach.
 
 <br>
 
@@ -201,15 +202,17 @@ $$
 $$ \big[\nabla^2\loglik(\theta)\big]_{ij} =  \frac{\partial^2}{\partial\theta_i\partial\theta_j}\loglik(\theta).$$
 
 * The observed Fisher information is
-$$ \data{I} = - \nabla^2\loglik(\data{\theta}).$$
+$$ \estimate{\hat{I}} = - \nabla^2\loglik(\estimate{\hat\theta}).$$
 
 * A standard asymptotic approximation to the distribution of the MLE for large $N$ is
-$$ \hat\theta(Y_{1:N}) \approx N[\theta, {\data{I}}^{-1}],$$
+\[
+\hat\theta(Y_{1:N}) \approx N\left[\theta, [\estimate{\hat{I}}]^{-1}\right],
+\]
 where $\theta$ is the true parameter value.
 This asserts that the MLE is asymptotically unbiased, with variance asymptotically attaining the Cramer-Rao lower bound. Thus, we say the MLE is **asymptotically efficient**.
 
 * A corresponding approximate 95% confidence interval for $\theta_d$ is
-$$ \data{\theta_d} \pm 1.96 \big[{\data{I}}^{-1}\big]_{dd}^{1/2}.$$
+$$ \data{\theta_d} \pm 1.96 \big[{\estimate{\hat{I}}}^{-1}\big]_{dd}^{1/2}.$$
 
 * The R function `arima` computes standard errors for the MLE of an ARMA model in this way.
 
@@ -226,7 +229,7 @@ $$ \data{\theta_d} \pm 1.96 \big[{\data{I}}^{-1}\big]_{dd}^{1/2}.$$
 $$ \profileloglik{d}(\theta_d) = \max_{\phi\in\R^D: \phi_d=\theta_d}\loglik(\phi).$$
 In general, the profile likelihood of one parameter is constructed by maximizing the likelihood function over all other parameters.
 
-* Check that $\max_{\theta_d}\profileloglik{d}(\theta_d) = \max_{\theta_{1:D}}\loglik(\theta_{1:D})$. Maximizing the profile likelihood $\profileloglik{d}(\theta_d)$ gives the MLE, $\data{\theta_d}$.
+* Check that $\max_{\theta_d}\profileloglik{d}(\theta_d) = \max_{\theta_{1:D}}\loglik(\theta_{1:D})$. Maximizing the profile likelihood $\profileloglik{d}(\theta_d)$ gives the MLE, $\estimate{\hat\theta}_d$.
 
 * An approximate 95% confidence interval for $\theta_d$ is given by
 $$ \{\theta_d : \loglik(\data{\theta}) - \profileloglik{d}(\theta_d)\} < 1.92.$$
@@ -254,12 +257,12 @@ for models in a neighborhood of the MLE, $\data{\theta}=\hat\theta(\data{y_{1:N}
 <br><br>
 (A) Evaluate the coverage of a proposed confidence interval estimator, $[\hat\theta_{1,\mathrm lo},\hat\theta_{1,\mathrm hi}]$,
 <br><br>
-(B) Construct a standard error for $\data{\theta_1}$,
+(B) Construct a standard error for $\estimate{\hat\theta_1}$,
 <br><br>
 (C) Construct a confidence interval for $\theta_1$ with exact local coverage.
 
 1. Generate $J$ independent Monte Carlo simulations, 
-$$Y_{1:N}^{[j]} \sim f_{Y_{1:N}}(y_{1:N}\params\data{\theta})\mbox{ for } j\in 1:J.$$
+$$Y_{1:N}^{[j]} \sim f_{Y_{1:N}}(y_{1:N}\params\estimate{\hat\theta})\mbox{ for } j\in 1:J.$$
 
 2. For each simulation, evaluate the maximum likelihood estimator,
 $$ \theta^{[j]} = \hat\theta\big(Y_{1:N}^{[j]}\big)\mbox{ for } j\in 1:J,$$
@@ -268,11 +271,11 @@ $$ \big[\theta^{[j]}_{1,\mathrm lo},\theta^{[j]}_{1,\mathrm hi}\big] = \big[\hat
 
 3. We can use these simulations to obtain solutions to our goals for uncertainty assessment:
 <br><br>
-(A) For large $J$, the coverage of the proposed confidence interval estimator is well approximated, for models in a neighborhood of $\data{\theta}$, by the proportion of the intervals $\big[\theta^{[j]}_{1,\mathrm lo},\theta^{[j]}_{1,\mathrm hi}\big]$ that include $\data{\theta_1}$.
+(A) For large $J$, the coverage of the proposed confidence interval estimator is well approximated, for models in a neighborhood of $\estimate{\hat\theta}$, by the proportion of the intervals $\big[\theta^{[j]}_{1,\mathrm lo},\theta^{[j]}_{1,\mathrm hi}\big]$ that include $\estimate{\hat\theta_1}$.
 <br><br>
-(B) The sample standard deviation of $\{ \theta^{[j]}_1, j\in 1:J\}$ is a natural standard error to associate with $\data{\theta_1}.
+(B) The sample standard deviation of $\{ \theta^{[j]}_1, j\in 1:J\}$ is a natural standard error to associate with $\estimate{\hat \theta_1}$.
 <br><br>
-(C) For large $J$, one can empirically calibrate a 95% confidence interval for $\theta_1$ with exactly the claimed coverage in a neighborhood of $\data{\theta}$. For example, using profile methods, one could replace the cutoff 1.92 by a constant $\alpha$ chosen such that 95% of the profile confidence intervals computed for the simulations cover $\data{\theta_1}$.
+(C) For large $J$, one can empirically calibrate a 95% confidence interval for $\theta_1$ with exactly the claimed coverage in a neighborhood of $\estimate{\hat\theta}$. For example, using profile methods, one could replace the cutoff 1.92 by a constant $\alpha$ chosen such that 95% of the profile confidence intervals computed for the simulations cover $\estimate{\hat\theta_1}$.
 
 
 <br>
@@ -286,7 +289,7 @@ $$ \big[\theta^{[j]}_{1,\mathrm lo},\theta^{[j]}_{1,\mathrm hi}\big] = \big[\hat
 * A true 95% confidence interval covers $\theta$ with probability 0.95 whatever the value of $\theta$.  
 
 * The local coverage probability at a value $\theta=\tilde\theta$ is the chance that the confidence interval covers $\tilde\theta$ when the true parameter value is $\tilde\theta$.
-Typically, we compute local coverage at $\theta=\data{\theta}$.
+Typically, we compute local coverage at $\theta=\estimate{\hat\theta}$.
 
 * Local coverage can be evaluated or calibrated via simulation; the actual (global) coverage is usually hard to work with.
 
