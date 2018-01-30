@@ -125,14 +125,16 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 * [Homework 1](hw01/hw01.html), due in class on Wednesday 1/17.  [Solution](hw01/sol01.html).
 
-
 * [Homework 2](hw02/hw02.html), due in class on Monday 1/29. 
 
+<!--
+[Solution](hw02/sol02.html).
+-->
+
+* [Homework 3](hw03/hw03.html), due midnight on Monday 2/5. 
 
 <!--
-[Solution](hw/sol02.html).
-
-* [Homework 3](hw03/hw03.html), due midnight on 2/2. [Solution](hw/sol03.html). See also [Chapter 7.3](http://ionides.github.io/531w18/notes7/notes7.html#some-data-analysis-using-the-frequency-domain).
+[Solution](hw/sol03.html). See also [Chapter 7.3](http://ionides.github.io/531w18/notes7/notes7.html#some-data-analysis-using-the-frequency-domain).
 
 * [Homework 4](hw04/hw04.html), due in class on 2/9. [Solution](hw/sol04.html).
 
