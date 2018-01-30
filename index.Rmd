@@ -86,8 +86,6 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 6. [Extending the ARMA model: Seasonality and trend](06/notes06.html). [(R script)](06/notes06.R)
 
-testing
-
 <!--
 7. [Introduction to the frequency domain](07/notes07.html). [(R script)](07/notes07.R)
 

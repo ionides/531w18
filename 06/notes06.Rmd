@@ -1,7 +1,7 @@
 ---
 title: "6. Extending the ARMA model: Seasonality and trend"
 author: "Edward Ionides"
-date: "1/30/2018"
+date: "2018-01-30"
 output:
   html_document:
     theme: flatly
