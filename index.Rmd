@@ -84,9 +84,9 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 5. [Parameter estimation and model identification for ARMA models](05/notes05.html). [(R script)](05/notes05.R)
 
-<!--
 6. [Extending the ARMA model: Seasonality and trend](06/notes06.html). [(R script)](06/notes06.R)
 
+<!--
 7. [Introduction to the frequency domain](07/notes07.html). [(R script)](07/notes07.R)
 
 

@@ -7,9 +7,6 @@ options(
 ## ----chi_squared---------------------------------------------------------
 qchisq(0.95,df=1)
 
-## ----data_file-----------------------------------------------------------
-system("head huron_depth.csv")
-
 ## ----read_data-----------------------------------------------------------
 dat <- read.table(file="huron_depth.csv",sep=",",header=TRUE)
 dat$Date <- strptime(dat$Date,"%m/%d/%Y")

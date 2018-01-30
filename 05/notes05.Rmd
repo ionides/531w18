@@ -428,8 +428,18 @@ $$ AIC = -2 \times \loglik(\data{\theta}) + 2D$$
 
 ### Reading in the data
 
-```{r data_file}
-system("head huron_depth.csv")
+* Here is the head of the file [huron_depth.csv](./huron_depth.csv).
+```
+# downloaded on 1/24/16 from
+# http://www.glerl.noaa.gov/data/dashboard/data/levels/mGauge/miHuronMog.csv
+# Lake Michigan-Huron:, Monthly Average Master Gauge Water Levels (1860-Present)
+# Source:, NOAA/NOS
+Date, Average
+01/01/1860,177.285
+02/01/1860,177.339
+03/01/1860,177.349
+04/01/1860,177.388
+05/01/1860,177.425
 ```
 
 * A bit of work has to be done manipulating the `Date` variable. 
