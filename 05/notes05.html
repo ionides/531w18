@@ -233,7 +233,7 @@ $(document).ready(function () {
 <li><p>The observed Fisher information is <span class="math display">\[ {{\hat{I}^*}} = - \nabla^2{\ell}({{\hat\theta^*}}).\]</span></p></li>
 <li><p>A standard asymptotic approximation to the distribution of the MLE for large <span class="math inline">\(N\)</span> is <span class="math display">\[
 \hat\theta(Y_{1:N}) \approx N\left[\theta, [{{\hat{I}^*}}]^{-1}\right],
-\]</span> where <span class="math inline">\(\theta\)</span> is the true parameter value. This asserts that the MLE is asymptotically unbiased, with variance asymptotically attaining the Cramer-Rao lower bound. Thus, we say the MLE is <strong>asymptotically efficient</strong>.</p></li>
+\]</span> where <span class="math inline">\(\theta\)</span> is the true parameter value. This asserts that the MLE is asymptotically unbiased, with variance asymptotically attaining the Cramer-Rao lower bound. Thus, we say the MLE is <strong>asymptotically efficient</strong>. Here, we interpret <span class="math inline">\(\approx\)</span> to mean “one could write a limit statement formally justifying this approximation in a suitable limit.”</p></li>
 <li><p>A corresponding approximate 95% confidence interval for <span class="math inline">\(\theta_d\)</span> is <span class="math display">\[ {{\hat\theta_d^*}} \pm 1.96 \big[{{{\hat{I}^*}}}^{-1}\big]_{dd}^{1/2}.\]</span></p></li>
 <li><p>The R function <code>arima</code> computes standard errors for the MLE of an ARMA model in this way.</p></li>
 <li><p>We usually only have one time series, with some fixed <span class="math inline">\(N\)</span>, and so we cannot in practice take <span class="math inline">\(N\to\infty\)</span>. When our time series model is non-stationary it may not even be clear what it would mean to take <span class="math inline">\(N\to\infty\)</span>. These asymptotic results should be viewed as nice mathematical reasons to consider computing an MLE, but not a substitute for checking how the MLE behaves for our model and data.</p></li>
@@ -302,7 +302,7 @@ $(document).ready(function () {
 <li><p>Suppose we have two <strong>nested</strong> hypotheses <span class="math display">\[\begin{eqnarray}
 H^{\langle 0\rangle} &amp;:&amp; \theta\in \Theta^{\langle 0\rangle},
 \\
-H^{\langle 1\rangle} &amp;=&amp; \theta\in \Theta^{\langle 1\rangle},
+H^{\langle 1\rangle} &amp;:&amp; \theta\in \Theta^{\langle 1\rangle},
 \end{eqnarray}\]</span> defined via two nested parameter subspaces, <span class="math inline">\(\Theta^{\langle 0\rangle}\subset \Theta^{\langle 1\rangle}\)</span>, with respective dimensions <span class="math inline">\(D^{\langle 0\rangle}&lt; D^{\langle 1\rangle}\le D\)</span>.</p></li>
 <li><p>We consider the log likelihood maximized over each of the hypotheses, <span class="math display">\[\begin{eqnarray}
 \ell^{\langle 0\rangle} &amp;=&amp; \sup_{\theta\in \Theta^{\langle 0\rangle}} \ell(\theta),
@@ -316,6 +316,7 @@ H^{\langle 1\rangle} &amp;=&amp; \theta\in \Theta^{\langle 1\rangle},
 <li><p>The Wilks approximation can be used to construct a hypothesis test of the null hypothesis <span class="math inline">\(H^{\langle 0\rangle}\)</span> against the alternative <span class="math inline">\(H^{\langle 1\rangle}\)</span>.</p></li>
 <li><p>This is called a <strong>likelihood ratio test</strong> since a difference of log likelihoods corresponds to a ratio of likelihoods.</p></li>
 <li><p>When the data are IID, <span class="math inline">\(N\to\infty\)</span>, and the hypotheses satisfy suitable regularity conditions, this approximation can be derived mathematically and is known as <strong>Wilks’s theorem</strong>.</p></li>
+<li><p>We therefore have two different interpretations of <span class="math inline">\(\approx\)</span>. One is “one could write a limit statement formally justifying this approximation in a suitable limit” and another is “this approximation is useful in the finite sample situation at hand.” These interpretations may both be appropriate!</p></li>
 <li><p>The chi-squared approximation to the likelihood ratio statistic may be useful, and can be assessed empirically by a simulation study, even in situations that do not formally satisfy any known theorem.</p></li>
 </ul>
 <p><br></p>

@@ -210,6 +210,7 @@ $$ \estimate{\hat{I}} = - \nabla^2\loglik(\estimate{\hat\theta}).$$
 \]
 where $\theta$ is the true parameter value.
 This asserts that the MLE is asymptotically unbiased, with variance asymptotically attaining the Cramer-Rao lower bound. Thus, we say the MLE is **asymptotically efficient**.
+Here, we interpret $\approx$ to mean "one could write a limit statement formally justifying this approximation in a suitable limit."
 
 * A corresponding approximate 95% confidence interval for $\theta_d$ is
 $$ \estimate{\hat\theta_d} \pm 1.96 \big[{\estimate{\hat{I}}}^{-1}\big]_{dd}^{1/2}.$$
@@ -312,7 +313,7 @@ Typically, we compute local coverage at $\theta=\estimate{\hat\theta}$.
 $$\begin{eqnarray}
 H^{\langle 0\rangle} &:& \theta\in \Theta^{\langle 0\rangle},
 \\
-H^{\langle 1\rangle} &=& \theta\in \Theta^{\langle 1\rangle},
+H^{\langle 1\rangle} &:& \theta\in \Theta^{\langle 1\rangle},
 \end{eqnarray}$$
 defined via two nested parameter subspaces, $\Theta^{\langle 0\rangle}\subset \Theta^{\langle 1\rangle}$, with respective dimensions $D^{\langle 0\rangle}< D^{\langle 1\rangle}\le D$.
 
@@ -337,6 +338,8 @@ where $\chi^2_d$ is a chi-squared random variable on $d$ degrees of freedom and 
 * This is called a **likelihood ratio test** since a difference of log likelihoods corresponds to a ratio of likelihoods.
 
 * When the data are IID, $N\to\infty$, and the hypotheses satisfy suitable regularity conditions, this approximation can be derived mathematically and is known as **Wilks's theorem**. 
+
+* We therefore have two different interpretations of $\approx$. One is "one could write a limit statement formally justifying this approximation in a suitable limit" and another is "this approximation is useful in the finite sample situation at hand." These interpretations may both be appropriate!
 
 * The chi-squared approximation to the likelihood ratio statistic may be useful, and can be assessed empirically by a simulation study, even in situations that do not formally satisfy any known theorem.
 
