@@ -1,0 +1,532 @@
+---
+title: "7. Introduction to time series analysis in the frequency domain"
+author: "Edward Ionides"
+date: "2/7/2018"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+    toc_depth: 2
+    number_sections: true
+    pandoc_args: [
+      "--number-offset=7"
+    ]
+csl: ecology.csl
+---
+
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\params{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\eqspace{\quad\quad\quad}
+\newcommand\lik{\mathscr{L}}
+\newcommand\loglik{\ell}
+\newcommand\profileloglik[1]{\ell^\mathrm{profile}_#1}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\AR{\Phi}
+\newcommand\MA{\Psi}
+\newcommand\ev{u}
+
+Licensed under the Creative Commons attribution-noncommercial license, http://creativecommons.org/licenses/by-nc/3.0/.
+Please share and remix noncommercially, mentioning its origin.  
+![CC-BY_NC](cc-by-nc.png)
+
+```{r knitr-opts,include=FALSE,cache=FALSE,purl=FALSE}
+library(pomp)
+library(knitr)
+prefix <- "intro"
+opts_chunk$set(
+  progress=TRUE,
+  prompt=FALSE,tidy=FALSE,highlight=TRUE,
+  strip.white=TRUE,
+  warning=FALSE,
+  message=FALSE,
+  error=FALSE,
+  echo=TRUE,
+  cache=TRUE,
+  cache_extra=rand_seed,
+  results='markup',
+  fig.show='asis',
+  size='small',
+  fig.lp="fig:",
+  fig.path=paste0("figure/",prefix,"-"),
+  cache.path=paste0("cache/",prefix,"-"),
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=4,fig.width=6.83,
+  dpi=300,
+  dev='png',
+  dev.args=list(bg='transparent')
+)
+
+set.seed(2050320976)
+```
+```{r opts,include=FALSE,cache=FALSE}
+options(
+  keep.source=TRUE,
+  encoding="UTF-8"
+)
+```
+
+-------------------
+
+------------------
+
+<big><big><big>Objectives</big></big></big>
+
+* This course emphasizes time domain analysis of time series, but we also want to be able to present and interpret the frequency domain properties of our time series models and data.
+
+1. Looking at the frequency components present in our data can help to identify appropriate models.
+
+2. Looking at the frequency components present in our models can help to assess whether they are doing a good job of describing our data.
+
+<br>
+
+----------------------
+
+---------------
+
+## What is the spectrum of a time series model?
+
+* We're going to start by reviewing eigenvectors and eigenvalues of covariance matrices. This eigen decomposition also arises elsewhere in Statistics, such as the principle component analysis technique in multivariate analysis.
+
+* A univariate time series model is a vector-valued random variable $Y_{1:N}$ which we suppose has a covariance matrix $V$ which is an $N\times N$ matrix with entries $V_{mn}=\cov(Y_m,Y_n)$.
+
+* $V$ is a non-negative definite symmetric matrix, and [therefore](https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix#Real_symmetric_matrices) has $N$ non-negative eigenvalues $\lambda_1,\dots,\lambda_N$ with corresponding eigenvectors $\ev_1,\dots,\ev_N$ such that
+$$ V \ev_n = \lambda_n \ev_n.$$
+
+* A basic property of these eigenvectors is that they are orthogonal, i.e.,
+$$ \ev_m^\transpose \ev_n = 0 \mbox{ if $m\neq n$}.$$
+
+* We may work with **normalized** eigenvectors that are scaled such that $\ev_n^\transpose \ev_n = 1$.
+
+* We can also check that the components of $Y$ in the directions of different eigenvectors are uncorrelated. Since $\cov(AY,BY)=A\cov(Y,Y)B^\transpose$, we have
+$$\begin{eqnarray}
+\cov(\ev_m^\transpose Y, \ev_n^\transpose Y) &=& \ev_m^\transpose \cov(Y,Y) \ev_n
+\\
+&=& \ev_m^\transpose V \ev_n
+\\
+&=&\lambda_n \ev_m^\transpose \ev_n 
+&=& \left\{\begin{array}{ll} 
+\lambda_n & \mbox{if $m=n$} \\ 0 & \mbox{if $m\neq n$}
+\end{array}\right.
+\end{eqnarray}$$
+For the last equality, we have supposed that the eigenvectors are normalized.
+
+* Thus, if we knew $V$, we could convert the model to a representation where the observable random variables are uncorrelated. 
+
+* Specifically, we could transform the data into its components in the directions of the eigenvectors of the model. An uncorrelated (or, in the Gaussian case, independent) model would then become appropriate for this transformation of the data.
+
+* Let's see how to do that for a stationary time series model, say 100 observations from an AR(1) model with autoregressive coefficient 0.8.
+
+```{r eigen}
+N <- 100
+phi <- 0.8
+sigma <- 1
+V <- matrix(NA,N,N)
+for(m in 1:N) for(n in 1:N) V[m,n] <- sigma^2 * phi^abs(m-n) / (1-phi^2)
+V_eigen <- eigen(V,symmetric=TRUE)
+oldpars <- par(mfrow=c(1,2))
+matplot(V_eigen$vectors[,1:5],type="l")
+matplot(V_eigen$vectors[,6:9],type="l")
+par(oldpars)
+```
+
+* We see that the eigenvectors, plotted as functions of time, look like sine wave oscillations.
+
+* The eigenvalues are
+```{r evals}
+round(V_eigen$values[1:9],2)
+```
+
+* We see that the eigenvalues are decreasing. For this model, the components of $Y_{1:N}$ with highest variance correspond to long-period oscillations.
+
+* Are the sinusoidal eigenvectors a special feature of this particular time series model, or something more general?
+
+<br>
+
+--------
+
+-------
+
+### The eigenvectors for a long stationary time series model
+
+* Suppose $\{Y_n,-\infty<n<\infty\}$ has a stationary autocovariance function $\gamma_h$.
+
+* We write $\Gamma$ for the infinite matrix with entries
+$$ \Gamma_{m,n} = \gamma_{m-n} \quad \mbox{for all integers $m$ and $n$}.$$
+
+* An infinite eigenvector is a sequence $\ev=\{\ev_n, -\infty<n<\infty\}$ with corresponding eigenvalue $\lambda$ such that
+$$\Gamma \ev = \lambda \ev,$$
+or, writing out the matrix multiplication explicitly,
+$$\sum_{n=-\infty}^\infty \Gamma_{m,n} \ev_n = \lambda \ev_m\quad \mbox{for all $m$}.$$
+
+* Now, let's look for a sinusoidal solution, $\ev_n = e^{i\omega n}$. Then,
+$$\begin{eqnarray}
+\sum_{n=-\infty}^\infty \Gamma_{m,n} \ev_n 
+&=& \sum_{n=-\infty}^\infty \gamma_{m-n} \ev_n 
+\\
+&=& \sum_{h=-\infty}^\infty \gamma_{h}  \ev_{m-h} \quad \mbox{setting $h=m-n$}
+\\
+&=& \sum_{h=-\infty}^\infty \gamma_{h}  e^{i\omega(m-h)}
+\\
+&=& e^{i\omega m} \sum_{h=-\infty}^\infty \gamma_{h}  e^{-i\omega h}
+\\
+&=& \ev_m \lambda \mbox{ for } \lambda= \sum_{h=-\infty}^\infty \gamma_{h}  e^{-i\omega h}
+\end{eqnarray}$$
+
+* This calculation shows that 
+$$\ev_n(\omega) = e^{i\omega n}$$ 
+is an eigenvector for $\Gamma$ for any choice of $\omega$. The corresponding eigenvalue function,
+$$\lambda(\omega)= \sum_{h=-\infty}^\infty \gamma_{h}  e^{-i\omega h},$$
+is called the **spectral density function**.  It is calculated as the **Fourier transform** of $\gamma_h$ at *frequency* $\omega$.
+
+* It was convenient to do this calculation with complex exponentials. However, writing
+$$ e^{i\omega n} = \cos(\omega n) + i \sin(\omega n)$$
+we see that the real and imaginary parts of this calculation in fact give us two real eigenvectors, $\cos(\omega n)$ and $\sin(\omega n)$.
+
+* Assuming that this computation for an infinite sum represents a limit of increasing dimension for finite matrices, we have found that the eigenfunctions for any long, stationary time series model are approximately sinusoidal.
+
+* For the finite time series situation, we only expect $N$ eigenvectors for a time series of length $N$. We have one eigenvector for $\omega=0$, two eigenvectors corresponding to sine and cosine functions with frequency
+$$\omega_{n} = 2\pi n/N, \mbox{ for $0<n<N/2$},$$
+and, if $N$ is even,  a final eigenvector with frequency
+$$\omega_{(N/2)} = \pi.$$
+
+* These sine and cosine vectors are called the **Fourier basis**.
+
+## Frequency components of the data and their representation via the Fourier transform
+
+* The **frequency components** of $Y_{1:N}$ are the components in the directions of these eigenvectors. Equivalently, we could say they are the representation of $Y_{1:N}$ in the Fourier basis. Specifically, we write
+$$\begin{eqnarray}
+C_n &=& \frac{1}{\sqrt{N}}\sum_{k=1}^N Y_k\cos(\omega_n k) \mbox{ for $0\le n\le N/2$},
+\\
+S_n &=& \frac{1}{\sqrt{N}}\sum_{k=1}^N Y_k\sin(\omega_n k) \mbox{ for $1\le n\le N/2$}.
+\end{eqnarray}$$
+
+* Similarly, the **frequency components** of data $\data{y_{1:N}}$ are 
+$$\begin{eqnarray}
+\data{c_n} &=& \frac{1}{\sqrt{N}}\sum_{k=1}^N \data{y_k}\cos(\omega_n k) \mbox{ for $0\le n\le N/2$},
+\\
+\data{s_n} &=& \frac{1}{\sqrt{N}}\sum_{k=1}^N \data{y_k}\sin(\omega_n k) \mbox{ for $1\le n\le N/2$}.
+\end{eqnarray}$$
+
+* The frequency components of the data are often written as real and imaginary parts of the **discrete Fourier transform**,
+$$\begin{eqnarray}
+\data{d_n} &=& \frac{1}{\sqrt{N}} \sum_{k=1}^N \data{y_k} e^{2\pi i n/N}
+\\
+&=&\data{c_n} + i\data{s_n}
+\end{eqnarray}$$
+
+* Here, we have made a decision to introduce a normalizing constant of $1/\sqrt{N}$. There are various choices about signs and factors of $2\pi$, $\sqrt{2\pi}$ and $\sqrt{N}$ that can---and are---made in the definition of the Fourier transform in various situations. One should try to be consistent, and also be careful: the `fft` command in R, for example, doesn't include this constant. 
+
+* `fft` is an implementation of the fast Fourier transform algorithm, which enables computation of all the frequency components with order $N\log(N)$ computation. At first consideration, computing the frequency components appears to require a matrix multiplication involving order $N^2$ additions and multiplications. When $N=10^5$ or $N=10^6$ this difference becomes important!
+
+
+* The first frequency component, $C_0$, is something of a special case, since it has mean $\mu=\E[Y_n]$ whereas the other components have mean zero.
+
+* In practice, we subtract a mean before computing the periodogram, which is equivalent to removing the frequency component for frequency zero.
+
+* The frequency components $(C_{0:N/2},S_{1:N/2})$ are asymptotically uncorrelated. They are constructed as a sum of a large number of terms, with the usual  $1/\sqrt{N}$ scaling for a central limit theorem. So, it may not be surprising that a central limit theorem applies, giving asymptotic justification for the following normal approximation. 
+
+<br>
+
+------
+
+------
+
+### Normal approximation for the frequency components
+
+* $(C_{1:N/2},S_{1:N/2})$ are approximately independent, mean zero, Normal random variables with
+$$ \var(C_n) = \var(S_n) \approx 1/2 \lambda(\omega_n).$$
+
+* $C_0\big/ \sqrt{N}$ is approximately Normal, mean $\mu$, independent of $(C_{1:N/2},S_{1:N/2})$, with
+$$\var(C_0\big/ \sqrt{N}) \approx \lambda(0)\big/ N.$$
+
+* Moving to the frequency domain (i.e., transforming the data to its frequency components) has **decorrelated** the data. Statistical techniques based on assumptions of independence become applicable. 
+
+* It follows from the normal approximation that, for $1\le n\le N/2$,
+$$ C_n^2 + S_n^2 \approx \lambda(\omega_n) \frac{\chi^2_2}{2},$$
+where $\chi^2_2$ is a chi-squared random variable on two degrees of freedom.
+
+* Taking logs, we have
+$$ \log\big(C_n^2 + S_n^2 \big) \approx \log \lambda(\omega_n) + \log(\chi^2_2/2).$$
+
+* These results motivate consideration of the **periodogram**,
+$$ I_n = \data{c_n}^2 + \data{s_n}^2 = \big|  \data{d_n}\big|^2$$
+as an estimator of the spectral density. 
+
+* $\log I_n$ can be modeled as an estimator of the log spectral density with independent, identically distributed errors. 
+
+* We see from the normal approximation that a signal-plus-white-noise model is appropriate for estimating the log spectral density using the log periodogram. 
+
+<br>
+
+--------
+
+-------
+
+### Interpreting the spectral density as a power spectrum
+
+* The power of a wave is proportional to the square of its amplitude. 
+
+* The spectral density gives the mean square amplitude of the components at each frequency, and therefore gives the expected power.
+
+* The spectral density function can therefore be called the **power spectrum**.
+
+------------------
+
+---------------
+
+### Question: compute the spectrum of an AR(1) model.
+
+<br>
+
+-------
+
+-------
+
+### Question: compute the spectrum of the MA(q) moving mean,
+$$ Y_n = \frac{1}{q+1} \sum_{k=0}^q \epsilon_{n-k}.$$
+
+<br>
+
+-------
+
+-------
+
+### Review question: how would you demonstrate the correctness of the identity,
+$$ e^{i\omega} = \cos(\omega)+i\,\sin(\omega).$$
+
+<br>
+
+------
+
+------
+
+## Some data analysis using the frequency domain
+
+### Michigan winters revisited
+
+* Recall the Ann Arbor January weather data,
+
+```{r weather_data_file}
+system("head ann_arbor_weather.csv",intern=TRUE)
+```
+
+```{r weather_data}
+y <- read.table(file="ann_arbor_weather.csv",header=TRUE)
+head(y)
+low <- y$Low
+```
+
+* We have to deal with the NA measurement for 1955. A simple approach is to replace the NA by the mean.
+
+     + What other approaches can you think of for dealing with this missing observation?
+
+     + What are the strengths and weaknesses of these approaches?
+
+```{r replace_na}
+low[is.na(low)] <- mean(low, na.rm=TRUE)
+```
+
+```{r periodogram}
+spectrum(low, main="Unsmoothed periodogram")
+```
+
+* To smooth, we use the default periodogram smoother in R
+
+<br>
+
+-------
+
+-------
+
+### Question: how does R smooth?
+
+* What is the default periodogram smoother in R?
+
+* How should we use it?
+
+* Why is that default chosen?
+
+<br>
+
+---------
+
+---------
+
+
+```{r smoothed_periodogram}
+spectrum(low,spans=c(3,5,3), main="Smoothed periodogram",ylim=c(15,100))
+```
+
+<br>
+
+------
+
+------
+
+### More details on computing and smoothing the periodogram
+
+* To see what R actually does to compute and smooth the periodogram, type `?spectrum`. 
+
+* This will lead you to type `?spec.pgram`.
+
+* You will see that, by default, R removes a linear trend, fitted by least squares. This may often be a sensible thing to do. Why?
+
+* You will see that R then multiplies the data by a quantity called a [**taper**](https://en.wikipedia.org/wiki/Window_function), computed by `spec.taper`. 
+
+   + The taper smooths the ends of the time series and removes high-frequency artifacts arising from an abrupt start and end to the time series.
+
+   + Formally, from the perspective of the Fourier transform, the time series takes the value zero outside the observed time points $1:N$. The sudden jump to and from zero at the start and end produces unwanted effects in the frequency domain.
+
+   + The default taper in R smooths the first and last $p=0.1$ fraction of the time points, by modifying the detrended data $\data{y_{1:N}}$ to tapered version $\data{z_{1:N}}$ defined by
+$$ \data{z_n} = \left\{
+\begin{array}{ll}
+\data{y_n} \big(1-\cos(\pi n/Np)\big)/2 & \mbox{ if $1\le n< Np$ }
+\\
+\data{y_n}  & \mbox{ if $Np \le n \le N(1-p)$ }
+\\
+\data{y_n} \big(1-\cos(\pi [N+1-n]/Np)\big)/2 & \mbox{ if $N(1-p)<n\le N$ }
+\end{array}\right.
+$$
+
+```{r taper_plot}
+plot(spec.taper(rep(1,100)),type="l",
+  main="Default taper in R for a time series of length 100")
+abline(v=c(10,90),lty="dotted",col="red")
+```
+
+<br>
+
+------
+
+-----
+
+### Spectral density estimation by fitting a model
+
+* Another standard way to estimate the spectrum is to fit an AR(p) model with $p$ selected by AIC.
+
+```{r ar_periodogram}
+spectrum(low,method="ar", main="Spectrum estimated via AR model picked by AIC")
+```
+
+<br>
+
+------
+
+-----
+
+### Fitting a signal plus white noise model
+
+* Since this time series is well modeled by white noise, we could fit a signal plus white noise model. This might be a more sensitive way to look for a trend.
+
+* Let's try some low-order polynomial trend specifications.
+
+```{r poly_fit}
+lm0 <- lm(Low~1,data=y)
+lm1 <- lm(Low~Year,data=y)
+lm2 <- lm(Low~Year+I(Year^2),data=y)
+lm3 <- lm(Low~Year+I(Year^2)+I(Year^3),data=y)
+poly_aic <- matrix( c(AIC(lm0),AIC(lm1),AIC(lm2),AIC(lm3)), nrow=1,
+   dimnames=list("<b>AIC</b>", paste("order",0:3)))
+require(knitr)
+kable(poly_aic,digits=1)
+```
+
+* Still no evidence suggesting anything other than a white noise model.
+
+* Now, let's remind ourselves what the data look like.
+
+```{r plot_jan_temp,fig.width=5}
+plot(Low~Year,data=y,type="l")
+```
+
+* Our eye may see a trend, and recall that it looks a bit like the global temperature trend.
+
+* Let's try fitting global temperature as an explanatory variable.
+
+```{r read_glob_temp}
+Z <- read.table("Global_Temperature.txt",header=TRUE)
+global_temp <- Z$Annual[Z$Year %in% y$Year]
+lm_global <- lm(Low~global_temp,data=y)
+AIC(lm_global)
+```
+
+* Got it! We have an explantion of the trend that makes scientific sense. However, the model is prefered by AIC but is not quite statistically significant viewed as a 2-sided test against a null of white noise via a t-statistic for the estimated coefficient:
+
+```{r glob_temp_fit}
+summary(lm_global)
+```
+
+<br>
+
+-----
+
+----
+
+### Question: is a 2-sided test or a 1-sided test more reasonable here?
+
+* What is the p-value for the 1-sided test?
+
+<br>
+
+--------
+
+---------
+
+
+* Perhaps we now have a satisfactory understanding of Ann Arbor January low temperatures: random, white noise, variation around the global mean temperature trend.
+
+* With noisy data, uncovering what is going on can take careful data analysis together with scientific reasoning.
+
+* What could we do to improve the signal to noise ratio in this analysis?
+
+
+<br>
+
+-----------
+
+---------
+
+### Question: Why might you expect the estimated coefficient to be statistically insignificant in this analysis, even if the model with global mean temperature plus trend is correct?
+
+Hint: notice the standard error on the coefficient, together with consideration of possible values of the coefficient in a scientifically plausible model.
+
+<br>
+
+------
+
+------
+
+## Units of frequency and period
+
+* It is always good practice to be explicit about the units of quantities. For frequency domain analysis we can consider various options for units of frequency.
+
+* For a frequency component corresponding to  $\sin(2\pi\omega n)$ or $\cos(2\pi\omega n)$, we say that the frequency is $\omega$ **cycles per unit time**.
+
+* Suppose the time series consists of equally spaced observations, with $t_{n}-t_{n-1}=\Delta$ years. Then we say that the frequency is $\omega/\Delta$ **cycles per year**. 
+
+* For a frequency component corresponding to  $\sin(\nu t)$ or $\cos(\nu t)$, we say that the frequency is $\nu$ **radians per unit time**.
+
+* The **period** of an oscillation is the time for one cycle. So, when frequency is measured in cycles per time, we have
+$$ \mbox{period} = \frac{1}{\mbox{frequency}}.$$
+Thus, for a frequency component corresponding to  $\sin(2\pi\omega n)$ or $\cos(2\pi\omega n)$, the period is $1/\omega$ observation intervals.
+
+* When the observation intervals have constant time length (years, seconds, etc) we should use those units for the period.
+
+<br>
+
+---------
+
+---------
+
+
+

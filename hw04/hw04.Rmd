@@ -1,0 +1,20 @@
+---
+title: "Homework 4, due  Monday 2/12"
+author: "Stats 531, Winter 2018"
+output:
+  html_document:
+    theme: flatly
+---
+
+
+-----------
+
+
+This week your homework assignment is to make some progress on planning your midterm project.
+There is nothing to turn in at this time.
+Read the [instructions](../midterm_project/midterm_project_info.html). You are also encouraged to browse previous projects at http://ionides.github.io/531w16/midterm_project.
+
+Choosing a dataset is an important part of the project. If you already have a time series you are interested in, this is easy. Otherwise, it can take some work to find data online. The previous projects may give you ideas of topics that may interest you and where to find data.
+
+
+-----------
