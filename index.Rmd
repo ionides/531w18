@@ -135,9 +135,11 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 <!--
 [Solution](hw/sol03.html). See also [Chapter 7.3](http://ionides.github.io/531w18/notes7/notes7.html#some-data-analysis-using-the-frequency-domain).
+-->
 
-* [Homework 4](hw04/hw04.html), due in class on 2/9. [Solution](hw/sol04.html).
+* [Homework 4](hw04/hw04.html), due in class on Monday 2/12.
 
+<!--
 * [Homework 5](hw05/hw05.html), due in class on 2/16. [Solution](hw/sol05.html).
 
 * [Homework 6](hw06/hw06.html), due in class on 2/23. [Responses](hw/summary06.html).
