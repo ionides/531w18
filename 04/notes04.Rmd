@@ -272,6 +272,11 @@ where $\{\epsilon_n\}$ is a white noise process. Using the backshift operator, w
 
 * Experience with data analysis suggests that models with both AR and MA components often fit data better than a pure AR or MA process.
 
+* The general stationanary ARMA(p,q) also has a mean $\mu$ so we get
+<br><br>
+[M9$^{\prime\prime}$] $\eqspace \ar(B) (Y_n-\mu) = \ma(B) \epsilon_n$.
+<br><br>
+
 <br>
 
 -------

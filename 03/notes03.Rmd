@@ -297,6 +297,8 @@ where $\{\epsilon_n\}$ is a white noise process.
 
     4. If we want our model is strictly stationary, we must initialize so that $Y_{1:p}$ have the proper joint distribution for this stationary model.
 
+* Assuming the initialization has mean zero, M1 implies that $\E[Y_n]=0$ for all $n$. For additional generality, we could add a constant mean $\mu$.
+
 * Let's investigate a particular Gaussian AR(1) process, as an exercise.
 <br><br>
 [M2] $\quad\quad \quad Y_n = 0.6 Y_{n-1}+ \epsilon_n$,
@@ -382,6 +384,8 @@ where $\{\epsilon_n\}$ is a white noise process.
 
 * Often, we consider the **Gaussian MA(q)** model, where  $\{\epsilon_n\}$ is a Gaussian white noise process. 
 
+* In M3, we've defined a zero mean process. We could add a mean $\mu$.
+
 * Let's investigate a particular Gaussian MA(2) process, as an exercise.
 <br><br>
 [M4] $\quad\quad \quad Y_n = \epsilon_n + 1.5\epsilon_{n-1}+\epsilon_{n-2}$,
@@ -463,7 +467,10 @@ $$ \data{z_n}= \Delta \data{y_n} = \data{y_{n}}-\data{y_{n-1}}$$
 driven by a white noise process $\{\epsilon_n\}$. This has solution
 $$ Y_n = Y_0 + n\mu + \sum_{k=1}^n\epsilon_k.$$
 
+* Here, $\mu$ is the mean of the **increments** rather than the random walk process itself.
+
 * As for the random walk without drift, we must define $Y_0$ to initialize the model and complete the model specification. Unless otherwise specified, we usually initialize with $Y_0=0$.
+
 
 <br>
 

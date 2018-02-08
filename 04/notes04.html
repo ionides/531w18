@@ -253,6 +253,7 @@ B(\alpha X_n + \beta Y_n) = \alpha BX_n +\beta BY_n = \alpha X_{n-1} +\beta Y_{n
 <ul>
 <li><p>Putting together M1 and M3 suggests an <strong>autoregressive moving average</strong> ARMA(p,q) model given by <br><br> [M9] <span class="math inline">\({\quad\quad\quad}Y_n = {\phi}_1 Y_{n-1}+{\phi}_2Y_{n-2}+\dots+{\phi}_pY_{n-p} + \epsilon_n +{\psi}_1 \epsilon_{n-1} +\dots+{\psi}_q\epsilon_{n-q}\)</span>, <br><br> where <span class="math inline">\(\{\epsilon_n\}\)</span> is a white noise process. Using the backshift operator, we can write this more succinctly as <br><br> [M9<span class="math inline">\(^\prime\)</span>] <span class="math inline">\({\quad\quad\quad}{\phi}(B) Y_n = {\psi}(B) \epsilon_n\)</span>. <br><br></p></li>
 <li><p>Experience with data analysis suggests that models with both AR and MA components often fit data better than a pure AR or MA process.</p></li>
+<li><p>The general stationanary ARMA(p,q) also has a mean <span class="math inline">\(\mu\)</span> so we get <br><br> [M9<span class="math inline">\(^{\prime\prime}\)</span>] <span class="math inline">\({\quad\quad\quad}{\phi}(B) (Y_n-\mu) = {\psi}(B) \epsilon_n\)</span>. <br><br></p></li>
 </ul>
 <p><br></p>
 <hr />

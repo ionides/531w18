@@ -284,6 +284,7 @@ $(document).ready(function () {
 <li><p>For either of these choices, we can define these initial values either to be additional parameters in the model (i.e., not random) or to be specified random variables.</p></li>
 <li><p>If we want our model is strictly stationary, we must initialize so that <span class="math inline">\(Y_{1:p}\)</span> have the proper joint distribution for this stationary model.</p></li>
 </ol></li>
+<li><p>Assuming the initialization has mean zero, M1 implies that <span class="math inline">\({\mathbb{E}}[Y_n]=0\)</span> for all <span class="math inline">\(n\)</span>. For additional generality, we could add a constant mean <span class="math inline">\(\mu\)</span>.</p></li>
 <li><p>Let’s investigate a particular Gaussian AR(1) process, as an exercise. <br><br> [M2] <span class="math inline">\(\quad\quad \quad Y_n = 0.6 Y_{n-1}+ \epsilon_n\)</span>, <br><br> where <span class="math inline">\(\epsilon_n\sim \mathrm{IID} N[0,1]\)</span>. We will initialize with <span class="math inline">\(Y_1\sim N[0,1.56^2]\)</span>.</p></li>
 </ul>
 <p><br></p>
@@ -344,6 +345,7 @@ plot(X,type=&quot;l&quot;)</code></pre>
 <li><p>The order <span class="math inline">\(q\)</span> moving average model, abbreviated to MA(q), is <br><br> [M3] <span class="math inline">\(\quad\quad \quad Y_n = \epsilon_n +\theta_1 \epsilon_{n-1} +\dots+\theta_q\epsilon_{n-q}\)</span>, <br><br> where <span class="math inline">\(\{\epsilon_n\}\)</span> is a white noise process.</p></li>
 <li><p>To fully specify <span class="math inline">\(Y_{1:N}\)</span> we must specify the joint distribution of <span class="math inline">\(\epsilon_{1-q:N}\)</span>.</p></li>
 <li><p>Often, we consider the <strong>Gaussian MA(q)</strong> model, where <span class="math inline">\(\{\epsilon_n\}\)</span> is a Gaussian white noise process.</p></li>
+<li><p>In M3, we’ve defined a zero mean process. We could add a mean <span class="math inline">\(\mu\)</span>.</p></li>
 <li><p>Let’s investigate a particular Gaussian MA(2) process, as an exercise. <br><br> [M4] <span class="math inline">\(\quad\quad \quad Y_n = \epsilon_n + 1.5\epsilon_{n-1}+\epsilon_{n-2}\)</span>, <br><br> where <span class="math inline">\(\epsilon_n\sim \mathrm{IID} N[0,1]\)</span>.</p></li>
 </ul>
 </div>
@@ -399,6 +401,7 @@ plot(epsilon,type=&quot;l&quot;)</code></pre>
 <li><p>From a time series of length <span class="math inline">\(N\)</span>, we only get <span class="math inline">\(N-1\)</span> first differences.</p></li>
 <li><p>A random walk model for <span class="math inline">\({y_{1:N}^*}\)</span> is essentially equivalent to a white noise model for <span class="math inline">\({z_{2:N}^*}= \Delta {y_{2:N}^*}\)</span>, apart from the issue of initialization.</p></li>
 <li><p>The <strong>random walk with drift</strong> model is given by the difference equation <br><br> [M6] <span class="math inline">\(\quad\quad\quad Y_n = Y_{n-1} + \mu + \epsilon_n\)</span>, <br><br> driven by a white noise process <span class="math inline">\(\{\epsilon_n\}\)</span>. This has solution <span class="math display">\[ Y_n = Y_0 + n\mu + \sum_{k=1}^n\epsilon_k.\]</span></p></li>
+<li><p>Here, <span class="math inline">\(\mu\)</span> is the mean of the <strong>increments</strong> rather than the random walk process itself.</p></li>
 <li><p>As for the random walk without drift, we must define <span class="math inline">\(Y_0\)</span> to initialize the model and complete the model specification. Unless otherwise specified, we usually initialize with <span class="math inline">\(Y_0=0\)</span>.</p></li>
 </ul>
 <p><br></p>
