@@ -155,7 +155,7 @@ $$\begin{eqnarray}
 
 * Let's do this for the full, monthly, version of the Lake Huron depth data described in [Section 5.5](../05/notes05.html#implementing-likelihood-based-inference-for-arma-models-in-r).
 
-* The data were read into a dataframe calles `dat`
+* The data were read into a dataframe called `dat`
 
 ```{r read_data,echo=F}
 dat <- read.table(file="huron_depth.csv",sep=",",header=TRUE)
