@@ -139,7 +139,7 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 <!--
 [Solution](hw/sol05.html).
 
-* [Homework 6](hw06/hw06.html), due in class on 2/23. [Responses](hw/summary06.html).
+* [Homework 6](hw06/hw06.html), due in class on 2/23.
 
 * [Homework 7](hw07/hw07.html), a single slide due midnight on 3/21, for a presentation in class on 3/22 or 3/24.
 
