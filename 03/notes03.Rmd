@@ -109,6 +109,10 @@ $$\begin{eqnarray}&&f_{Y_{n_1},Y_{n_2},\dots, Y_{n_K}}(y_1,y_2,\dots,y_K)\\
 
 ### Question: How could we assess whether a weak stationary model is appropriate for a time series dataset?
 
+Supposed they are equally spaced, we can
+1. calculate average in chunks (for mean stationary)
+2. calculate sample ACF in chunks (for covariance stationary)
+
 <br>
 
 -----------
