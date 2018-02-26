@@ -182,6 +182,8 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 
 * [Information](midterm_project/midterm_project_info.html)
 
+* [Grading scheme](midterm_project/grade_scheme_midterm_project.html)
+
 * You're also welcome to browse previous midterm projects [available online](http://ionides.github.io/531w16/midterm_project/)
 
 -------------
