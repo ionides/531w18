@@ -268,7 +268,7 @@ $$Y_{1:N}^{[j]} \sim f_{Y_{1:N}}(y_{1:N}\params\estimate{\hat\theta})\mbox{ for 
 2. For each simulation, evaluate the maximum likelihood estimator,
 $$ \theta^{[j]} = \hat\theta\big(Y_{1:N}^{[j]}\big)\mbox{ for } j\in 1:J,$$
 and, if desired, the confidence interval estimator,
-$$ \big[\theta^{[j]}_{1,\mathrm lo},\theta^{[j]}_{1,\mathrm hi}\big] = \big[\hat\theta_{1,\mathrm lo}({X^{[j]}_{1:N}}),\hat\theta_{1,\mathrm hi}({X^{[j]}_{1:N}})\big].$$
+$$ \big[\theta^{[j]}_{1,\mathrm lo},\theta^{[j]}_{1,\mathrm hi}\big] = \big[\hat\theta_{1,\mathrm lo}({Y^{[j]}_{1:N}}),\hat\theta_{1,\mathrm hi}({Y^{[j]}_{1:N}})\big].$$
 
 3. We can use these simulations to obtain solutions to our goals for uncertainty assessment:
 <br><br>
@@ -362,7 +362,7 @@ $\theta^{\langle 0\rangle}$ is in a 95% confidence interval for $\theta$.
 qchisq(0.95,df=1)
 ```
 
-* We can now see how the Wilks approximation suggests a confidence interval constructed from parameter values having a profile likelihood withing 1.92 log units of the maximum. 
+* We can now see how the Wilks approximation suggests a confidence interval constructed from parameter values having a profile likelihood within 1.92 log units of the maximum. 
 
 * It is a exercise to write out more details (to your own satisfaction) on how to use the Wilks approximation, together with the duality between hypothesis tests and confidence intervals, to derive a profile likelihood confidence interval.
 

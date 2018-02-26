@@ -124,11 +124,7 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 * [Homework 1](hw01/hw01.html), due in class on Wednesday 1/17.  [Solution](hw01/sol01.html).
 
-* [Homework 2](hw02/hw02.html), due in class on Monday 1/29. 
-
-<!--
-[Solution](hw02/sol02.html).
--->
+* [Homework 2](hw02/hw02.html), due in class on Monday 1/29. [Solution](hw02/sol02.html).
 
 * [Homework 3](hw03/hw03.html), due 11:59pm on Monday 2/5. 
 
@@ -143,7 +139,7 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 <!--
 [Solution](hw/sol05.html).
 
-* [Homework 6](hw06/hw06.html), due in class on 2/23. [Responses](hw/summary06.html).
+* [Homework 6](hw06/hw06.html), due in class on 2/23.
 
 * [Homework 7](hw07/hw07.html), a single slide due midnight on 3/21, for a presentation in class on 3/22 or 3/24.
 
