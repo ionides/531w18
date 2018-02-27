@@ -1,0 +1,65 @@
+---
+title: "Midterm project grading scheme"
+author: "STATS 531 W18"
+output:
+  html_document:
+    theme: flatly
+---
+
+The midterm projects will be graded out of 25. Each of the five categories below will be graded out of 5, where 5 is an 'A' rated response, 4 is an 'A-' response, 3 is a 'B+' response, 2 is a 'B' response, 1 is a 'C' response and 0 is an 'F' response (e.g., due to plagiarism). For each category, descriptions are given characterizing a response at various levels. 
+
+
+--------
+
+**1. Raising a question.** The introduction should give background to the data you analyze, and provide motivation for the reader to appreciate the purpose of your data analysis.
+
+A. Clearly explained question, with motivation. A subject-matter question is related to a statistical question.
+
+B. Motivation is weak but not absent.
+
+C. No attempt to explain why the data were chosen or what is the purpose of carrying out statistical analysis of them.
+
+----------
+
+**2. Use of appropriate statistical methods.** The project should demonstrate various time series techniques. Typically, you should find ways to use the techniques covered in class to help your investigation. Techniques not covered in class may be employed if necessary, in which case they should be adequately explained and properly used.
+
+A. A range of time series methods were used appropriately. The choice of methods is driven by the goals of the project.
+
+B. A range of time series methods is used, trying out the methods described in the notes without careful attention to their particular role in the goals of the project.
+
+C. Missed opportunities to apply relevant methods from the course, or irrelevant methods applied.
+
+----------
+
+**3. Scholarship.**  Your report should make references where appropriate. The models and methods you use should be fully explained, either by references or within your report. When using a reference to point the reader to descriptions elsewhere, you should provide a brief summary in your own report. Although you will be submitting your source code, you should not expect the reader to study it.
+
+A. References are used to support aspects of the report that are not self-contained. Scholarship is comparable to what is expected in a published academic paper. 
+
+B. Some attempt is made to reference and follow the style of academic writing.
+
+C. Lack of attention to scholarship.
+
+----------
+
+**4. Reaching a conclusion.** You should say what you have concluded, as well as describing things you might have liked to do that were beyond the scope of this midterm project.
+
+A. Thoughtful self-critical reflection on what has and has not been demonstrated by the analysis presented.
+
+B. Conclusions are noted, but at a lower level of response. Possibly, some incorrect interpretations.
+
+C. Conclusion largly absent, inappropriate, or incorrect.
+
+------------
+
+**5. Presentation of the data analysis.** Focus on a few, carefully explained and justified, figures, tables, statistics and hypothesis tests. You may want to try many things, but only write up evidence supporting how the data help you to get from your question to your conclusions. Including material that is of borderline relevance, or that is not fully explained, makes it harder for the reader to appreciate your analysis.
+
+A. Figures, tables and test results are adequately discussed and explained. For each result presented, it is clear how that contributes to the development toward the conclusions of the paper.
+
+B. Presentation mostly adequate, but with substantial room for improvement.
+
+C. Presenting a list of analysis carried out, without much attention to explaining what was done and why.
+
+---------
+
+
+

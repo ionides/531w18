@@ -1,0 +1,402 @@
+\documentclass[11pt]{article}
+\usepackage{graphicx,fullpage}
+\pagestyle{plain}
+\headheight0in
+\headsep0in
+\topmargin -0.1in
+\textheight 9.0in
+\oddsidemargin -0.0in
+\textwidth 6.5in
+\baselineskip 3ex
+\renewcommand\baselinestretch{1}
+\parindent 0in
+\parskip 0.1in
+%\def\bc{\begin{center}}
+%\def\ec{\end{center}}
+\def\qskip{\vspace{1.5in}}
+\def\qspace{\vspace{1.5in}}
+
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\estimate[1]{\data{#1}}
+\newcommand\given{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\mycolon{\,{:}\,}
+
+% show exam formatting and hide solutions
+\newcommand\exam[1]{#1}    \newcommand\solution[1]{} 
+
+% hide exam formatting and show solutions
+%\newcommand\exam[1]{}      \newcommand\solution[1]{{\bf #1}} 
+
+<<prelim,echo=F,cache=F>>=
+par(mai=c(0.6,0.6,0.1,0.1))
+
+broman_round <-
+    function(x, digits=1)
+{
+    if(digits < 1)
+        stop("This is intended for the case digits >= 1.")
+
+    if(length(digits) > 1) {
+        digits <- digits[1]
+        warning("Using only digits[1]")
+    }
+
+    tmp <- sprintf(paste("%.", digits, "f", sep=""), x)
+
+    # deal with "-0.00" case
+    zero <- paste0("0.", paste(rep("0", digits), collapse=""))
+    tmp[tmp == paste0("-", zero)] <- zero
+
+    tmp
+}
+@
+
+\begin{document}
+\begin{center}
+{\bf 
+ STATS 531\\
+ Winter, 2018\\
+ Midterm Exam\\
+}
+
+\exam{
+
+ \vspace{7 mm}
+{\bf Name: \hrulefill UMID \#: \hrulefill}\\
+
+\vspace{7 mm}
+\end{center}
+{\bf There are 3 sections (A, B and C) containing a total of 30 points. Points will be awarded for clearly explained and accurate answers. 
+
+Only pens and/or pencils should be out of your bag for the duration of the exam. You may not use access any electronic device, notes, or books during the exam.
+
+}
+\begin{center}
+\renewcommand{\arraystretch}{2}
+\begin{tabular}{||c|c|c||}
+\hline
+\hline
+{Section} & {Points} & {Score}\\
+\hline
+\hline
+A & 9 & \\
+\hline
+B & 14 & \\
+\hline
+C & 7 & \\
+\hline
+\hline
+Total & 30 &  \\
+\hline
+\hline
+\end{tabular}
+}
+
+\end{center}
+
+
+\exam{
+  \newpage
+}
+
+
+We investigate some data from neurophysiology.  Neurons communicate by generating pulses of electrical charge known as {\it firing events}. 
+An electrode implanted (painlessly) into a monkey's brain records a sequence of firing events for an individual neuron cell. 
+Suppose the firing times are $F_1, F_2, \ldots,F_{N+1}$, measured in milliseconds (1ms is $10^{-3}$s).
+We take as our time series $\data{x_n} = F_{n+1} - F_n$ with $n = 1,
+\ldots, N$. This is the series of times intervals between firing
+events. The data, with $N = 415$, are plotted in Fig.~\ref{timeplot}. 
+We wish to model $\data{x_{1:N}}$ in order to
+quantify the behavior of the neuron, to later compare it with
+other neurons and investigate the effects of experimental
+treatments.
+
+\begin{figure}[h]
+<<read_akira2a,echo=FALSE,fig.height=3.5>>=
+N2a <- unlist(read.table(file='akira2a.asc'))
+x<-ts(diff(N2a)[diff(N2a)<10000])/10 # units: milliseconds
+par(mai=c(0.8,0.8,0.1,0.2))
+plot(x,xlab="n",ylab="x")
+@
+\caption{Time series $\data{x_{1:N}}$ of time (in milliseconds) between subsequent firings of a monkey neuron.}\label{timeplot}
+\end{figure}
+
+{\bf SECTION A}. We start with a linear time series analysis of $\data{x_{1:N}}$.  The sample autocorrelation function of $\data{x_{1:N}}$ is shown in Fig.~\ref{xacf}. 
+
+\begin{figure}[h]
+<<sample_acf,echo=F,fig.height=3,fig.width=6,out.width="4in",fig.align="center">>=
+par(mai=c(0.8,0.8,0.1,0.2))
+acf(x,main="")
+@
+\caption{Sample autocorrelation function of $\data{x_{1:N}}$.}\label{xacf}
+\end{figure}
+
+\exam{
+\newpage
+}
+
+
+A1. [2 pts] What does Fig.~\ref{xacf} suggest to you about suitable ARMA models to model $\data{x_{1:N}}$, and why?
+
+\exam{\vspace{3cm}}
+
+\solution{There is no single clear-cut answer.  The sample ACF is within the dashed lines after lag 1, but shows some indication of decreasing like a damped oscillation (an AR(2) property). The fairly rapid decay of the sample ACF to values close to zero is consistent with mean stationarity but doesn't give much evidence for or against covariance stationarity. Anything between AR(1) and ARMA(2,2) can be defended by inspecting Fig. 2.}
+
+A2. [2 pts] Another way to select a model is by comparing AIC
+values. A table of AIC values is shown in Table 1. What ARMA model(s) would you consider based on this table, and why?
+
+
+<<aic,echo=F,warning=F,cache=F,results="asis">>=
+aic_table <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q),xreg=xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+library(xtable)
+x_aic_table <- aic_table(x,3,3)
+xtable(x_aic_table,caption="AIC values from fitting ARMA($p$,$q$) models to $\\data{x_{1:N}}$.",digits=1)
+@
+
+
+\exam{\vspace{3cm}}
+
+\solution{ARMA(2,2) has the lowest AIC, so is favored by this criterion.  ARMA(2,1) and ARMA(1,0) are simpler models which also have promising AIC values. Other considerations, such as proximity to reducibility, non-invertibility or non-causality, may also play a role in model selection. We will also see, later in the exam, that in fact none of these models are particularly appropriate.}
+
+A3. [2 pts] Find the log likelihood of an ARMA(2,1) model, and explain your calculation. 
+
+\exam{\vspace{4cm}}
+
+\solution{AIC $= -2\lambda + 2k$, where $\lambda$ is the maximized log likelihood and $k$ is the number of parameters.  Here, $k=5$ since the parameter vector is $(\phi_1, \phi_2, \theta_1, \mu,\sigma^2)$, so \[\lambda = \frac{3960.5 - 10}{-2} = -1975.25\].}
+
+A4. [3 pts] Does the table of AIC values contain any evidence for
+or against the claim that the likelihood is correctly calculated and maximized? Explain.
+
+\exam{\vspace{3cm}}
+
+\solution{The table is inconsistent --- adding a parameter can only increase the maximized log-likelihood, i.e. the AIC can only increase by $\leq 2$ Compare ARMA(3,3) to ARMA(3,2).  This can only come about by imperfect likelihood calculation and/or maximization. We may suspect a problem with likelihood maximization.
+}
+
+\exam{\newpage}
+
+{\bf SECTION B}. Fitting an ARMA(2,2) model gives the following $R$ output.
+
+\vspace{-2mm}
+
+<<arma22_out>>=
+arma22 <- arima(x,order=c(2,0,2)) ; arma22
+@
+
+\vspace{-2mm}
+
+B1. [4 pts]. Write out the fitted model, carefully stating all the assumptions behind the model used by R to generate this output.
+
+
+\exam{\vspace{3cm}}
+
+\solution{The fitted model is 
+\[X_n = 26.4 + 1.60(X_{n-1} - 26.4) - 0.64(X_{n-2} -
+  26.4) + \epsilon_n - 1.50\epsilon_{n-1} + 0.5\epsilon_{n-2}\] 
+where $\{\epsilon_n\}$ is white
+  noise with standard deviation 28.1.  The likelihood calculation also
+  assumes that $\{\epsilon_n\}$ is Gaussian, i.e. an independent sequence with $\epsilon_n\sim N(0,28.1^2)$.}
+
+\begin{figure}[h]
+<<resid_plot,echo=F,fig.width=5,fig.height=2.5,out.width="4in">>=
+par(mai=c(0.4,0.8,0,0.2))
+acf(resid(arma22), ylab="acf(resid(arma22))")
+@
+\caption{Sample autocorrelation function of the residuals from
+  fitting an ARMA(2,2) model to $\data{x_{1:N}}$.}\label{arma22resid_acf}
+\end{figure}
+
+B2. [3 pts] Fig.~\ref{arma22resid_acf} shows the ACF of the residuals from fitting an ARMA(2,2) model. 
+Comment on which modeling assumptions are investigated by this figure, and whether they are consistent with the data.
+
+\exam{\vspace{3cm}}
+
+\solution{
+Fig.~\ref{arma22resid_acf} supports the assumptions that the driving noise process is uncorrelated and has no trend.  
+It does not reveal anything about the assumptions that the driving noise is (i) constant variance or (ii) Gaussian.}
+
+
+The roots of the AR and the MA polynomials for the fitted ARMA(2,2) model are computed as follows:
+
+\vspace{-2mm}
+
+<<roots,echo=T>>=
+AR_roots <- polyroot(c(1,-coef(arma22)[c("ar1","ar2")])) ; AR_roots
+MA_roots <- polyroot(c(1,coef(arma22)[c("ma1","ma2")])) ; MA_roots
+@
+
+\vspace{-2mm}
+
+B3. [3 pts] 
+Is there evidence for parameter redundancy? Do these roots raise any other potential concerns?
+
+\exam{\vspace{3cm}}
+
+\solution{
+The AR roots ar not very close to the MA roots, so there is no strong suggestion of parameter redundancy in the fitted model.
+One of the MA roots (1.055) is close to the unit circle, so the fitted model is close to non-invertibility. 
+This could potentially cause numerical instability. 
+It also suggests that the standard errors based on Fisher information may be unreliable, as we discovered in the class notes.  
+}
+
+Simulations from the fitted ARMA(2,2) model were computed as follows:
+
+\vspace{-2mm}
+
+<<sim, echo=T>>=
+arma22<-arima(x,order=c(2,0,2))
+Nt<-length(x)
+sim<-rep(0,Nt)
+set.seed(1)
+w<-rnorm(Nt,m=0,sd=sqrt(arma22$sigma2))
+for(nt in 3:Nt){
+ sim[nt]<-arma22$coef["ar1"]*sim[nt-1]+arma22$coef["ar2"]*sim[nt-2]+
+         arma22$coef["ma1"]*w[nt-1]+arma22$coef["ma2"]*w[nt-2]+w[nt]
+}
+sim<-sim+arma22$coef["intercept"]
+@
+
+
+\vspace{-2mm}
+
+B4. [2 pts] Sample simulation output is shown in Fig.~\ref{arma22sim}. What does a comparison of Fig.~\ref{arma22sim} with Fig.~\ref{timeplot} say about ARMA modeling of $\data{x_{1:N}}$?\\
+
+\exam{\vspace{3cm}}
+
+\solution{Almost all well-considered and comprehensible answers
+  are acceptable here. The plots look quite different. Fig.~\ref{timeplot} is
+  always positive, and appears to have some regularity to the
+  peaks. Fig.~\ref{arma22sim} has less pronounced peaks, is more symmetric
+  about its mean, and occasionally becomes negative.
+  The data do not resemble a Gaussian ARMA(2,2)
+  process.}
+
+\begin{figure}[h]
+<<sim_plot,fig.width=6,fig.height=3,echo=F,out.width="4in",fig.align="center">>=
+par(mai=c(0.4,0.8,0.1,0.2))
+plot(ts(sim),main="",ylab="sim",xlab="t")
+@
+\vspace{-0.2cm}
+\caption{A simulation from the fitted ARMA(2,2) model}\label{arma22sim}
+\end{figure}
+
+B5. [2 pts] Is the random process generated in B4 and plotted in
+Fig.~\ref{arma22sim} formally stationary? Answer yes or no, and explain.
+
+\vspace{3cm}
+
+\solution{Not quite.  The initial values contradict having a constant
+  variance (the initial variance is zero).  However, the process
+  is asymptotically stationary. One could make the simulations effectively 
+ stationary by throwing away some number (say 100) values at the
+  start of the simulation.}
+
+%\exam{\newpage}
+
+{\bf SECTION C}. We now investigate a logarithmic transformation
+of the data.
+Let $\data{z_{1:N}}$ be the $\log_{10}$ transformation of $\data{x_{1:N}}$, so $\data{z_n}=\log_{10}(\data{x_n})$ for $n\in 1{\mycolon}N$. 
+Below is the R output from fitting
+an ARMA(2,2) model to $\data{z_{1:N}}$.
+
+<<log_arma,echo=F>>=
+par(mai=c(0.6,0.8,0,0.2))
+z <- log10(x)
+arma22log<-arima(z,order=c(2,0,2))
+arma22log
+@
+
+\begin{figure}[h]
+<<log_timeplot,echo=F,fig.width=8,fig.height=3,out.width="5in">>=
+par(mai=c(0.4,0.8,0,0.2))
+par(mfcol=c(1,2))
+plot(z,xlab="n")
+text(20,2.2,"(a)")
+acf(log10(x),main="(a)")
+text(5,0.9,"(b)")
+@
+\caption{(a) Time plot of $\data{z_{1:N}}$. (b) Sample autocorrelation function of $\data{z_{1:N}}$.}\label{fig:z}
+\end{figure}
+
+C1. [2 pts] Is there any indication from Fig.~\ref{fig:z} and the
+R fitted model output in Sections B and C that ARMA modeling is more successful after a $\log$ transformation? or less? Explain.
+
+\exam{\vspace{3.5cm}}
+
+\solution{The model printouts do not directly tell us whether the transformation is appropriate: in particular, the AIC values are not directly comparable, though in principle one can figure out how to transform the likelihood appropriately to make them comparable.  
+The sample ACF is also trick to interpret as evidence for the success of the transformation.  The additional dependence appearing in the sample ACF of $\data{z_{1:N}}$ is not a bad thing---in fact, it may be a clue that the log transformation is the right scale to see linear dependence in the data as measured by covariance. 
+The time plot looks more symmetric on the transformed scale, and  symmetry is a property of Gaussian ARMA models so this is encouraging.}
+
+
+\begin{figure}[h]
+<<log_resid_acf_plot,echo=F,,fig.width=5,fig.height=2.5,out.width="3.5in",fig.align="center">>=
+par(mai=c(0.8,0.8,0.1,0.1))
+acf(resid(arma22log),main="") 
+@
+\caption{Sample autocorrelation function of the residuals from
+  fitting an ARMA(2,2) model to $\data{z_{1:N}}$.}\label{arma22resid_log_acf}
+\end{figure}
+
+\begin{figure}[h]
+<<log_resid_plot,echo=F,fig.width=8,fig.height=3,out.width="6in",cache=F>>=
+par(mai=c(0.4,0.8,0.1,0.2))
+par(mfcol=c(1,2))
+plot(resid(arma22),main="",ylab="",xlab="")
+text(20,180,"(a)")
+plot(resid(arma22log),main="",ylab="",xlab="")
+text(20,0.8,"(b)")
+@
+\caption{(a) Residuals from fitting an ARMA(2,2) model to $\data{x_{1:N}}$.
+(b)
+Residuals from fitting an ARMA(2,2) model to the log transformed data, $\data{z_{1:N}}$.}\label{resid_timeplots}
+\end{figure}
+
+
+C2. [2 pts] What do Figs.~\ref{arma22resid_acf}, ~\ref{arma22resid_log_acf} and~\ref{resid_timeplots} indicate about the success of the $\log$ transform?
+
+\exam{\vspace{3cm}}
+
+\solution{Figs.~\ref{arma22resid_acf} and~\ref{arma22resid_log_acf}  show that the residuals appear uncorrelated with or without the log transform.  Fig.~\ref{resid_timeplots} shows that the residuals look much more like Gaussian white noise after the transform.  In particular, the residuals are asymmetric---with a long right tail---for Fig.~~\ref{resid_timeplots}(a), which is inconsistent with a Gaussian model. 
+Since the models are fitted using Gaussian maximum likelihood, this is a good thing.  We could confirm this finding by a normal quantile plot.}
+
+
+\begin{figure}[h]
+<<periodogram,fig.width=5,fig.height=3,out.width="4in",echo=F,fig.align="center">>=
+par(mai=c(1,1,0.1,0.1) )
+spectrum(z,spans=c(11,9,13),sub="",main="")
+@
+\caption{Smoothed periodogram of $\data{z_{1:N}}$.}\label{spectrum}
+\end{figure}
+
+C3. [3 pts] Fig.~\ref{spectrum} shows the smoothed periodogram of $\data{z_{1:N}}$.
+Find the frequency and period corresponding
+to the peak in the periodogram. Your answer should include
+the units of these quantities. Describe briefly what this peak
+leads you to conclude about how this monkey neuron behaves.
+
+\solution{The peak at frequency approx. 0.06 cycles/firing event (or period approx. 16.7 firing events) is due to the neuron firing in a burst (several short inter-event times) and then being less active (long inter-event times) with a characteristic period of approx. 17 firing events.}
+
+\end{document}
+
+
+
+
+
+
+
