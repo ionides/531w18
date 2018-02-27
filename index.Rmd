@@ -172,6 +172,8 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 
     +  [Midterm exam for STATS 531 Winter 2016](exam/w16/mt531w16.pdf). [Solutions](exam/w16/mt531w16sol.pdf).
 
+    +  [Midterm exam for STATS 531 Winter 2018](exam/w18/mt531w18.pdf). [Solutions](exam/w18/mt531w18sol.pdf).
+    
 -------------------
 
 ## Midterm project

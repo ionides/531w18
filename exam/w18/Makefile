@@ -14,11 +14,11 @@ RSCRIPT = Rscript --vanilla
 
 default: pdf-docs
 
-r-scripts: mt18.R
+r-scripts: mt531w18.R
 
-html-docs: mt18.pdf
+html-docs: mt531w18.pdf
 
-pdf-docs: mt18.pdf
+pdf-docs: mt531w18.pdf
 
 %.html: %.Rmd
 	Rscript --vanilla -e "rmarkdown::render(\"$*.Rmd\",output_format=\"html_document\")"
