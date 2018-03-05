@@ -1,0 +1,222 @@
+---
+title: "Solution to Homework 5"
+author: "adapted from Xiang Gao"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+csl: ecology.csl
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+
+--------
+
+```{r knitr-opts,include=FALSE,cache=FALSE,purl=FALSE}
+library(pomp)
+library(knitr)
+prefix <- "HW4"
+opts_chunk$set(
+  progress=TRUE,
+  prompt=FALSE,tidy=FALSE,highlight=TRUE,
+  strip.white=TRUE,
+  warning=FALSE,
+  message=FALSE,
+  error=FALSE,
+  echo=TRUE,
+  cache=TRUE,
+  cache_extra=rand_seed,
+  results='markup',
+  fig.show='asis',
+  size='small',
+  fig.lp="fig:",
+  fig.path=paste0("figure/",prefix,"-"),
+  cache.path=paste0("cache/",prefix,"-"),
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=4,fig.width=6.83,
+  dpi=300,
+  dev='png',
+  dev.args=list(bg='transparent')
+)
+
+set.seed(2050320976)
+```
+```{r opts,include=FALSE,cache=FALSE}
+options(
+  keep.source=TRUE,
+  encoding="UTF-8"
+)
+```
+
+**<big>Question 5.1</big>**. 
+
+
+**<normal>Part A</normal>**. 
+
+Given the AR2 model
+$$X_{n}=1.5X_{n-1}-0.8X_{n-2}+\epsilon_{n},$$
+we have 
+$$\epsilon_{n}=X_{n}-1.5X_{n-1}+0.8X_{n-2}.$$
+We are going to use the fact that the autocovariance of the white noise process is such that $\gamma_\epsilon(h) = \sigma^2$ for $h=0$ and $\gamma_\epsilon(h) = 0$ otherwise.
+Thus the spectrum of the white noise is
+$$\lambda_\epsilon(\omega) = \sum_{h=-\infty}^\infty \gamma_\epsilon(h) e^{-i\omega h} = \sigma^2$$
+for all $\omega$.
+
+Now we observe that the ACF for $\left\{\epsilon_{n}\right\}$ equals
+\[\begin{split}
+\gamma_{\epsilon}\left(h\right)&=&\cov\left(\epsilon_{n+h},\epsilon_{n}\right)\\
+&=&\cov\left(X_{n+h}-1.5X_{n+h-1}+0.8X_{n+h-2},X_{n}-1.5X_{n-1}+0.8X_{n-2}\right)\\
+&=&(1+1.5^2+0.8^2)\gamma_{X}\left(h\right)+(-1.5-1.5\times0.8)\left[\gamma_{X}\left(h+1\right)+\gamma_{X}\left(h-1\right)\right]+0.8\left[\gamma_{X}\left(h+2\right)+\gamma_{X}\left(h-2\right)\right].
+\end{split}\]
+
+Thus we see that
+\[\begin{split}
+\lambda_\epsilon(\omega) &= \sum_{h=-\infty}^\infty \gamma_\epsilon(h) e^{-i\omega h}\\
+&= \sum_{h=-\infty}^\infty \left\{ 3.89 \gamma_X(h) - 2.7 [\gamma_X(h+1)+\gamma_X(h-1)] + 0.8[\gamma_X(h+2)+\gamma_X(h-2)] \right\} e^{-i\omega h}.
+\end{split}\]
+Note that
+\[\begin{split}
+\sum_{h=-\infty}^\infty \gamma_X(h+1)e^{-i\omega h} &= \sum_{h=\infty}^\infty \gamma_X(h+1) e^{-i\omega (h+1)} e^{i\omega} \\
+&= e^{i\omega} \sum_{h'=-\infty}^\infty \gamma_X(h') e^{-i\omega h'}\\
+&= e^{i\omega} \lambda_X(\omega)
+\end{split}\]
+where we used the change of variable $h' = h+1$.
+Similarly, we have
+\[
+\sum_{h=-\infty}^\infty \gamma_X(h-1)e^{-i\omega h} = e^{-i\omega} \lambda_X(\omega), \qquad \sum_{h=-\infty}^\infty \gamma_X(h+2)e^{-i\omega h} = e^{2i\omega} \lambda_X(\omega), \qquad \sum_{h=-\infty}^\infty \gamma_X(h-2)e^{-i\omega h} = e^{-2i\omega} \lambda_X(\omega).
+\]
+
+It follows that
+\[
+\sigma^2 = \lambda_\epsilon(\omega) = 3.89 \lambda_X(\omega) - 2.7 (e^{i\omega} + e^{-i\omega}) \lambda_X(\omega) + 0.8 (e^{2i\omega} + e^{-2i\omega})\lambda_X(\omega).
+\]
+Therefore,
+\[
+\lambda_{X}(\omega)=\frac{\sigma^{2}}{3.89-5.4\cos(\omega)+1.6\cos(2\omega)}.
+\]
+
+
+The plot of the spectral density and autocovariance are given as follows.
+Note that $\omega = 2\pi f$, where $f$ denotes the frequency.
+
+```{r plot1}
+library('TSA')
+ARMAspec(model = list(ar = c(1.5, -0.8)))
+model_AR = arima.sim(model = list( ar = c(1.5, -0.8)), n=1000)
+acf(model_AR, type="covariance")
+```
+
+**<normal>Part B</normal>**. 
+
+Given the MA2 model
+
+\[
+X_{n}=\epsilon_{n-2}+\epsilon_{n-1}+\epsilon_{n}
+\]
+with $\var\left(\epsilon_{n}\right)=\sigma^{2}$, we start by writing
+the ACF
+$$\begin{eqnarray}
+\gamma\left(0\right)&=&\cov\left(X_{n},X_{n}\right)=3\sigma^{2}\\
+\gamma\left(1\right)&=&\gamma\left(-1\right)=\cov\left(X_{n},X_{n-1}\right)=2\sigma^{2}\\
+\gamma\left(2\right)&=&\gamma\left(-2\right)=\cov\left(X_{n},X_{n-2}\right)=\sigma^{2}\\
+\gamma\left(h\right)&=&0\;\forall|h|\geq3.
+\end{eqnarray}$$
+So we have 
+\[\begin{split}
+\lambda(\omega)&=\sum_{h=-\infty}^\infty \gamma\left(h\right)e^{- i\omega h}\\
+&=\sum_{h=-2}^{2}\gamma(h)e^{-i\omega h}\\
+&=\gamma(0)+2 \gamma(1)\cos(\omega)+2\gamma(2)\cos(2\omega)\\
+&=\sigma^{2}\left[3+4\cos(\omega)+2\cos(2\omega)\right]
+\end{split}\]
+The plot of the spectral density and autocovariance are given as follows:
+
+
+```{r plot2}
+ARMAspec(model = list(ma = c(1, 1)))
+model_MA = arima.sim(model = list( ma = c(1, 1)), n=1000)
+acf(model_MA, type="covariance", plot= TRUE)
+```
+
+**<normal>Part C</normal>**. 
+
+For part A, if we look closely at the spectrum density plot, we
+can see a peak at frequency around 0.1 (actually slightly less than
+0.1), which is the dominant frequency. This indicates that the dominant
+period is around 10 (precisely larger than 10). If we look at the
+ACF, we can see there exists an oscillatory behavior characteristic of
+period = 11. We see that these two are matched with each other.
+
+For part B, there is no appearant peak on the spectrum density plot,
+and there is no periodic behavior on the ACF plot either. Again, these
+two correspond to each other.
+
+-------------------
+
+**<big>Question 5.2</big>**.  
+We first read in the data from the source. We seek to find out the
+relationship between time and number. We now make a time plot of the
+data to explore.
+
+```{r explore}
+mydata = read.table(file="http://ionides.github.io/531w16/hw/sunspots.txt", header = TRUE)
+year = mydata$Time
+number = mydata$Number
+plot(year, number, type= "l")
+```
+
+From the plot, we see that there is a periodic behavior, with regularly spaced peaks. The time interval between these peaks are
+about 11 years. This is as expected from reading
+
+http://solarscience.msfc.nasa.gov/SunspotCycle.shtml.
+
+Now we take a look at spectrum density.
+
+```{r spectral}
+spectrum(number, main = "Unsmoothed periodogram")
+```
+
+We first use R to see an unparametric method result of the data. 
+```{r unsmoothperiodogram}
+smoothed_r = spectrum(number, spans=c(30,30), main = "Smoothed periodogram")
+```
+
+We now determine the dominant frequency.
+```{r dominantFrequency}
+smoothed_r$freq[which.max(smoothed_r$spec)]
+```
+
+We see that the dominant frequency is 0.007407407, which corresponds
+to a period of 11.25 years. 
+
+Now we use parametric method to estimate
+the spectral density.
+
+```{r estimate}
+estimated = spectrum(number, method = "ar", main = "Spectrum estimated via AR model picked by AIC")
+abline(v=estimated$freq[which.max(estimated$spec)], lty="dotted")
+```
+
+The dominant frequecy is given by
+```{r dominantFrequency1}
+estimated$freq[which.max(estimated$spec)]
+```
+
+
+We see that the dominant frequency is 0.008016032, which corresponds
+to a period of 10.4 years.
+
+the results from two estimations are very close to each other and
+they are close to the 11 year period. Therefore we can conclude that
+both of them are reliable and can be used.
+
+
+
+
+
+
+----------------------
