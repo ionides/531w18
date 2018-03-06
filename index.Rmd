@@ -90,10 +90,10 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 8. [Smoothing in the time and frequency domains](08/notes08.html). [(R script)](08/notes08.R)
 
-<!--
-9. [Introduction to partially observed Markov process models](notes09/notes9.html). [(R script)](notes09/notes9.R)
+9. [Introduction to partially observed Markov process models](09/notes09.html). [(R script)](09/notes09.R)
 
-10. [Case study: An association between unemployment and mortality?](notes10/notes10.html) [(R script)](notes10/notes10.R)
+<!--
+10. [Case study: An association between unemployment and mortality?](10/notes10.html) [(R script)](notes10/notes10.R)
 
 11. [Statistical methodology for nonlinear partially observed Markov process models](notes11/notes11.html). [(R script)](notes11/notes11.R)
 

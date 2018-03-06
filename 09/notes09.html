@@ -144,7 +144,7 @@ $(document).ready(function () {
 <hr />
 <p><big><big><big>Objectives</big></big></big></p>
 <ul>
-<li><p>Develop a framework for thinking of models consisting of a stochastic dynamic system observed with noise.</p></li>
+<li><p>Develop a framework for thinking about models that consist of a stochastic dynamic system observed with noise.</p></li>
 <li><p>In the linear Gaussian case, develop matrix operations to find an exact and computationally fast algorithm for the likelihood function. This algorithm is called the <strong>Kalman filter</strong>.</p></li>
 <li><p>Understand how the Kalman filter is used to compute the likelihood for ARMA models.</p></li>
 <li><p>See how the Kalman filter also facilitates forecasting and estimation of the state of the unobserved process.</p></li>
@@ -487,11 +487,11 @@ Y_n \\
 \]</span> where <span class="math display">\[
 {\mathbb{A}}= 
 \left(\begin{array}{ccccc}
-{\phi}_1 &amp; 1 &amp; 0 &amp; \ldots &amp; 0 \\
-{\phi}_2 &amp; 0 &amp; 1 &amp;       &amp; 0 \\
-\vdots &amp; \vdots&amp; \ddots &amp; \\
-{\phi}_{r-1} &amp; 0 &amp; &amp; 1 \\
-{\phi}_{r} &amp; 0 \ldots &amp; 0
+{\phi}_1    &amp; 1     &amp; 0      &amp; \ldots &amp; 0 \\
+{\phi}_2    &amp; 0     &amp; 1      &amp; \ddots       &amp; \vdots \\
+\vdots   &amp; \vdots&amp; \ddots &amp; \ddots &amp; 0 \\
+{\phi}_{r-1}&amp; 0     &amp; \ldots &amp; 0      &amp; 1 \\
+{\phi}_{r}  &amp; 0     &amp; \ldots &amp; 0      &amp; 0
 \end{array}\right).\]</span> This is in the form of a time-homogenous LG-POMP, with <span class="math inline">\({\mathbb{A}}\)</span>, <span class="math inline">\({\mathbb{B}}\)</span> and <span class="math inline">\({\mathbb{V}}\)</span> defined above, and <span class="math display">\[{\mathbb{U}}_n = {\mathbb{U}}= \sigma^2 (1, {\psi}_1,{\psi}_2,\dots,{\psi}_{r-1})^{\scriptsize{T}}(1, {\psi}_1,{\psi}_2,\dots,{\psi}_{r-1}).\]</span></p></li>
 <li><p>There are other LG-POMP representations giving rise to the same ARMA model.</p></li>
 <li><p>When only one component of a latent process is observed, any model giving rise to the same observed component is indistinguishable from the data.</p></li>

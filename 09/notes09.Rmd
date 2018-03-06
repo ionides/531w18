@@ -606,11 +606,11 @@ where
 $$
 \matA = 
 \left(\begin{array}{ccccc}
-\ar_1 & 1 & 0 & \ldots & 0 \\
-\ar_2 & 0 & 1 &       & 0 \\
-\vdots & \vdots& \ddots & \\
-\ar_{r-1} & 0 & & 1 \\
-\ar_{r} & 0 \ldots & 0
+\ar_1    & 1     & 0      & \ldots & 0 \\
+\ar_2    & 0     & 1      & \ddots       & \vdots \\
+\vdots   & \vdots& \ddots & \ddots & 0 \\
+\ar_{r-1}& 0     & \ldots & 0      & 1 \\
+\ar_{r}  & 0     & \ldots & 0      & 0
 \end{array}\right).$$
 This is in the form of a time-homogenous LG-POMP, with $\matA$, $\matB$ and $\covmatY$ defined above, and
 $$\covmatX_n = \covmatX = \sigma^2 (1, \ma_1,\ma_2,\dots,\ma_{r-1})^\transpose(1, \ma_1,\ma_2,\dots,\ma_{r-1}).$$
