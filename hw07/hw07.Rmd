@@ -75,7 +75,7 @@ Try running [helloC.R](helloC.R):
 ```
 source("ionides.github.io/531w18/hw07/helloC.R",echo=TRUE)
 ```
-If this fails to give the "Hello!" message, you will need to follow the instructions below that correspond to your OS. 
+If this fails to give the "Hello!" message, you will need to follow the instructions below that correspond to your operating system. 
 Re-run this step after trying the following operating-system-dependent advice.
 
 4. If you work through the advice below and continue to run into problems, send a note to ionides@umich.edu and joonhap@umich.edu with a detailed description of the problem you've encountered.
@@ -94,7 +94,7 @@ In **R**, you can run `Sys.info()` and `sessionInfo()` to get printouts of the o
 
 * Note for those without previous Linux experience: Some familiarity with Linux is a basic skill for modern applied statistics, since Linux is currently the dominant environment for scientific and high-performance computing. 
 
-* For example, [95% of the fastest 500 supercomputers run Linux](https://en.wikipedia.org/wiki/Linux_adoption#Supercomputers). The University of Michigan computing cluster, Flux, also runs Linux. 
+* For example, [99.4% of the fastest 500 supercomputers run Linux](https://en.wikipedia.org/wiki/Linux_adoption#Supercomputers). The University of Michigan computing cluster, Flux, also runs Linux. 
 
 * You don't need to learn Linux just for this course, but if you view improving your Linux skills as a good investment, working in this environment is encouraged. One of many introductory tutorials online is [http://www.ee.surrey.ac.uk/Teaching/Unix](http://www.ee.surrey.ac.uk/Teaching/Unix).
 
@@ -112,7 +112,7 @@ The bayes machines run R3.3.2, but that doesn't appear to be a problem.
 
 #### MacOSX:
 
-*If the `pompTest.R` script fails because you cannot load **pomp**, try installing it from source.
+* If the `pompTest.R` script fails because you cannot load **pomp**, try installing it from source.
 The easiest way to do this is to use the **devtools** package.
 Do
 ```
@@ -132,9 +132,11 @@ or some other error mentioning `gfortran` then it is likely that you do not have
 
 #### Windows:
 
-You have probably failed to install the **Rtools** correctly.
-Revisit the [instructions above](#windows-users-must-install-rtools).
-Ask for help if problems persist.
+* You have probably failed to install the **Rtools** correctly.
+
+* Revisit the [instructions above](#windows-users-must-install-rtools).
+
+* Ask for help if problems persist.
 
 <br>
 
@@ -174,12 +176,12 @@ Assume the same measurement model as we used for the Ricker model. Try simulatin
 
 **<big>Question 7.3</big>**. How long did this homework take?
 
-*This homework is conceptually quite simple, but involves overcoming various technical hurdles. 
+* This homework is conceptually quite simple, but involves overcoming various technical hurdles. 
 The hurdles may be overcome quite quickly, or could turn into a longer battle.
 
-*To make progress on statistical inference for POMP models, we have to solve these underlying computational issues.
+* To make progress on statistical inference for POMP models, we have to solve these underlying computational issues.
 
-*If you get stuck, ask for help from your peers and/or Joonha and/or me. Please report how much time this homework ends up taking, to help me monitor how many difficulties are encountered.
+* If you get stuck, ask for help from your peers and/or Joonha and/or me. Please report how much time this homework ends up taking, to help me monitor how many difficulties are encountered.
 
 ---------------
 
