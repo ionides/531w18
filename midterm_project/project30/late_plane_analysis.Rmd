@@ -1,0 +1,190 @@
+---
+title: "Analysis of the Timeliness of Northwest's Planes Arriving at Detroit"
+output: html_document
+bibliography: refs.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = F, warning = F)
+```
+
+## Introduction
+On April 15th, 2008 Delta and Northwest Airlines announced that they were merging. In the press release, Delta claimed that some benefits of this merger would be greater financial stability and improved customer satisfication [@merger]. While oil prices may have been a large reason for the financial instability, it is also worth wondering if decreased customer satisfication drove the merger. One way to look at customer satisfication is through whether planes arrived on-time because planes arriving late obviously will make customers unsatisfied. 
+
+Thanks to the Bureau of Transportation's Statistics, we have data on planes' arrival town from 1987 to 2017 [@late_dataset]. As a result, we can look into whether Northwest's flights timeliness changed between 1987 and 2008. We include 2008 because while the merger had been announced, Delta and Northwest continued operations separately [@merger_wiki]. Because there is a lot of data, we will look at the number of planes arriving late at the Detroit Metropolitan Airport, a hub for Northwest Airlines, on the first day of the month. Outside of the New Year, there are no holidays that fall on the first of the month. As a result, we can assume that the first day is roughly representative of the month. On the other hand, if we had looked at the total number or average of late flights per month, some months might have more late flights because there are more flights around the holidays. This would have been something else that we would need to control. 
+
+Using the data on the number of planes that were late on the first day of the month, we will attempt to fit an ARMA model with a linear trend based on the year. A hypothesis test on whether the regression coefficient for the linear trend is zero will help us determine if the timeliness of Northwest's planes has changed.
+
+#Model
+If we denote n = 1 as October 1987, n = 2 as November 1987, ..., and n = 255 as December 2008 and the number of planes arriving late on the first day of a given month n as $y_n$, the year for the given month n as $year_n$, then our model is the following:
+
+$$
+\begin{aligned}
+y_n &= Intercept + year_n * \beta + \eta_n\\
+\eta_n &= \sum_{i = 1}^{p}\phi_i\eta_{n - i} + \sum_{j = 0}^{q}\psi_j\epsilon_{n - j}\\
+\epsilon_n &\sim N(0, \sigma^2)
+\end{aligned}
+$$
+
+We will then use the likelihood ratio test to test the following hypothesis:
+
+$$
+\begin{aligned}
+\mathbf{H_0}: \beta = 0\\
+\mathbf{H_1}: \beta \neq 0
+\end{aligned}
+$$
+
+Note that for p and q in our model, we will select one set that minimizes the AIC under the null hypothesis and another set that minimizes the AIC under the alternative hypothesis.
+
+##Analysis
+Our data looks like the following:
+
+```{r plot_data}
+library(dplyr)
+
+late_data <- read.table(file = "Detailed_Statistics_Arrivals.csv", sep = ",", header = T)
+colnames(late_data) <- c("company", "date", "flight_num", "tail_num", "origin", "delay")
+late_info_data <- late_data %>% group_by(date) %>%
+                                summarize("min" = min(delay),
+                                          "max" = max(delay),
+                                          "avg" = mean(delay),
+                                          "med" = median(delay),
+                                          "count" = sum(delay > 0)) %>%
+                  mutate(date = as.Date(date, "%m/%d/%Y"),
+                         year = as.numeric(format(date, "%Y"))) %>%
+                  arrange(date) 
+plot(late_info_data$count, type = "l", 
+     xlab = "Month from Oct. 1987 to December. 2008",
+     ylab = "Count",
+     main = "Count of planes arriving late")
+```
+
+We get the following AIC table for our null and alternative hypothesis:
+
+```{r aic_tables, cache=TRUE}
+library(reshape2)
+
+get_aic <- function(df, arima_h, ...) {
+  arma_choices <- expand.grid("p" = 0:10, "q" = 0:10)
+  arma_choices$all_aic <- apply(arma_choices, 1, function(choice) {
+    arima_h(df, choice[1], choice[2], ...)$aic})
+  aic_table <- dcast(arma_choices, p ~ q, value.var = "all_aic")[, -1]
+  rownames(aic_table) <- sapply(0:10, function(i) {paste("AR", i, sep = "")})
+  colnames(aic_table) <- sapply(0:10, function(i) {paste("MA", i, sep = "")})
+  aic_table
+}
+
+null_arima_h <- function(df, p, q) {
+  arima(df, order = c(p, 0, q))
+}
+alt_arima_h <- function(df, p, q, year) {
+  arima(df, order = c(p, 0, q), xreg = year)
+}
+
+cat("AIC table under the null hypothesis")
+get_aic(late_info_data$count, null_arima_h)
+
+cat("AIC table under the alternative hypothesis")
+get_aic(late_info_data$count, alt_arima_h, late_info_data$year)
+```
+
+Note there are convergence issues for the AIC table because certain nested models have AIC increases greater than 2, such as the ARMA(6, 8) and ARMA(6, 9) models. According to the table, ARMA(2, 2) and ARMA(3, 0) model have the lowest AIC under the null and alternative hypothesis. Looking at the default ACF plot from R,
+
+```{r acf}
+acf(late_info_data$count, main = "Autocorrelation plot for the number of late planes")
+```
+
+either choice makes sense because the autocorrelation for the zeroth, first, and third lags are clearly statistically different from white noise autocorrelation. Because the ARMA(2, 2) model reduces AIC the most, gives us a model with AR and MA terms, and adds noise, we'll proceed with the ARMA(2, 2) model.
+
+If we fit the ARMA(2,2) models under the null hypothesis, we get the following estimates:
+
+```{r null_arima}
+null_arima <- arima(late_info_data$count, order = c(2, 0, 2))
+```
+
+Under the alternative hypothesis, we get the following estimates:
+
+```{r alt_arima}
+alt_arima <- arima(late_info_data$count, order = c(2, 0, 2),
+                   xreg = late_info_data$year)
+```
+
+Note that unlike other analysis of airline data [@seasonal_paper], we don't include a seasonal term. If we look at the periodogram, 
+
+```{r periodgram}
+spectrum(late_info_data$count, span = c(3,5,3), 
+         main = "Periodgram for count data", xlab = "month")
+abline(v = 1 / 255)
+```
+
+there is a spike at the inverse of the number of observations. 
+
+Then, because there is only one parameter that is different between the null and alternative hypothesis, the asymptotic distribution under the null hypothesis for the two times the log likelihood ratio for the likelihood ratio test is a chi-square distribution with one degree of freedom. Two times the difference between the log likelihood of alternative hypothesis and null hypothesis is `r 2 * (alt_arima$loglik - null_arima$loglik)`, which has a p-value of `r pchisq(2 * (alt_arima$loglik - null_arima$loglik), df = 1, lower.tail = F)`. Thus, we fail to reject the null hypothesis that $\beta$ is 0 at the 5% significance level.
+
+##Discussion
+Based on our analysis, it does not seem that the number of Northwest planes arriving late has changed linearly over time. This makes sense because while we don't know the distribution, the estimate for $\beta$ is within one standard error of zero. Further, if we compare a simulation of our fitted ARMA(2,2) model without the linear trend to our actual data, we have the following plot:
+
+```{r comp_sim}
+library(forecast)
+library(ggplot2)
+library(reshape2)
+
+comp_data <- cbind(simulate(null_arima), late_info_data$count)
+colnames(comp_data) <- c("sim", "real")
+comp_data <- melt(comp_data)
+colnames(comp_data) <- c("obs", "source", "value")
+ggplot(data = comp_data, aes(x = obs, y = value, color = source)) + geom_line()
+```
+
+While the plots don't overlap, we still get something similar to our actual data. As such, it doesn't appear that adding a linear trend based on the year helps.
+
+However, there are improvements that can be made to this analysis. First, for the ARMA model that we fit, the MA roots are the following:
+
+```{r poly_root}
+polyroot(c(1, coef(null_arima)[3:4]))
+```
+
+Because one of the roots is close to 1, then the model might not be invertible. As stated in class notes, this might have lead to numerical instabilities [@class_notes]. Further, when we check the conditions of our model, the autocorrelation plots and QQ plots for the residuals look okay, but not the residuals plot. After all, looking at the autocorrelation plots,
+
+```{r acf_plots, fig.align='center', fig.show='hold'}
+acf(null_arima$residuals, main = "Autocorrelation Plot of Null Hypothesis' Residuals")
+acf(alt_arima$residuals, main = "Autocorrelation Plot of Alt Hypothesis' Residuals")
+```
+
+we see that there is no trend in the autocorrelation and no real significant lag past the zeroth lag. Next, looking at the QQPlot of the residuals,
+
+```{r qqplot, fig.align='center', fig.show='hold'}
+qqnorm(null_arima$residuals, main = "QQPlot of Null Hypothesis' Residuals")
+qqnorm(alt_arima$residuals, main = "QQPlot of Alt Hypothesis' Residuals")
+```
+
+all but a few points on the end are connected in a slight nonlinear trend. Still, it seems reasonable to fit a linear line to the QQPlots because there is only a slight bend. As such, it might be reasonable to expect the residuals to be normal. However, if we look at the residuals plot, we get the following plots:
+
+```{r residual plot}
+plot(null_arima$residuals, main = "Plot of Null Hypothesis' Residuals")
+plot(alt_arima$residuals, main = "Plot of Null Hypothesis' Residuals")
+```
+
+which looks similar to our original plot. As a result, we might have been able to better model this data with other techniques.
+
+Indeed, along these lines, we assumed a linear relationship based on year. However, if we look at the log transformed of this data,
+
+```{r log_trans}
+plot(log(late_info_data$count), type = "l", main = "Plot of log transformed counts")
+```
+
+the data looks sinusoidal with sharper downward spikes. Perhaps there is a non-linear trend to this data. Or, we might need a different time series model. If we expand the autocorrelation plot to show up to 100 lags,
+
+```{r acf_extended}
+acf(late_info_data$count, lag.max = 100)
+```
+
+we see a sinusoidal relationship, but with a changing period. After all, there appears to be a complete cycle by lag 40, but lag 40 to 80 only complete half a cycle.
+
+Taking a step back, we also faced data limitations. While it is possible to pull information for multiple airports and for other factors, we can only pull one month for one year at a time. To aggregate information across time, we were restricted by our queries. With more information, we might have been able to filter out cancelled flights for a more accurate representation of late flights. We could also compare flights from Northwest against flights from other companies. However, more information on flights being late might not have helped us because our hypothesis test showed no linear relationship between year and whether planes arrived on time or not.
+
+##Conclusion
+In this report, we sought to explore whether Northwest's planes arriving late might have led to its merger with Delta. Based on our analysis of its Detroit hub, we saw no evidence that the number of planes arriving late on the first of the month changed linearly over time. It is not likely that Northwest's planes arriving late led to its merger with Delta.
+
+##References

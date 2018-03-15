@@ -1,0 +1,371 @@
+---
+title: "The Association Between Home Purchase Prices and Effective Interest Rates"
+date: "March 06, 2018"
+output:
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+
+------
+
+------
+
+#1. Introduction
+
+It's a widely held belief by the general public that housing prices are negatively correlated with interest rates. There are three different scenarios when it comes to correlation:
+
+* Some people, including real estate brokers and home buyers, think that the rise of interest rates reduces the housing affordability and trading volume, which in return lowers the housing prices due to decreased demand (interest rates cause housing prices)[1]. Economist Jack C. Harris proposes that it is the real rate of interest that explains the market price level[2].
+
+* Other people attribute the rising interest rates to a robust economy, and argue that a robust economy is the deterministic factor of housing prices[3]. In other words, there are other factors like GDP and unemployment rate that affect both interest rates and housing prices (confounding effect).
+
+* An opposing opinion views that rising interest rates imply higher inflation, which can be good for real assets like houses and should push up home prices[4]. 
+
+* Here, we do not consider the possibility that housing prices drive the interest rates, becuase interest rates are determined by the Federal Reserve in the U.S. who consider extensive factor when making monetary policy (reverse causality).
+
+In order to verify the association between the housing prices and the interest rates, I will dive into a dataset to study how housing prices and interest rates interact with each other. One variables I use is slightly different than what researchers normally use, the nominal/real interest rate. Instead, I will look at the effective interest rate quoted by mortgage lenders. This is because the effective interest rate is the true cost of buying a home through mortgage, which, in my opinion, is the actualy factor considered in home buyers' decisions, which in return affects the demand of houses and eventually the house prices.
+
+*The analysis of this project uses as reference Professor Ionides's lecture note "Case study: An association between unemployment and mortality?"[10] and its source code.*
+
+------
+
+------
+
+#2. Data Summary
+
+The data was collected by the Federal Housing Finance Agency through a monthly survey to ask mortgage lenders to report information of interest rates, loan terms, house prices on all single-family, fully amortized, purchase-money, nonfarm loans that close during the last five business days of the month. 
+
+The data is downloaded from [https://www.fhfa.gov/DataTools/Downloads/pages/monthly-interest-rate-data.aspx](https://www.fhfa.gov/DataTools/Downloads/pages/monthly-interest-rate-data.aspx). 
+
+
+```{r}
+df=read.csv("MIRS.csv", header=TRUE)
+head(df[,c("Year","Month","Purchase_Price","Effective_Interest_Rate")])
+```
+```{r echo=FALSE, results='hide', message=FALSE}
+sapply(df, function(x) any(is.na(x)))
+```
+
+
+```{r echo=FALSE, results='hide', message=FALSE}
+library(zoo)
+df$Date <- as.yearmon(paste(df$Year, df$Month, sep="-"), "%Y-%m")
+```
+
+The plot of the time series of the two variables of interest is as follow:
+
+```{r echo=FALSE, fig.align='center', fig.cap="Figure 1. Time series of home purchase prices and effective interest rates in the U.S."}
+#plot daily data
+par(mar = c(5, 4, 4, 4)+0.3)
+plot(df$Date, df$Purchase_Price, type='l', ylab='Home Purchase Price', xlab='Monthly', col="black")
+par(new=TRUE)
+plot(df$Date, df$Effective_Interest_Rate, axes=FALSE, type='l', col="red",ylab="", xlab="")
+axis(side=4)
+mtext("Effective Interest Rate", side=4, line=3, col="red")
+title(main="Home Purchase Price and Effective Interest Rate")
+```
+
+* The purchase price has been rising since 1973, but flatterns or even drops during the early 1990s recession and the 2007-2009 financial crisis[5]. 
+* The effective interest rate, on the other hand, rises since 1973, peaks in around 1983, and then drops all the way until 2016. It turns out that in the early 1980s, the Federal Reserve fought with the double-digit inflation by raising the interest rates, which, as a result, drives up the mortgage rates[6].
+
+
+------
+
+------
+
+#3. Time Domain
+
+
+------
+
+##3.1 Detrending the Data
+
+To investigate the association between home purchase prices and effective interest rates, we need to assess if they cycle together. For this purpose, Hodrick-Prescott (HP) filter can help us achive the goal by separating the trend and cyclical components. 
+
+For a time series ${y_{1:N}^*}$, the HP filter is the time series ${s_{1:N}^*}$ constructed as[10]:
+$$
+{s_{1:N}^*} =  \arg\min_{s_{1:N}} 
+  \left\{ 
+    \sum^{N}_{n=1}\big({y_n^*}-s_{n}\big)^2 + \lambda\sum^{N-1}_{n=2}\big(s_{n+1}-2s_{n}+s_{n-1}\big)^2 
+  \right\}.
+$$
+There is no smoothing when the smoothing parameter $\lambda$ is 0. As $\lambda$ increases, the smoothed time series becomes more linear. This turns into a linear trend when $\lambda$ approaches infinity. The appropriate value of the smoothing parameter $\lambda$ depends on the frequency of the time series, and the reference value in monthly data is $\lambda = 14400$[7].
+
+```{r, message=FALSE, warning=FALSE, fig.align='center'}
+require(mFilter)
+p_hp <- hpfilter(df$Purchase_Price,freq=14400,type="lambda",drift=F)$cycle
+i_hp <- hpfilter(df$Effective_Interest_Rate, freq=14400,type="lambda",drift=F)$cycle
+```
+
+```{r hpplots, fig.align='center', fig.cap="Figure 2. Detrend home purchase price (black) and detrend effective interest rate (red)."}
+plot(df$Date,p_hp,type="l",xlab="Year",ylab="")
+par(new=TRUE)
+plot(df$Date,i_hp,col="red",type="l",axes=FALSE,xlab="",ylab="")
+axis(side=4, col="red")
+legend("top", legend=c("Home Purchase Price", "Effective Interest Rate"),
+       col=c("black", "red"), lty=1, cex=0.8)
+```
+
+* The two detrend time series look mean stationary, but not covariance stationary.
+
+* It looks like that the detrend home purchase price has higher variance after about 2003, while the detrend effective interest rate swings more between 1980 and 1990.
+
+* It is hard to see from the detrend time series plot whether home purchase prices and interest rates cycle together, because the plot is too dense and both home purchase prices and effective interest rates have high variability.
+
+------
+
+##3.2 Linear Regression with ARMA Errors
+
+In order to find the relationship between these two variables, we can try fitting a linear regression with ARMA errors model. The home purchase price is denoted by $P^{HP*}_n$, and the effective interest rate is denoted by $I^{HP*}_n$. The model is specified below,
+$$
+P^{HP}_n = \beta_0 + \beta_1 I^{HP*}_n + \epsilon_n,
+$$
+for which ${\epsilon_n}$ is a Gaussian ARMA(p,q) model satisfying a stochastic difference equation
+
+$$
+\epsilon_n = \phi_1\epsilon_{n-1}+\phi_2\epsilon_{n-2}+...+\phi_p\epsilon_{n-p}+w_n+\psi_1\omega_{n-1}+\psi_2\omega_{n-2}+...+\psi_q\omega_{n-q},
+$$
+
+where ${\omega_n}$ is Gaussian white noise, $\omega_n\sim N(0, \sigma^2)$.
+
+We construct a table of AIC values to choose a proper model for $\{\epsilon_n\}$.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+aic_table <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q),xreg=xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+p_aic_table <- aic_table(p_hp,4,5,xreg=i_hp)
+require(knitr)
+kable(p_aic_table,digits=2)
+```
+
+```{r echo=FALSE, results='hide', message=FALSE}
+which(p_aic_table==p_aic_table[order(p_aic_table)[1]], arr.ind=T)
+which(p_aic_table==p_aic_table[order(p_aic_table)[2]], arr.ind=T)
+which(p_aic_table==p_aic_table[order(p_aic_table)[3]], arr.ind=T)
+```
+
+* The top 3 choices are ARMA(3,5), ARMA(3,1), and ARMA(4,0).
+* We choose the simplest among the 3 candidate models, which is ARMA(3,1) errors model.
+
+```{r, message=FALSE, warning=FALSE}
+arima_301 = arima(p_hp,xreg=i_hp,order=c(3,0,1))
+arima_301
+```
+
+* The detrend home purchase prices and the detrend effective interest rates are negatively correlated.
+
+* The standard errors calcualted by the observed Fisher information are small for AR(2), AR(3) and detrend effective interest rate, but large for AR(1) and the intercept.
+
+We can examine the roots of the AR and MA polynomials to check causality and invertibility
+
+```{r}
+AR_roots <- polyroot(c(1,-coef(arima_301)[c("ar1","ar2","ar3")]))
+cat("The AR roots are:", AR_roots, "\n")
+MA_roots <- polyroot(c(1, coef(arima_301)["ma1"]))
+cat("The MA root is:", MA_roots, "\n")
+
+```
+* Both roots are outside of the unit circle of a complex plane, suggesting we have a stationary, causal, invertible fitted ARMA.
+
+Then we can conduct a likelihood ratio test to test the correlation between home purchase price and effective interest rate:
+```{r}
+log_lik_ratio <- as.numeric(
+   logLik(arima(p_hp,xreg=i_hp,order=c(3,0,1))) -
+   logLik(arima(p_hp,order=c(3,0,1)))
+)
+LRT_pval <- 1-pchisq(2*log_lik_ratio,df=1)
+LRT_pval
+```
+* The above likelihood ratio test gives a p-value of 0.01743322, which is statistically signficant at the significance level $\alpha$ = 0.05.
+
+------
+
+##3.3 Forecasted Value versus the Original Value
+
+The linear regression with ARMA errors model is able to represent the association between the detrend home purchase price and the effective interest rate. Now We can visualize how good the fit it by making forecast.
+
+I refer to the source code from one previous project "A Study on Crude Oil Price and CPI Value" in Winter 2016[11].
+
+```{r forecast, warning=FALSE, message=FALSE, fig.align='center', fig.cap="Figure 3. Residual Plot"}
+require(forecast)
+Arima_301 = Arima(p_hp, order = c(3,0,1), xreg = i_hp)
+plot(df$Date, Arima_301$x, col = "red", type = "l", xlab="Year", ylab="Home Purchase Price")
+lines(df$Date, fitted(Arima_301), col = "blue")
+legend("topleft", legend=c("Original Value", "Forecasted Value"),
+       col=c("red", "blue"), lty=1, cex=0.8)
+```
+
+* There is significant discrepancy between the forecast and the data. It requires further diganostics of the model to know how we could improve the model fit.  
+
+------
+
+##3.4 Model Diagnostics
+
+For model diagnostics, we create the residual plot, Q-Q plot, and the sample ACF of both residuals and squared residuals: 
+
+
+```{r residual plot, fig.align='center', fig.cap="Figure 4. Residual plot", warning=FALSE, echo=FALSE, message=FALSE}
+r <- resid(arima_301)
+plot(r)
+```
+
+```{r Q-Q plot, fig.align='center', fig.cap="Figure 5. Q-Q plot", warning=FALSE, echo=FALSE, message=FALSE}
+qqnorm(r)
+qqline(r)
+```
+
+```{r, fig.align='center', fig.cap="Figure 6. ACF plot of residuals (left) and squared residuals (right)", fig.width=8, fig.height=4, warning=FALSE, echo=FALSE, message=FALSE}
+par(mfrow=c(1,2), mar = c(2,2,2,2))
+acf(r)
+acf(r^2)
+```
+
+* The residual plot reveals heteroskedasticity: the variance of the residuals increases with time, and the volatility clusters in periods around 100, 200 and after 400.
+* The Q-Q plot shows the residuals have a short tail.
+* The ACF of the residuals shows that the residuals are deviant from Guassian white noise because 4 out of 26 ACF values fall outside the 95% CI denoted by dotted lines.
+* The ACF of the squared residuals confirms the cluster of volatility at some points in time
+
+
+------
+
+##3.5 Linear Regression with ARMA-GARCH errors
+
+To remedy the problems stated above, we need a generalized autoregressive conditional heteroskedasticity (GARCH) model that can capture the time-varying variance. The GARCH model is constructed as[9]:
+$$
+\omega_n =  \sqrt{\lambda_n}u_n,\\
+\lambda_n = \alpha_0 + \sum^{q}_{i=1}{\alpha_i \omega_{n-i}^2} + \sum^{p}_{j=1}{\beta_j \lambda_{n-j}}, \\
+$$
+where ${u_n}$ is a Gaussian white noise, ${u_n}\sim N(0, \sigma^2)$. Here, \epsilon_n denotes the residuals from the linear regression with ARMA errors. For stationarity, we assume that $\alpha_0 > 0$, $\alpha_i >= 0$,  $\beta_j >= 0$, and $\sum^{max(p,q)}_{l=1}({\alpha_i+\beta_j}) < 1$
+
+Similar to choosing the order for ARMA errors, we can constrauct a table of AIC values to choose the order for GARCH errors
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+require(tseries)
+aic_table <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       if (p==0 & q==0) next
+       table[p+1,q+1] <- AIC(garch(data,order=c(p,q),trace=F))
+    }
+  }
+  dimnames(table) <- list(paste("<b> GARCH(",0:P, ",) </b>", sep=""),paste("GARCH(,",0:Q,")",sep=""))
+  table
+}
+garch_aic_table <- aic_table(r,4,5)
+require(knitr)
+kable(garch_aic_table,digits=2)
+```
+
+```{r warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
+which(garch_aic_table==garch_aic_table[order(garch_aic_table)[1]], arr.ind=T)
+which(garch_aic_table==garch_aic_table[order(garch_aic_table)[2]], arr.ind=T)
+which(garch_aic_table==garch_aic_table[order(garch_aic_table)[3]], arr.ind=T)
+```
+* The top 3 candidate models, according to the AIC values, are (in order): GARCH(0,5), GARCH(4,5), and GARCH(3,5).
+* The GARCH(0,5) is the simplest among the 3 models, so we chose GARCH(0,5) model.
+
+Therefore, we model the residuals of linear regression with ARMA(3,1) errors using GARCH(0,5).
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+garch_05 = garch(r,order=c(0,5),trace=F)
+summary(garch_05)
+```
+
+* The p-values for all the parameters are all smaller than 0.05 except for a2, suggesting that they are statistically significnat.
+* The p-value from the Box-Ljung test is greater than 0.05, so we cannot reject the null hypothesis that the residuals are independently distributed. Therefore, our GARCH(0,5) model represents the residuals pretty well.
+
+
+------
+
+------
+
+
+#4. Frequency Domain
+
+Analyzing frequency components present in our data can help us detect cycles from a different perspective.
+
+------
+
+##4.1 Spectrum Analysis
+
+We use the detrend time series of home purchase prices and effective interest rates to create a spectral plot:
+
+```{r}
+p_ts <- ts(p_hp,frequency=1)
+i_ts <- ts(i_hp,frequency=1)
+
+p_spectrum = spectrum(p_hp,spans=c(5,8),main="Smoothed Periodogram")
+par(new=TRUE)
+i_spectrum = spectrum(i_hp,spans=c(5,8),col="red",main="",axes=FALSE,xlab="",ylab="",ci.col="red")
+axis(side=4, col="red")
+legend("top", legend=c("Home Purchase Price", "Effective Interest Rate"),
+       col=c("black", "red"), lty=1, cex=0.8)
+```
+
+
+```{r results='hide', echo=FALSE, results='hide', message=FALSE}
+p_spectrum$freq[which(diff(sign(diff(p_spectrum$spec)))==-2)+1]
+i_spectrum$freq[which(diff(sign(diff(i_spectrum$spec)))==-2)+1]
+```
+
+```{r}
+1/0.02592593
+1/0.01851852
+```
+
+
+* From the periodogram, we can see that the detrend home purchase prices and the detrend interest rates don't seem to have a common cycle, because their peaks are all at different frequencies.
+
+* Both have a dominant cyclic frequency: the detrend home purchase prices have a dominant period of 38 months, whereas the detrend interest rates have a dominant period of 54 months. They differ by a lot, even though they look close to each other in the periodogram.
+
+
+------
+
+------
+
+
+#5. Conclusion
+
+In summary, the time domain analysis shows us that the home purchase prices and the effective interest rates are negatively correlated. We found a linear regression model with ARMC(3,1)-GARCH(0,5) errors that has a relatively good fit. The frequency domain, however, doesn't show any synchronized cyclic pattern.
+
+For future analysis, some ideas I have include:
+
+1. adding more variables to the regression model, such as GDP, unemployment rate that contain more signal;
+2. using sample cross correlation function (CCF) to identify lags of effective interest rates that might be useful to predict housing prices. Economists Case and Shiller questions and tests the efficiency of the market for single-family home[8]. Although they weren't able to answer that definitely in 1989, we should keep in mind that there might be a time lag between interest rates and the effects on house prices.
+
+------
+
+------
+
+#6. Reference
+
+1. Do Higher Interest Rates Cause Lower House Prices?. Retreived from https://www.integratedmortgageplanners.com/blog/mortgage-market-updates/do-higher-interest-rates-cause-lower-house-prices/ 
+
+2. Harris, J.C.. The effect of real rates of interest on housing prices. J Real Estate Finan Econ (1989) 2: 47. https://doi.org/10.1007/BF00161716
+
+3. Should I Buy A Home In A Rising Interest Rate Environment?. Retrieved from https://www.financialsamurai.com/should-i-buy-a-home-in-a-rising-interest-rate-environment/
+
+4. When interest rates go up in a healthy economy, history says home prices will rise. Retrieved from https://www.urban.org/urban-wire/when-interest-rates-go-healthy-economy-history-says-home-prices-will-rise
+
+5. List of recessions in the United States. Retrieved from  https://en.wikipedia.org/wiki/List_of_recessions_in_the_United_States
+
+6. Why Mortgage Rates Once Reached a Sky-high 18.5%. Retrieved from https://finance.yahoo.com/blogs/just-explain-it/why-mortgage-rates-matter-152241574.html
+
+7. Hodrick-Prescott filter for trend and cyclical components. Retrieved from https://www.mathworks.com/help/econ/hpfilter.html
+
+8. Case, K., & Shiller, R. (1989). The Efficiency of the Market for Single-Family Homes. The American Economic Review, 79(1), 125-137. Retrieved from http://www.jstor.org/stable/1804778Copy
+
+9. Ji Eun Choi. Stochastic Volatility Models andSimulated Maximum LikelihoodEstimationby. Retreived from https://uwspace.uwaterloo.ca/bitstream/handle/10012/6045/Choi_Ji_Eun.pdf?sequence=1
+
+10. Ionides, E. (n.d.). Stats 531 (Winter 2016) "Analysis of Time Series".  Retrieved from http://ionides.github.io/531w16/
+
+11. A Study on Crude Oil Price and CPI Value. Retrieved from https://ionides.github.io/531w16/midterm_project/project1/Stats_531_Midterm_Project.html

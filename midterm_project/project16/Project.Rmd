@@ -1,0 +1,167 @@
+---
+title: "Historical Measles Incidence in New York City"
+date: "March 7, 2018"
+output: 
+  html_document:
+    theme: simplex
+    toc: true
+bibliography: STATS531.bib
+---
+
+<style type="text/css">
+body {
+  font-size:14px;
+  color:black;
+  background-color:white;
+}
+</style>
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+```
+
+```{r data}
+measles <- read.csv("measles.csv", stringsAsFactors = F)
+names(measles) <- c("month", "cases")
+measles$month <- as.character(measles$month)
+measles$month <- as.Date(paste0(measles$month, "-01"), format = "%Y-%m-%d")
+cases <- ts(measles$cases)
+janCases <- ts(measles$cases[strptime(measles$month, format = "%Y-%m-%d")$mon == 0])
+```
+## Introduction
+Measles is a highly contageous viral disease which, to this day, is a leading cause of death in children worldwide [@CentersforDiseaseControlandPrevention2015]. Infection begins in the respiratory tract, and can lead to complications in up to 40\% of the population [@Moss2012]. Often, these complications are respiratory, but more severe cases can involve the central nervous system [@Moss2012]. The introduction of a vaccine for measles in 1963 began a slow process of fighting the disease, with the virus being declared eradicated in the Americas in 2016 [@Fox2016]. 
+
+However, "eradication" does not mean that no new cases of measles have been observed; rather, it means that new cases can be traced back to transmission from other locations [@Berman2015]. Indeed, measles outbreaks have, in recent years, made headlines, and recent work has attributed these outbreaks to vaccine refusal [@Phadke2016]. 
+
+In 1963, a vaccine for measles was introduced [@Moss2012]. Because of the increase in awareness of measles outbreaks in a growing group of unvaccinated children, understanding epidemiological patterns in measles incidence is increasingly important. To this end, we use historical monthly data on measles cases in New York City to investigate the epidemiology of measles outbreaks in an unvaccinated population.
+
+## Data Summary
+Data were obtained from the [Time Series Data Library](http://data.is/1DqES68) and consist of `r nrow(measles)` monthly records of the number of reported measles cases in New York City from January, 1928 to June, 1972. [@Hyndman]. We begin our analysis by examining time plots of the data, first on the monthly scale, and second on an annual scale (by restricting focus to January of each year). 
+
+```{r initialPlots, fig.height=6.5, fig.align="center", anchor="figure", fig.cap="\\label{fig:timeplots} Time plots of the number of reported measles cases in New York City from 1928 to 1972. Top: Monthly reported measles cases. Bottom: Reported measles cases in January of each year. Red dashed lines are drawn on January 1, 1964, the start of the first full year in which a measles vaccine was available."}
+par(mfrow = c(2, 1))
+with(measles, plot(cases ~ month, cex = 1.5, type = "l", xlab = "Time", ylab = "Number of cases",
+                   main = "Monthly measles cases in New York City, 1928 - 1972"))
+abline(v = as.Date("1964-01-01"), lty = 2, col = "#EB6864")
+with(subset(measles, strptime(measles$month, format = "%Y-%m-%d")$mon == 0), 
+     plot(cases ~ month, cex = 1.5, type = "l", xlab = "Time", ylab = "Number of cases",
+          main = "January measles cases in New York City, 1928 - 1972"))
+abline(v = as.Date("1964-01-01"), lty = 2, col = "#EB6864")
+```
+
+In the top frame of the above figure, the number of reported measles cases is plotted against time for every month from 1928 to 1972. We notice that the spikes in the plot are severely dampened starting in the late 1960s, which is likely associated with the introduction of a measles vaccine in 1963 [@Moss2012]. The plot suggests potential seasonality in outbreaks -- the regularity of the spikes may indicate that outbreaks occur at a particular time each year. To assess this claim, we examine a reduced version of the time series using only the number of cases reported in January of each year. A relatively flat plot would provide evidence for seasonality; rather, we discover that, upon looking at a less granular time scale, outbreaks seem to occur every 2-3 years, rather than annually. There is no observable trend in the data.
+
+Due to the introduction of the measles vaccine in 1963, we have good reason to believe that the time series starting in 1964, the first full year in which the vaccine was available, arises from a different process than before. That is, the measles vaccine is likely to have led to meaningfully-dampened measles incidence relative to pre-1963 numbers. Furthermore, we propose that the effects of this exogenous "shock" are, for the purposes of this data, long-lasting. Indeed, this is a reasonable assumption, as measles was recently declared eradicated from North and South Americas by the WHO [@Fox2016]. In order to investigate the "natural" epidemiology of measles (i.e., in an unvaccinated population), we restrict our analysis to data before 1964. 
+```{r subset}
+measles <- subset(measles, strptime(measles$month, format = "%Y-%m-%d")$year <= 63)
+cases <- ts(measles$cases)
+janCases <- ts(measles$cases[strptime(measles$month, format = "%Y-%m-%d")$mon == 0])
+```
+
+## Frequency Domain Analysis
+From the time plots, we see that measles seems to appear in regular outbreaks. Frequency domain analysis can help identify periodic patterns in the data. We plot the spectral density below, using a nonparametric smoother.
+
+```{r spectrum, fig.height=4, fig.align="center"}
+smoothCases <- spectrum(cases, span = c(3, 5, 3), plot = F)
+par(mfrow = c(1, 2), mar = c(5, 4, 4, 2))
+plot(smoothCases, main = "Nonparametrically-Smoothed\nPeriodogram", sub = "", ci.col = "#EB6864")
+arSmoothCases <- spectrum(cases, method = "ar", plot = F)
+plot(arSmoothCases, main = paste0("Smoothed Periodogram\n", arSmoothCases$method), ci.col = "#EB6864")
+
+maxFreq <- smoothCases$freq[which.max(smoothCases$spec)]
+```
+The largest peak on the nonparametrically-smoothed periodogram on the left occurs at a frequency of `r round(maxFreq, 3)`, which corresponds to a period of `r (1/maxFreq)` months. Notice also that there is a second relatively large peak at a frequency of approximately 0.047, which corresponds to a period of 2 years. Both of these peaks are confirmed by the parametrically-smoothed periodogram.
+
+This is consistent with the monthly time plot showing large spikes approximately every two years with some small upticks in reported cases in between. The finding suggests that measles outbreaks generally occurred biannually, which might suggest an AR(1) model for the annual process: the number of cases is likely negatively correlated with the previous year's.
+
+Frequencies higher than approximately 0.1 become much less important as the frequency increases. This suggests that outbreaks occur every two years and only last for relatively short periods of time.
+
+## Modeling
+We wish to develop a reasonable model for measles outbreak patterns so as to investigate the epidemiology of the virus. Based on our previous analysis, we will develop a seasonal ARMA model. 
+
+### Annual component
+The January time series captures the general pattern of the data, but is unable to account for intra-year variation in reported measles incidence and/or multiple outbreaks per year. A plot of the sample autocorrelation of the January time series (below) indicates an AR(1) model might be appropriate for this annual data.
+
+```{r janCasesACF, fig.height=4, fig.align="center", fig.cap="Plot of autocorrelation function (ACF) for NYC measles outbreaks in January, 1928 - 1963. The dashed lines indicate a 'confidence interval' around zero under the null hypothesis that the ACF is zero."}
+plot(acf(janCases, plot = F), ci.col = "#EB6864", main = "Sample autocorrelation ")
+```
+
+The choice of AR(1) is confirmed by comparing the AICs of a variety of ARMA($p$, $q$) models:
+```{r janCasesARMA}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+janAIC <- aic_table(janCases, 5, 5)
+kable(janAIC, digits=2)
+```
+
+The above table suggests that an AR(1) model is a reasonable fit for the data. All adjacent AICs are within approximately 2 units of each other, which suggests likelihood maximization encountered no major numerical issues or instability.
+
+### Monthly component
+We now focus on the montly component of the data, adding the annual AR(1) model to account for seasonality. We attempt to fit a variety of SARMA($p$,$q$)$\times$(1,0)$_{12}$ models and tabulate AICs below.
+
+```{r casesSARMA}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q),
+                               seasonal = list(order = c(1, 0, 0), frequency = 12))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+caseAIC <- aic_table(cases, 5, 5)
+kable(caseAIC, digits=2)
+```
+
+Here, we discover that an ARMA(2,2) model is appropriate for the monthly component. 
+
+```{r finalModel}
+finalModel <- arima(cases, order = c(2, 0, 2), 
+                    seasonal = list(order = c(1, 0, 0), 
+                                    frequency = 12))
+coefs <- coef(finalModel)
+```
+
+The fitted SARMA(2,2)$\times$(1,0)$_{12}$ model is
+\[
+\left(1-`r round(coefs["ar1"], 3)`B + `r -round(coefs["ar2"], 3)`B^2\right) \left(1 - `r round(coefs["sar1"],3)`B^{12}\right) \left(Y_{n} - `r round(coefs["intercept"], 3)`\right) = \left(1 `r round(coefs["ma1"], 3)`B `r round(coefs["ma2"], 3)`B^{2}\right) \epsilon_{n},
+\]
+where $Y_{n}$ is the number of reported measles cases at timepoint $n$, $B$ is the backshift operator, and $\epsilon_{n}$ is normally-distributed white noise associated with the measurement at timepoint $n$. 
+
+### Diagnostics
+We examine the roots of the AR, MA, and SAR polynomials of the fitted SARMA(2,2)$\times$(1,0)$_{12}$ model. For the AR(2) polynomial, both roots are outside the complex unit circle:
+```{r ARroots}
+ARroots <- polyroot(c(1, -coefs[c("ar1", "ar2")]))
+ARroots
+```
+Similarly for the MA(2) polynomial:
+```{r MAroots}
+MAroots <- polyroot(c(1, -coefs[c("ma1", "ma2")]))
+MAroots
+```
+
+The model is thus stationary, causal and invertible. We assess the residuals:
+
+```{r residPlot}
+plot(acf(resid(finalModel), plot = F), ci.col = "#EB6864")
+```
+
+There is some residual autocorrelation at a 24-month lag, which may suggest that the strength of the 2-year period is not sufficiently captured by the model.
+
+## Conclusion
+Measles, though declared eradicated in the Americas, is potentially experiencing a resurgence due to vaccine refusal. The unvaccinated population of New York City experienced a major outbreak of measles approximately every two years, in which over 1000 cases were reported each month. 
+
+We have used this historical data to discover patterns in measles incidence: namely, that outbreaks tend to occur every 2 years and are generally short-lived. This confirms existing research on the epidemiology of measles [@Moss2012]. 
+
+## References

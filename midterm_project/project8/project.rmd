@@ -1,0 +1,192 @@
+---
+title: "Effect of Global Warming on Discharge Rate of the Colorado River"
+date: "March 7, 2017"
+output: 
+  html_document:
+    fig_height: 3
+    fig_width: 5
+  pdf_document:
+    fig_height: 3
+    fig_width: 5
+  word_document:
+    fig_height: 3
+    fig_width: 5
+bibliography: project.bib
+---
+
+```{r, include=FALSE}
+# Don't delete this chunk if you are using the mosaic package
+# This loads the mosaic and dplyr packages
+library(mosaic)
+library(ggplot2)
+library(cowplot)
+library(dplyr)
+library(knitr)
+```
+
+```{r, include=FALSE}
+# Some customization.  You can alter or delete as desired (if you know what you are doing).
+
+# This changes the default colors in lattice plots.
+trellis.par.set(theme=theme.mosaic())  
+
+# knitr settings to control how R chunks work.
+require(knitr)
+opts_chunk$set(
+  tidy=FALSE,     # display code as typed
+  size="small"    # slightly smaller font for code
+)
+```
+
+# Introduction
+
+In the past 10 years, climate change has become a major concern to the general public. One source of anxiety surrounding global warming is the impact it will have on river flows. As temperatures rise and precipitation patterns change due to a warming climate, water supplies will shrink and strain the existence of various ecosystems and wildlife species. One area particularly at risk is the US Southwest. Warmer climates are already reducing the snowfall in the mountains which in the past have been an adequate source of water for Western rivers during the drier, warmer seasons. Further, hotter temperatures are causing more evaporation in river reservoirs. A relatively new study suggests that a third of the loss of flow in the Colorado River can be attributed to global warming [@udal:over:2017].
+
+While climate change is already a large issue, it could potentially become a larger one if communities lose access to water due to rivers shrinking. Although, it was caused by a different issue, the Flint, Michigan water crisis was a cause of a federal state of crisis. Flint is an example of what happens when a community loses access to its water source.  Perhaps a more likely problem that would be caused by a potential water shortage is the effect it would have on the agriculture in the Southwest. Investigating how rising temperatures affect river discharge could provide vital information into how we can better prepare to meet freshwater needs around the Colorado River basin and perhaps beyond.
+
+# Data
+
+Since rising temperature is the main catalyst for climate change, we need some sort of time series data measuring temperature or temperature changes. Given the motivation, we are not necessarily interested in how the average global temperature has increased over time, but more how the temperature has changed relative to a base period over time. For this reason, we chose our temperature data from the GISS Surface Temperature analysis which provides data in the form of monthly mean temperature anomalies in degrees Celsius from a base period of 1950-1980. The data can be downloaded from this link https://datahub.io/core/global-temp.
+
+```{r, echo=FALSE}
+river <- read.csv("riverdata.csv")
+river <- river %>% select(year, month, Discharge) %>% 
+  mutate(Date = as.Date(paste(year, month, '13', sep = '-'))) %>% 
+  filter(year > 1996 & year < 2017) %>%
+  select(Date, Discharge)
+river2 <- river %>% mutate(Discharge = log(Discharge))
+temp <- read.csv("tempdata.csv")
+temp <- temp %>% mutate(Date = as.Date(Date)) %>% 
+  filter(Date > "1997-01-01", Source == 'GISTEMP') %>%
+  select(Date, Mean) %>%
+  arrange(Date)
+df <- left_join(river2, temp, by = "Date")
+discharge <- df$Discharge
+anomaly <- df$Mean
+```
+
+As noted earlier, climate change pertaining to rivers is particularly important to the Southwest region of the US. Because of this, it is particularly of interest to explore how temperature change is effecting rivers in this region. The Colorado river is perhaps the principal river of the Southwestern US. Studying how global temperature anomalies have affected the discharge of the Colorado river could perhaps lend us insight into how global warming effects rivers in the Southwest on a larger scale. The data used in this study is the discharge rate of the Colorado river in cubic feet per second measured below the Laguna Dam (AZ-CA).
+
+## Exploratory Analysis
+
+Initially, after plotting the discharge rate (in cubic feet per second) of the Colorado River without any transformation shows that there are peaks at the beginning at the time series much greater than the rest of the data. This kind of data would perhaps fit better on a log scale, so we take the log of the discharge data of the Colorado river and display below.
+
+```{r, fig.height=3, fig.width=10, echo=FALSE}
+riverplot <- ggplot(data=df, aes(x=Date, y=Discharge)) + geom_line()  + labs(title="Discharge Rate of the Colorado River") 
+tempplot <- ggplot(data=df, aes(x=Date, y=Mean)) + geom_line() + labs(title="Monthly Mean Temperature Anomalies") 
+plot_grid(riverplot, tempplot)
+```
+
+With a log scale, it is much easier to make out useful information of the time series. An initial glance shows that the model underlying the log of the discharge rate of the Colorado River has a decreasing trend. Contrastingly, the time series of the monthly mean temperature anomalies in degrees Celsius relative to the average temperature in 1950-1980 indicates that there is perhaps an increasing trend. This indicates that there is a potential inverse relationship between the two variables.
+
+If global mean monthly temperature anomaly can explain the trend in the log discharge rate of the Colorado River, we can model this using a linear regression model with ARMA errors. First we check whether such a model could be appropriate by performing a normal regression and looking at the ACF and PACF plots of the residuals. If the errors follow an MA model, we would expect the ACF plot to gradually taper off to 0 in some sort of pattern. However, if the errors follow an AR model, we would expect the PACF to show a spike and then immediately drop off [@shum:stof:2017].
+
+```{r, fig.height = 4, echo=FALSE}
+mod <- lm(Discharge ~ Mean, data = df)
+acf(residuals(mod), main = "ACF Plot of Residuals")
+pacf(residuals(mod), main = "PACF Plot of Residuals")
+```
+
+The ACF plot of the residuals shows that the ACF is significant at several lags (1,2,6,9,10,11,20). The ACF displays some sort of oscillation pattern as it tapers off to 0. This suggests that the errors follow an MA(2) model. Now the PACF plot spikes at lag 1 and then shows an immediate dropoff. This is indicative that the errors might follow a AR(1) model. Looking forward, we would like to keep in mind ARMA(0,2) models, ARMA(1,2), and ARMA(1,0) models. The ACF and PACF plot indicate that the errors would be poorly modeled by white noise, and give us some idea of the various ARMA models that might fit well. To corroborate the information given by the plots, we look at an AIC table to see which ARMA would best model the errors based on interpretability and likelihood.
+
+```{r, echo=FALSE}
+aic_table <- function(data,P,Q, xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q), xreg=xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aic <- aic_table(discharge,3,3,anomaly)
+kable(aic,digits=2)
+```
+
+The AIC table gives a few candidate ARMA models, namely the ARMA(0,2) and ARMA(1,3) which have AIC values of 191.853 and 190.305 respectively. While the AIC value of the ARMA(1,3) model is smaller, the difference is relatively small. Additionally, a linear regression model with arma errors is already a complicated model. In this case, opting for the smaller ARMA(0,2) model for the errors is the better choice.  
+
+# Model Fitting
+
+```{r, echo=FALSE}
+arma02 <- arima(x=discharge, order = c(0,0,2), xreg=anomaly)
+arma02
+```
+
+Formally, the model we have fit takes the following form:
+$$Y_n = \beta_0 + \beta_1 t_n + \epsilon_n + \theta_1 \epsilon_{n-1} + \theta_2 \epsilon_{n-2}$$
+where $Y_n$ represents the log(Discharge) at time $n,$ $t_n$ represents mean temperature anomaly from base period 1950-1980, $\beta_0 = 6.4435,$ $\beta_1 = -0.1586,$ $\theta_1 = 0.6125,$ $\theta_2 = 0.3556,$ and $\epsilon_n$ is simply white noise with variance $\sigma^2 = 0.1247.$ This indicates for an increase in 1 degree celcius of mean temperature anomaly from the mean, we expect that the log discharge rate of the Colorado River to decrease by -0.1586 log cubic meters per second.
+
+## Model Diagnostics
+
+```{r, echo=FALSE}
+r <- residuals(arma02)
+acf(r, main = "ACF of Residual of Linear Model with ARMA Errors")
+```
+
+Although the ACF plot above of the residuals of our linear regression model with ARMA errors have significant ACF at lags 11 and 20, the ACF plot does not suggest that the residuals follow something other than a white noise process. We can look at other model diagnostic tools to confirm or deny this.
+
+```{r, echo = FALSE}
+plot(r, ylab="Residuals", main="Residuals Over Time")
+qqnorm(r)
+qqline(r)
+```
+
+Both the Q-Q plot and the plot of the residuals suggest that the errors mostly follow a normal distribution except there are a few too many residuals that are large relative to the rest of the residuals. This is perhaps due to the fact that there are a few observations of the discharge rate of the Colorado River that is very high relative to the rest of the data which would cause our model to underpredict at those time points. Although the normal assumption on the residuals does not hold completely we are somewhat satisfied, but proceed with caution.
+
+Next we can perform a likelihood ratio test to see if we have enough evidence to suggest that $\beta_1 \neq 0.$ This hypothesis test can help us answer motivating question: whether there is statistical evidence that global warming has impacted discharge rate of the Colorado River. Our hypotheses for the test are as follows:
+$$H_0 = \beta_1 = 0 \text{ and } H_1 = \beta_1 \neq 0.$$
+
+We simply fit an ARMA model without the regression component and then take the difference of likelihood. From there we can easily calculate a $p$ value using a chi-square distribution.
+
+```{r}
+nullarma <- arima(discharge,order=c(0,0,2))
+dif <- arma02$loglik - nullarma$loglik 
+p.val <- 1-pchisq(2*dif,df=1)
+p.val
+```
+The p-value for our likelihood ratio test is `r p.val` which is not significant at any reasonable significance level. We do not have enough evidence to suggest reject the null hypothesis. 
+
+# Frequency Analysis
+
+From a scientific standpoint, it makes sense that river discharge is effected by different seasons throughout the year. In hotter, drier seasons we would expect the discharge rate of a river to be lower. Additionally, the ACF plot of the residuals from the model fitted without arma errors showed high ACF values in later lags in addition (e.g., 10 and 11) perhaps indicating some seasonality. We can explore further via frequency analysis.
+
+```{r, echo=FALSE}
+spectrum(residuals(mod), spans=c(3,3))
+```
+
+The spectrum plot shows that there is a peak at a frequency just under 1. This corresponds to a period of 12 months which confirms our intuition that there is yearly seasonality in the data. Let's take a look at AIC values of various linear models with SARMA errors which may do a better job of capturing the data.
+
+```{r}
+aic_table <- function(data,P,Q, xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(0,0,2),seasonal=list(order=c(p,1,q),period=12),xreg=xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aic <- aic_table(discharge,3,3,anomaly)
+kable(aic,digits=2)
+```
+
+According to the table above the AIC values of linear models with SARMA errors are all much higher than the simpler linear regression models with ARMA errors. This suggests that adding seasonality to our model does not add very much information.
+
+# Conclusion
+
+Initially the side by side time series suggested that the decreasing trend underlying the log discharge rate of the Colorado River could be explained by the mean temperature anomaly from base period 1950-1980. However, when a linear regression model with ARMA(0,2) errors was fit, the likelihood ratio test showed that we did not have enough evidence to reject the null hypothesis that the coefficient of the mean temperature anomaly from base period 1950-1980 in the model was 0. This is not to say that our model is invalid, it simply means from an inferential standpoint with the data from this project, we do not have evidence to suggest that the discharge rate of the Colorado River and monthly temperature anomaly from a base period have the inverse relationship that we initially believed might have existed (i.e., monthly temperature anomaly cannot explain the trend in the discharge rate). Lastly, although the data displays seasonality, incorporating seasonality into our model does not improve the likelihood.
+
+## Future Work
+
+The river discharge data was taken from one location along the Colorado River. A future study could look at data collected from various time points. In addition, perhaps river discharge rate is not the best metric for our motivating question. Checking resovoir volume could also help corroborate any conclusions drawn using data with discharge rate. Finally, perhaps using only the temperature anomaly in the Colorado River basin could provide a more focused project rather than using global temperature anomaly from a base period.
+
+# References
+
+---
+nocite: | 
+  @data:giss
+  @usgs
+...
+

@@ -1,0 +1,115 @@
+---
+title: "Stats 531 (Winter 2018) <br>Midterm projects"
+output:
+  html_document:
+      theme: flatly
+      toc: yes
+csl: ecology.csl
+---
+
+------
+
+* Projects are posted anonymously below. Source code and data are available from [https://github.com/ionides/531w18/midterm_project](https://github.com/ionides/531w18/midterm_project).
+
+* I will contact everyone to give you the opportunity to have your name attached to your project, if you like, after the course is over and the class grades are assigned.
+
+
+----------
+
+----------
+
+1. [Monthly Traffic Fatalities in Ontario (1960-1974)](https://ionides.github.io/531w18/midterm_project/project1/midterm_project.html)
+
+2. [Total fertility rate and marriage rate in South Korea](https://ionides.github.io/531w18/midterm_project/project2/midterm_project.html)
+
+3. [Monthly Industrial Production Index in Brazil from January 1980 to December 1997](https://ionides.github.io/531w18/midterm_project/project3/MidtermProj.html)
+
+4. [Pollution Equipment Time Series](https://ionides.github.io/531w18/midterm_project/project4/pollution.html)
+
+5. [Currency Exchange Rate between USD and JPY](https://ionides.github.io/531w18/midterm_project/project5/ProjectPaper.html)
+
+6. [Earthquakes World Wide from 1917 to 2017](https://ionides.github.io/531w18/midterm_project/project6/Midterm_Project.html)
+
+7. [Analysis on the Shanghai Stock Exchange Composite Index](https://ionides.github.io/531w18/midterm_project/project7/Midterm.html)
+
+8. [Effect of Global Warming on Discharge Rate of the Colorado River](https://ionides.github.io/531w18/midterm_project/project8/project.html)
+
+9. [Time series analysis for the sunspots amount from 1900 to 1983](https://ionides.github.io/531w18/midterm_project/project9/531mid.html)
+
+10. [Application of ARMA models to describe vaginal microbiota composition](https://ionides.github.io/531w18/midterm_project/project10/midterm_project_vaginal_microbiota.html)
+
+11. [Human Duodenal MMC Phase 3 Motility Model Based on Manometry Readings](https://ionides.github.io/531w18/midterm_project/project11/midterm_project.html)
+
+12. [A study in temporal behavior of influenza mortality](https://ionides.github.io/531w18/midterm_project/project12/Stat531_midterm.html)
+
+13. [Study on Association between Car Accident and Temperature in New York](https://ionides.github.io/531w18/midterm_project/project13/Project.html)
+
+14. [The Association of the Performance of Gun Stocks with the Party of the President and Mass Shootings](https://ionides.github.io/531w18/midterm_project/project14/midterm_project_finaldraft.html)
+
+15. [Study of Snowfall in Michigan](https://ionides.github.io/531w18/midterm_project/project15/Midterm_project.html)
+
+16. [Historical Measles Incidence in New York City](https://ionides.github.io/531w18/midterm_project/project16/Project.html)
+
+17. [A Study on Straight Road Driving](https://ionides.github.io/531w18/midterm_project/project17/MidtermProject.html)
+
+18. [Modeling Dengue case counts in San Juan, Puerto Rico](https://ionides.github.io/531w18/midterm_project/project18/midterm_proj.html)
+
+19. [Monthly reported number of chickenpox in New York from 1931 to 1972](https://ionides.github.io/531w18/midterm_project/project19/Midterm_Project.html)
+
+20. [Do Returns Have Trends, Long Memory, Autocorrelation and Cycles?: Evidence from Markets of Different Financial Products and Regions](https://ionides.github.io/531w18/midterm_project/project20/MidtermProject.html)
+
+21. [The Association Between Home Purchase Prices and Effective Interest Rates](https://ionides.github.io/531w18/midterm_project/project21/midterm_project.html)
+
+22. [Association Between Public Use of Share Bike in San Francisco and Daily Mean Temperature](https://ionides.github.io/531w18/midterm_project/project22/midterm_project.html)
+
+23. [An Analysis of Michigan Traffic Crash and Snowfall](https://ionides.github.io/531w18/midterm_project/project23/midterm_project.html)
+
+24. [A Study on US Natural Gas Storage and Weather](https://ionides.github.io/531w18/midterm_project/project24/531_midterm_project.html)
+
+25. [An Investigation of Democratic Support in the 2018 US Midterm Elections](https://ionides.github.io/531w18/midterm_project/project25/midterm_project_final.html)
+
+26. [Coursera Learner Signups](https://ionides.github.io/531w18/midterm_project/project26/531mt.html)
+
+27. [Which Airport should you choose to avoid flight delayed](https://ionides.github.io/531w18/midterm_project/project27/Midterm_Project_STAT531.html)
+
+28. [Relationship between CNH to USD Exchange Rate and S&P 500 Index](https://ionides.github.io/531w18/midterm_project/project28/midproject.html)
+
+29. [Vancomycin-resistant Enterococcus (VRE) transmission](https://ionides.github.io/531w18/midterm_project/project29/stats531-mid.html)
+
+30. [Analysis of the Timeliness of Northwest's Planes Arriving at Detroit](https://ionides.github.io/531w18/midterm_project/project30/late_plane_analysis.html)
+
+31. [Time Series Analysis for Live Births in South Korea](https://ionides.github.io/531w18/midterm_project/project31/mid_project.html)
+
+32. [Monthly US air passenger miles from Jan 1960 to Dec 1977](https://ionides.github.io/531w18/midterm_project/project32/midterm_project.html)
+
+33. [Venice: Rising Sea Levels and a Sinking City?](https://ionides.github.io/531w18/midterm_project/project33/midterm.html)
+
+34. [Modeling and Predicting Gold Prices](https://ionides.github.io/531w18/midterm_project/project34/goldprices.html)
+
+35. [PM2.5 concentration in Shanghai, China](https://ionides.github.io/531w18/midterm_project/project35/midterm_project.html)
+
+36. [Time Series Analysis of Sunlight in Michigan](https://ionides.github.io/531w18/midterm_project/project36/Project.html)
+
+37. [Suicide time series in Austrailia](https://ionides.github.io/531w18/midterm_project/project37/Midterm_project.html)
+
+38. [Time Series Analysis for Log Returns of S&P500](https://ionides.github.io/531w18/midterm_project/project38/Midterm_proj.html)
+
+39. [An Analysis of Shanghai Car License Plate Auction Price](https://ionides.github.io/531w18/midterm_project/project39/Midterm_Project.html)
+
+40. [A Study on US Interest Rate and Inflation](https://ionides.github.io/531w18/midterm_project/project40/STATS531PROJECT-2.html)
+
+41. [Curious about Bitcoin?](https://ionides.github.io/531w18/midterm_project/project41/Midterm_Project.html)
+
+42. [The Relationship between the NASDAQ Index and Crude Oil Price](https://ionides.github.io/531w18/midterm_project/project42/Midterm_Project.html)
+
+43. [The Association between Unemployment Rate and the Consumer Price Index](https://ionides.github.io/531w18/midterm_project/project43/Midterm_Project_2018.html)
+
+44. [Time series analysis of NASDAQ index](https://ionides.github.io/531w18/midterm_project/project44/midterm_project.html)
+
+45. [Analysis on Subscriber Number and Earnings of a Youtuber](https://ionides.github.io/531w18/midterm_project/project45/Midterm_project.html)
+
+46. [Monthly Criminal Incidents in Chicago](https://ionides.github.io/531w18/midterm_project/project46/mid_proj.html)
+
+----------
+
+-----------

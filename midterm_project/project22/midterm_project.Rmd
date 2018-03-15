@@ -1,0 +1,185 @@
+---
+title: Association Between Public Use of Share Bike in San Francisco and Daily Mean
+  Temperature
+date: "3/7/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##1. Introduction
+Shared bikes emerged as early as 1965 in Europe. As share economy gains popularity in the recent years, many launched bike-sharing services have been launched. People might use the service for multiple reasons, commuting, entertainments, etc. Riding bike can be fun and extremely convenient for short distance travels, but riders are exposed to uncomfortable weather conditions, such as extreme temperature. 
+
+Ford GoBike launched its bike-sharing service in 2013 and released a dataset with detailed daily trip data in San Francisco Bay Area. The data include start location and end location of a trip, start time and end time of a trip, daily weather, etc. With the released dataset, I aggregated a dataset including how many trips happened each day and what was the mean temperature for that day in San Francisco specificly. I'm interested to find out if there is any pattern in public usage of sharing bikes. Also, I want to find out if and how would temperature affect the usage of sharing-bike services.
+
+##2. Data Preprocessing
+```{r echo=TRUE}
+count_trip <- read.csv("https://raw.githubusercontent.com/joebeav/531midterm/master/trip_weather_data.csv")
+count_trip <- subset(count_trip, select = c(2, 3, 4))
+which(is.na(count_trip))
+summary(count_trip)
+```
+
+First, let's take a look at the data. As shown above, no invalid observation is detected. We have three variables in the dataset. The dataset record number of trips and mean temperature for each day starting on Aug. 29, 2013 to Aug. 31, 2016, making up a total of 1099 observations. The number of daily trips ranges from 5 to 1513, with a mean 238.9. Something worth noticing is that the 75% quantile is 172, which is much smaller than the mean value. We suspect anomaly for the top 25% observations. Meanwhile, the daily mean temperature ranges from 32 to 77 degree with a mean of 60.34 and median of 61, which is what we expect for the weather in San Fracisco. 
+
+
+Further exploration reveals problems in the trips records. 
+```{r echo=TRUE, fig.width=12, fig.height=6}
+library(ggplot2)
+library(ggpubr)
+ggplot() + 
+  geom_line(data = count_trip, aes(x = seq(1, length(dateT)), y = trips, colour = "Number of Trips"), size = 0.5) + 
+  geom_line(data = count_trip, aes(x = seq(1, length(dateT)), y = meanTemp, colour = "Mean Temperature"), size = 0.5) + 
+  xlab("Days") + 
+  ylab("") +
+  ggtitle("Original Data") +
+  theme(legend.position=c(0.8, 0.9))
+```
+
+As we can see from the plots, the blue line represents the daily trips using shared bikes in San Francisco and the red line represents the daily mean temperature changes. We notice a portion of extremely large observations that don't seem to fit the rest. It's most likely caused by duplicate recording or misrecorded the another city's zipcode. For the rest of our analysis, we'll discard these points, which contains 184 observations, as well as the 184 observations prior to these.
+
+```{r echo=TRUE, fig.width=12, fig.height=6}
+count_trip_clean <- count_trip[369:1099,]
+```
+```{r echo=FALSE, fig.width=12, fig.height=6}
+library(ggplot2)
+library(ggpubr)
+ggplot() + 
+  geom_line(data = count_trip_clean, aes(x = seq(1, length(dateT)), y = trips, colour = "Number of Trips"), size = 0.5) + 
+  geom_line(data = count_trip_clean, aes(x = seq(1, length(dateT)), y = meanTemp, colour = "Mean Temperature"), size = 0.5) + 
+  xlab("Days") + 
+  ylab("") +
+  ggtitle("Original Data") +
+  theme(legend.position=c(0.8, 0.9))
+```
+
+If we focus on the last 731 observations, we can see some correlation between the bike usage and mean temperature. The correlation is especially obvious at around days=480. We can see two valleys on the plot, the first one appears at round n=120 and the second one appears at aournd n=480, with a distance roughly equals one year. This makes us suspect seasonality in the bike usage time series, as well as in the temperature time series, which is expected. We can see lots of fluctuations in the daily bike usage. If we look closely, most data points reside in the upper half with periodic dips. This might suggest user's behaviour has a weekly pattern. Perhaps people tend to use shared bikes more often on weekdays than weekends. 
+
+Detailed analysis will tell us if such seasonalities exist and if there is relationship between the bike usage and temperature. 
+
+##3. Detailed Analysis
+
+###3.1 Seasonality Detection with Smooth Periodogram 
+```{r echo=TRUE, fig.width=12, fig.height=6}
+trips_spec = spectrum(count_trip_clean$trips, spans=c(3, 3), plot=F)
+temp_spec = spectrum(count_trip_clean$meanTemp, spans=c(3, 3), plot=F)
+par(mfrow = c(2, 1))
+plot(trips_spec)
+plot(temp_spec)
+```
+
+```{r}
+trips_spec$freq[which.max(trips_spec$spec)]
+temp_spec$freq[which.max(temp_spec$spec)]
+```
+
+We plotted out the smoothed periodogram for both bike usage time series and the weather time series. We can see two major frequency component for the bike usage time series with the most dominant frequency being 0.143 corresponding to a period of 1 week. Knowing the bike usage has a weekly cycle, let's look at the bike usage from 20160822 to 20160828. We can see that the bike usage are small on 20160827 and 20160828, which were a Saturday and a Sunday. These results support our hypothesis that the bike usage exhibit weekly periods and people use shared bikes more on weekdays than they do on weekends.
+
+```{r}
+count_trip_clean$trips[count_trip_clean$dateT >= 20160822 & count_trip_clean$dateT <= 20160828]
+```
+
+Now let's look at the smoothed periodogram for our weather series. It peaks at 0.00267, which corresponds to a period of 374 days, roughly one year. Would there still be correlation between weather and bike usages now that we know they don't have the same period? We can't conclude yet just based on the seasonality analysis. 
+
+###3.2 Cross Correlation Between Bike Usage and Weather
+Next, we use CCF To test if correlation between bike usage and weather exists.
+```{r echo=TRUE, fig.width=12, fig.height=6}
+ccf(count_trip_clean$meanTemp, count_trip_clean$trips)
+```
+
+The highest cross correlations occur at lag = 1, 2, 3, which suggests temperature and bike usage might have some short-term relationship.
+
+###3.3 Stationary Test
+Before we fit any ARMA model, we should check if the time series are stationary.
+
+```{r}
+library(tseries)
+adf.test(count_trip_clean$trips)
+adf.test(count_trip_clean$meanTemp)
+kpss.test(count_trip_clean$trips)
+kpss.test(count_trip_clean$meanTemp)
+```
+
+We used ADF test and KPSS test to test if our time series are stationary. ADF tests the NULL hypothesis that a unit root is present in the data[1], while KPSS tests the NULL hypothesis that the time series is stationary around a deterministic trend (i.e. trend-stationary) against the alternative of a unit root[2]. For the bike usage time series, while ADF predict that it stationary, KPSS rejects the null hypothesis that it is stationary. This might indicate that this time series is trend stationary but not covariance stationary. For the temperature time series, neither of the tests predict it is stationary. These results suggest further data processing before we fit ARMA model. 
+
+###3.4 Detrending the data
+One possible solution to make time series stationary is to detrend the data. Here, we use Hodrick-Prescott filter to do the detrending[3]. In choosing $\lambda$, we following the rule proposed by Ravn and Uhlig (2002)[4] that $\lambda$ should vary by the fourth power of the frequency observation ratio, which is 6.25 for annual data and 129600 for monthly data.
+
+```{r}
+library(mFilter)
+trips <- hpfilter(count_trip_clean$trips, freq = 6.25, type = "lambda", drift = F)$cycle
+temp <- hpfilter(count_trip_clean$meanTemp, freq = 6.25, type = "lambda", drift = F)$cycle
+# difftrips <- count_trip_clean$trips[2:731] - count_trip_clean$trips[1:730]
+# difftemp <- count_trip_clean$meanTemp[2:731] - count_trip_clean$meanTemp[1:730]
+adf.test(trips)
+adf.test(temp)
+kpss.test(trips)
+kpss.test(temp)
+```
+As the ADF and KPSS test results show, detrending the data successfully made the time series stationary.
+
+###3.5 Model the Relationship Between Bike Usage and Weather
+**A. Linear Regression with ARMA error**
+
+To model the relationship between bike usage and weather, we start with a linear regression with ARMA error. The full model can be written as $$\mathrm{C_n} = \beta_0 + \beta_1 \times \mathrm{T_n} + \epsilon_n,$$ where $\mathrm{C_n}$ is the daily bike usage, $\mathrm{T_n}$ is the mean temperature, and $\epsilon_n$ is the ARMA error. 
+
+```{r echo=FALSE}
+aic_table <- function(data,P,Q, xreg = NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data, order=c(p,0,q), xreg = xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aic_table <- aic_table(trips, 6, 6, xreg = temp)
+require(knitr)
+kable(aic_table,digits=2)
+```
+
+We attempted to choose a model based on AIC. However, AIC tends to choose a large model for our data, ARMA(6, 5), which is not ideal as large models are subject to numerical difficulties. This suggests that a linear model with ARMA error might not be ideal for our data. Nonetheless, we can fit with ARMA(5, 5) and see how it performs.
+
+```{r, echo=TRUE, fig.width=12, fig.height=6}
+arima(trips, xreg = temp, order = c(6, 0, 6))
+Residuals <- resid(arima(trips, xreg = temp, order = c(6, 0, 6)))
+par(mfrow = c(1,2))
+plot(seq(1, length(Residuals)), Residuals, main = "Residuals Plot")
+acf(Residuals)
+```
+
+The residuals plot for the model fitted with ARMA(6, 6) seems to indicate some level of heteroscedasticity. The ACF plot for the residuals find non-zero correlations at lags 6, 7, 14, and 28, which suggests the model might not be ideal as the residuals should be independent. 
+
+At this point we might also question the correlation between weather and bike usage. In fact, if we look at the CCF plot for the detrended time series (shown below), the likelihood for such correlation to exist is further dampened as the stongest correlation is actually very close to being insignificant. 
+
+```{r echo=TRUE, fig.width=12, fig.height=6}
+ccf(temp, trips)
+```
+
+##4. Conclusions
+1. Analyzing the smoothed periodogram, we found seasonality for both time series. For the bike usage time series there is a dominant frequency component, which points to a period of one week. For the mean temperature time series we found a yearly period. Looking closer at the bike usage data, we also found some insight on user behavior that people use shared bikes more often on weekdays than weekends.
+
+2. Using CCF to analyze the correlation between bike usage and the mean temperature, we found correlations at lags 1, 2, and 3, which suggests the bike usage and temperature might have short-term correlations.
+
+3. However, ADF and KPSS tests show that our time series are not stationary. With Hodrick-Prescott filter, we de-trended both series and made them stationary. We then used CCF to analyze the detrended series and the result shows even the strongest correlation between bike usage and mean temperature at lag -4 is very close to being insignificant. Therefore, we doubt if there is relationship between bike usage and mean temperature. 
+
+4. We showed that linear regression with ARMA model is not ideal for our time series. It might be a result of the questioning relationship between bike usage and temperature. 
+
+5. For the future work, we can focus on testing the correlation between bike usage and temperature at further depth. Seasonal ARIMA model should be helpful in this analysis, but I couldn't successfully load sarima model after installation and didb't find a way to work around it. I wonder if adopting sARIMA model would make AIC model selection easier as it tends to select large model for ARMA, which might be due to the seasonality. 
+
+##5. Reference
+[1] Augmented Dickey Fuller test. Retrieved from https://en.wikipedia.org/wiki/Augmented_Dickey%E2%80%93Fuller_test
+
+[2] KPSS test. Retrieved from https://en.wikipedia.org/wiki/KPSS_test
+
+[3] Hodrick-Prescott filter. Retrieved from https://en.wikipedia.org/wiki/Hodrick%E2%80%93Prescott_filter#cite_note-4
+
+[4] Ravn, Morten; Uhlig, Harald (2002). "On adjusting the Hodrick Prescott filter for the frequency of observations". The Review of Economics and Statistics.
+
+[5] SF Bay Area Share Bike data. Retrieved from https://www.kaggle.com/benhamner/sf-bay-area-bike-share

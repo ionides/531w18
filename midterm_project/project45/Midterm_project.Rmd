@@ -1,0 +1,338 @@
+---
+title: <center> Analysis on Subscriber Number and Earnings of a Youtuber </center>
+output:
+  html_document:
+    toc: yes
+---
+
+<style type="text/css">
+
+h1.title {
+  font-size: 32px;
+}
+h1 {
+  font-size: 24px;
+}
+h2 {
+  font-size: 20px;
+}
+
+</style>
+
+$$
+\
+\
+\
+$$
+
+<center> <h1> Introduction </h1> </center>
+
+Youtuber is a rising occupation. They are a group of people who "upload, produce, or appear in videos on the video-sharing website YouTube"$^{[1]}$. Youtubers are popular among young people and children, and some youtubers earned a lot of money. Therefore, youtuber is a most desired career for young people, even more desired than actor$^{[2][3]}$.
+
+Youtubers make money through ads, brand co-operations and patrons from video watchers$^{[4]}$. All the profits are based on popularity. Therefore, to determine how successful a youtuber is, the favorite measure is the number of subscribers they have. Subscribers sign up to receive email notifications of the youtuber's newly updated videos. People can become subscribers for free, and can unsubscribe at any time.
+
+For a youtuber, a critical question is how fast he can attract subscribers, which determines how much money he can earn. In this report, we are going to analyze the time series of number of subscribers and estimated earnings in the recent month of two youtubers. One is pewdiepie, the youtuber with the most subscribers with a 8-year-long YouTube life$^{[5]}$. The other is megamogwai, a player of the Gwent card game, who uploaded his first video in 2014$^{[6]}$. We want to fit models on their statistics, to see how profitable the career is as a youtuber, and see if there is any difference between well-known and not-that-famous youtubers.
+
+
+<center> <h1> Method </h1> </center>
+
+<h2> Data </h2>
+The two datasets are retrieved from socialblade.com$^{[7][8]}$ on March 4, 2018. The datasets contains the statistics of pewdiepie ("pew" for short) and megamogwai ("mog" for short) from February 3rd to March 3rd.
+
+For each dataset, the "Date" column represents the date of the record. The "Tot" column gives the total number of subscribers of the channel. The "New" column represents the difference of subscriber number between the day and the previous day. The "High" column is the highest profit earned in the day estimated by socialblade.com. For pewdiepie, the unit of the High column data is 1 thousand dollars. The datasets contain 29 rows because the website only releases the most recent 30 days.
+
+<h2> Models </h2>
+The basic models we use are ARIMA models (ARIMA(p,1,q)) for the Tot series. Because New series is the difference of the Tot series, ARMA(p,q) models are used. Seasonality of 7 is also considered to fit the New series. For the High series, ARMA models with trend of Tot is favorable.
+
+ARMA models$^{[9]}$:
+$$
+Y_n = \phi_1 Y_{n-1}+\phi_2Y_{n-2}+\dots+\phi_pY_{n-p} + \epsilon_n +\psi_1 \epsilon_{n-1} +\dots+\psi_q\epsilon_{n-q}
+$$
+
+SARMA models$^{[10]}$:
+$$
+\phi(B)\Phi(B^i)(Y_n-\mu)=\psi(B)\Psi(B^i)\epsilon_n
+$$
+In this report we will use $\Psi(B^i)=(1-B^7)$.
+
+ARIMA(p,1,q) models$^{[10]}$:
+$$
+\Phi(B)((1-B)^dY_n-\mu)=\Psi(B)\epsilon_n
+$$
+
+ARMA model with trend$^{[10]}$:
+$$
+\Phi(B)(Y_n-\mu-\beta t_n)=\Psi(B)\epsilon_n
+$$
+
+<center> <h1> Analyses </h1> </center>
+
+<h2> Analysis 0 - plotting data </h2>
+Here we plot the New, Tot and High series of pewdiepie against time. It looks like the channel is cummulating around 20-40 thousand subscribers each day, and the total number of subscribers is consistently increasing. The estimated earnings got a high value on the first day (Feb 3rd), and after that, the value is fluctuating around 30.
+
+```{r, echo=FALSE}
+############## data preparation ###################
+pew=read.csv("pewdiepie.csv")
+mog=read.csv("mogwai.csv")
+pew['Ind']=seq(0,28)
+mog["Ind"]=seq(0,28)
+par(mfrow=c(3,1))
+plot(pew$Ind,pew$New/1000,type="l",ylab="New subscribers (Thousand)",xlab="Days from Feb 3, 2018")
+plot(pew$Ind,pew$Tot/1000000,type="l",ylab="Total subscribers (Million)",xlab="Days from Feb 3, 2018")
+plot(pew$Ind,pew$High,type="l",ylab="Highest estimated earnings",xlab="Days from Feb 3, 2018")
+```
+
+Also, we plot the autocorrelation function of the three series. The New series and the High series seem independent, while the Tot series observes high autocorrelation.
+
+```{r,echo=FALSE}
+par(mfrow=c(3,1))
+acf(pew$New)
+acf(pew$Tot)
+acf(pew$High)
+```
+
+For megamogwai, the plot of the three series are shown below. The New series may be stationary, while the High series does not seem stationary. 
+
+```{r,echo=FALSE}
+par(mfrow=c(3,1))
+plot(mog$Ind,mog$New,type="l",ylab="New subscribers",xlab="Days from Feb 3, 2018")
+plot(mog$Ind,mog$Tot,type="l",ylab="Total subscribers",xlab="Days from Feb 3, 2018")
+plot(mog$Ind,mog$High,type="l",ylab="Highest estimated earnings",xlab="Days from Feb 3, 2018")
+```
+
+Also, the autocorrelation functions are plotted below. The New series may be appropriate for an AR(2) model. The Tot series and the High series observe high autocorrelation
+
+```{r,echo=FALSE}
+par(mfrow=c(3,1))
+acf(mog$New)
+acf(mog$Tot)
+acf(mog$High)
+```
+
+<h2> Analysis 1a - New subscriber for pewdiepie </h2>
+The new subscriber series is the difference of the total subscriber series. Therefore, it is reasonable to use an ARMA(p,q) model to fit the new subscriber series, and the total subscriber series is the corresponding ARIMA(p,1,q) model. Also, a seasonality of 7 may be considered, as people are more likely to behave in a weekly pattern.
+
+(1) ARMA models
+
+We tried different values of p and q's, and compare the AICs to select a most appropriate ARMA model for the New series of pewdiepie. The AICs of the models are shown below.
+
+```{r,echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+pew_aic_table <- aic_table(pew$New,4,5)
+pew_aic_table
+```
+
+The table supports ARMA(0,0) and ARMA(0,3). To select a better model, we check the residuals of the model by plotting their autocorrelation functions and q-q plots.
+
+```{r,echo=FALSE}
+pew_arma00 <- arima(pew$New,order=c(0,0,0))
+pew_arma03 <- arima(pew$New,order=c(0,0,3))
+par(mfrow=c(2,2))
+acf(resid(pew_arma00),main="Autocorrelation for ARMA(0,0) residuals")
+acf(resid(pew_arma03),main="Autocorrelation for ARMA(0,3) residuals")
+qqnorm(resid(pew_arma00),main="Q-Q plot for for ARMA(0,0) residuals")
+qqline(resid(pew_arma00))
+qqnorm(resid(pew_arma03),main="Q-Q plot for for ARMA(0,3) residuals")
+qqline(resid(pew_arma03))
+```
+
+From the q-q plots, we can see that a normal model is more appropriate for the residuals of the ARMA(0,3) model. Therefore, an ARMA(0,3) model is more appropriate for the New subscriber series of pewdiepie.(
+$Y_n=\mu+\epsilon_n+\psi_1\epsilon_{n-1}+\psi_2\epsilon_{n-2}+\psi_3\epsilon_{n-3},\ \epsilon_i\sim N(0,\sigma^2)$).
+
+(2) SARMA model
+```{r,echo=FALSE}
+aicpews7=AIC(arima(pew$New,order=c(0,0,3),seasonal=list(order=c(1,0,0),period=7)))
+```
+If we add seasonality of a week (7 days) to the ARMA(0,3) model, the AIC is `r aicpews7`, larger than the ARMA(0,3) model. Therefore, the ARMA(0,3) model is preferred.
+
+
+(3) Result
+```{r,echo=FALSE}
+pew_arma03
+```
+
+The model for the New subscriber number is 
+$$
+Y_n=27132+\epsilon_n+0.1067\epsilon_{n-1}+0.6932\epsilon_{n-2}+0.4856\epsilon_{n-3},\ \epsilon_i\sim N(0,3\times10^7)
+$$
+
+Therefore, for the Total subscriber number, the model should be ARIMA(0,1,3),
+$$
+(1-B)Y_n-27132=\epsilon_n+0.1067\epsilon_{n-1}+0.6932\epsilon_{n-2}+0.4856\epsilon_{n-3},\ \epsilon_i\sim N(0,3\times10^7)
+$$
+
+<h2> Analysis 1b - New subscriber for megamogwai </h2>
+
+(1) ARMA models
+```{r,echo=FALSE}
+mog_aic_table <- aic_table(mog$New,4,5)
+mog_aic_table
+```
+
+The table supports ARMA(2,0), which is consistent with the autocorrelation plot of the New series. The autocorrelation functions and q-q plots of the residuals of the model is plotted below.
+
+```{r,echo=FALSE}
+mog_arma20 <- arima(mog$New,order=c(2,0,0))
+par(mfrow=c(2,1))
+acf(resid(mog_arma20),main="Autocorrelation for ARMA(2,0) residuals")
+qqnorm(resid(mog_arma20),main="Q-Q plot for for ARMA(2,0) residuals")
+qqline(resid(mog_arma20))
+```
+
+The The model is 
+$$
+Y_n=\mu+\epsilon_n+\phi_1(Y_{n-1}-\mu)+\phi_2(Y_{n-2}-\mu),\ \epsilon_i\sim N(0,\sigma^2)
+$$
+
+(2) SARMA model
+```{r,echo=FALSE}
+aicmogs7=AIC(arima(pew$New,order=c(2,0,0),seasonal=list(order=c(1,0,0),period=7)))
+```
+If we add seasonality of a week (7 days) to the ARMA(2,0) model, the AIC is `r aicmogs7`, much larger than the ARMA(2,0) model. Therefore, the ARMA(2,0) model is preferred.
+
+(3) Result
+```{r,echo=FALSE}
+mog_arma20
+```
+
+The model for the New subscriber numebr is 
+$$
+Y_n=18.2128+\epsilon_n+0.1518(Y_{n-1}-18.2128)+0.5613(Y_{n-2}-18.2128),\ \epsilon_i\sim N(0,172)
+$$
+Therefore, for the Total subscriber number, the model should be ARIMA(2,1,0),
+$$
+(1-0.1518B-0.5613B^2)((1-B)Y_n-18.2128)=\epsilon_n,\ \epsilon_i\sim N(0,172)
+$$
+
+<h2> Analysis 2a -  estimated earnings for pewdiepie </h2>
+
+We are to fit the corresponding SARMA model and trend model on Tot series.
+
+(1) ARMA model
+```{r,echo=FALSE}
+pew_h=aic_table(pew$High,4,5)#ARMA(1,0)
+pew_h
+```
+
+From the table we can see that the most appropriate model is ARMA(1,0).
+
+(2) SARMA model
+```{r, echo=FALSE}
+pew_h_week=arima(pew$High,order=c(1,0,0),seasonal=list(order=c(1,0,0),period=7))
+aicpewhw=AIC(pew_h_week)
+```
+
+If we add seasonality of a week (7 days) to the ARMA(2,0) model, the AIC is `r aicpewhw`, smaller than the ARMA(1,0) model. Therefore, the ARMA(1,0) model with a seasonality of 7 is preferred.
+
+(3) ARMA model with trend
+```{r,echo=FALSE}
+pew_h_t <- arima(pew$High,order=c(1,0,0),xreg=pew$Tot/1000)
+aicpewht=AIC(pew_h_t)
+```
+
+If we add trend by total number of subscribers to the ARMA(1,0) model, the AIC is `r aicpewht`, smaller than the ARMA(1,0) model and seasonality model. Therefore, the ARMA(1,0) model with trend by Tot is preferred.
+
+(4) Result
+
+The analysis shows that the most appropriate model for the estimated income series is the ARMA(1,0) with trend by total number model, which is represented as $Y_n-\mu=\phi_1(Y_{n-1}-\mu)+\epsilon_n+\beta Tot$.
+
+```{r,echo=FALSE}
+pew_h_t
+```
+
+The model turns out to be 
+$$
+Y_n-6775.169=0.8408(Y_{n-1}-6775.169)+\epsilon_n-0.1105\times \frac{Tot}{1000}
+$$
+
+<h2> Analysis 2a -  estimated earnings for megamogwai </h2>
+
+(1) ARMA model
+```{r,echo=FALSE}
+mog_h=aic_table(mog$High,4,5)#ARMA(1,0)
+mog_h
+```
+
+From the table we can see that the most appropriate model is ARMA(1,0).
+
+(2) SARMA model
+```{r, echo=FALSE}
+mog_h_week=arima(mog$High,order=c(1,0,0),seasonal=list(order=c(1,0,0),period=7))
+aicmoghw=AIC(mog_h_week)
+```
+
+If we add seasonality of a week (7 days) to the ARMA(2,0) model, the AIC is `r aicmoghw`, larger than the ARMA(1,0) model. Therefore, the ARMA(1,0) null model is preferred.
+
+(3) ARMA model with trend
+```{r,echo=FALSE}
+mog_h_t <- arima(mog$High,order=c(1,0,0),xreg=mog$Tot)
+aicmoght=AIC(mog_h_t)
+```
+
+If we add trend by total number of subscribers to the ARMA(1,0) model, the AIC is `r aicmoght`, smaller than the ARMA(1,0) model and seasonality model. Therefore, the ARMA(1,0) model with trend by Tot is preferred.
+
+(4) Result
+
+The analysis shows that the most appropriate model for the estimated income series is the ARMA(1,0) with trend by total number model.
+
+```{r,echo=FALSE}
+mog_h_t
+```
+
+The model turns out to be 
+$$
+Y_n+4204.906=0.6941(Y_{n-1}+4204.906)+\epsilon_n+0.00955\times Tot
+$$
+
+<center> <h1> Discussion </h1> </center>
+
+<h2> Estimated earnings </h2>
+For the estimated earnings, both the data of pewdiepie and megamogwai can be fitted by an AR(1) model with trend by the total subscriber number. This means that both previous income and total subscriber number plays an important row in earnings of a youtuber. It is noticeable that the coefficient of the total subscriber number for pewdiepie is negative. It may result from the first outlier of the income data. If we leave the first
+record out, and fit the model again.
+
+```{r,echo=FALSE}
+pew_h_t1 <- arima(pew$High[2:29],order=c(1,0,0),xreg=pew$Tot[2:29]/1000)
+pew_h_t1
+```
+
+The new model has a much lower AIC than the model in Result, and can be represented as 
+$$
+Y_n-589.7633=0.5302(Y_{n-1}-589.7633)+\epsilon_n+0.0102\times \frac{Tot}{1000}
+$$
+Therefore, it is generally reasonable to say that more subscribers mean more income.
+
+<h2> Subscriber number </h2>
+For the number of new subscribers, the data of pewdiepie and the data of megamogwai show two different patterns. A MA(3) model is appropriate to fit pewdiepie data, who is famous and productive. An AR(2) model is appropriate for megamogwai, who is a normal youtuber. It is surprising to see pewdiepie's subscriber number increase in such a steady pace. For normal youtubers like megamogwai, the subscriber number is still increasing, but in a relatively low speed. With the property of an AR model, it is crucial for the new youtubers to get a relatively high subscriber number with their first several videos, or with one extremely famous videos that is popular for about more than two days in a row. However, the already famous youtubers, according to the MA model, do not need to attract new subscribers with one or two popular videos, their number of subscribers will increase automatically.
+
+<center> <h1> Reference </h1> </center>
+
+[1]https://en.oxforddictionaries.com/definition/youtuber
+
+[2]http://metro.co.uk/2018/01/19/children-now-more-likely-to-want-to-become-youtubers-than-actors-7241396/
+
+[3]https://www.tubefilter.com/2017/05/24/most-desired-career-young-people-youtube/
+
+[4]http://www.bbc.co.uk/newsbeat/article/42395224/evan-edinger-the-five-ways-youtubers-make-money
+
+[5]https://www.youtube.com/user/PewDiePie/featured
+
+[6]https://www.youtube.com/user/MegaaMogwai
+
+[7]https://socialblade.com/youtube/user/pewdiepie/monthly, retrieved March 4, 2018
+
+[8]https://socialblade.com/youtube/user/megaamogwai/monthly, retrieved March 4, 2018
+
+[9]https://ionides.github.io/531w18/04/notes04.html
+
+[10]https://ionides.github.io/531w18/06/notes06.html
+
+----

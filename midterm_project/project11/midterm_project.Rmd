@@ -1,0 +1,231 @@
+---
+title: "Human Duodenal MMC Phase 3 Motility Model Based on Manometry Readings"
+date: "3/7/2018"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\AR{\Phi}
+\newcommand\MA{\Psi}
+\newcommand\eqspace{\quad\quad\quad}
+
+-----------------------------------
+
+```{r knitr-opts,include=FALSE,cache=FALSE,purl=FALSE}
+library(pomp)
+library(knitr)
+prefix <- "intro"
+opts_chunk$set(
+  progress=TRUE,
+  prompt=FALSE,tidy=FALSE,highlight=TRUE,
+  strip.white=TRUE,
+  warning=FALSE,
+  message=FALSE,
+  error=FALSE,
+  echo=TRUE,
+  cache=TRUE,
+  cache_extra=rand_seed,
+  results='markup',
+  fig.show='asis',
+  size='small',
+  fig.lp="fig:",
+  fig.path=paste0("figure/",prefix,"-"),
+  cache.path=paste0("cache/",prefix,"-"),
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=4,fig.width=6.83,
+  dpi=300,
+  dev='png',
+  dev.args=list(bg='transparent')
+)
+
+```
+```{r opts,include=FALSE,cache=FALSE}
+options(
+  keep.source=TRUE,
+  encoding="UTF-8"
+)
+```
+
+------------------------------------------
+
+## 1. Introduction
+
+* **<big>Migrating Motor Complex (MMC)</big>:** In the fasted state, human gastrointestinal motility become organized as a cyclical motor pattern MMC consisting of: quiescent phase 1; phase 2 showing an increasing number of intermittent but irregular and rarely propulsive contractions; and phase 3 activity that is a group of the largest amplitude peristaltic waves occurring at their maximum frequency, and the entire group of contractions migrates distally over a long distance in an organized fashion. Ample experimental data support a coupling between interdigestive GI motility and secretion. Phase 1 secretion is characterized by minimal exocrine pancreatic and gastric secretion. During phase 2 secretion increases. Peak gastric acid secretion and bicarbonate secretion into the duodenum occur coinciding with the start of phase 3.
+
+* Therefore, an insight into phase 3, the decisvie factor of gastrointestinal motility and secreation, helps us better predict drug transit and dissolution in gastrointestinal tract and subsequent drug absorption profile.
+
+* This study is primarily aimed at building up a model of duodenal MMC phase 3 motility behavior in the fasted state based on manometry data via time series analysis.
+
+
+## 2. Data Exploration
+
+* The original manometry data was sampled every 0.1s for 7hrs. For the purpose of course project, the data in this study was subsetted by extracting one value out of every 1s during the phase 3 activity of first MMC cycle after determination at mid-duodenum of one subject. The summary info and plot along the time course are displayed below.
+```{r data import, include=FALSE}
+B0041<-read.csv("B0041.csv")
+select1<-B0041[32000:35399,c(1,6)]
+select1$rnum<-1:nrow(select1)
+select1$flag<-ifelse((select1$rnum-1)/10==as.integer(select1$rnum/10),1,0)
+select2<-select1[which(select1$flag==1),2]
+```
+```{r, echo=FALSE}
+plot.ts(select2, xlab="Time (s)", ylab="Pressure (mmHg)")
+summary(select2)
+sd1<-round(sd(select2),2)
+paste("SD =",sd1)
+```
+
+* One may first want to check the potential seasonality since phase 3 is known for regular contractions relative to the other two phases. There is an obvious pattern occurring between every 6 lags and the period of the most prominant frequency in the periodogram is also 6s, indicating a mainstream period of 6s per peak in phase 3, which is in concert with the literature claim "10-12 contractions per minute".
+```{r seasonality, echo=FALSE}
+acf(select2)
+f=spectrum(select2,spans=c(6,6),main="Smoothed Periodogram")
+paste("period =",1/f$freq[which.max(f$spec)])
+```
+After differencing by 6 lags, the seasonal pattern disappear in the ACF plot and time plot looks more regularized than before, suggesting adding a seasonal component to the model.
+```{r difference, echo=FALSE}
+diff_6=diff(select2,6)
+acf(diff_6)
+plot.ts(diff_6)
+```
+
+
+## 3. ARMA Model
+
+* A time series data can be decomposed into three components: trend, seasonal and random. It's easier to set out to find a suitable autoregressive and moving average (ARMA) model for the random part.
+
+```{r decomposition, include=TRUE}
+ts_1 <- ts(select2,frequency = 6)
+de_1 <- decompose(ts_1)
+plot(de_1)
+```
+
+* We seek to fit a stationary Gaussian ARMA(p,q) model with parameter vector $\theta=(\ar_{1:p},\ma_{1:q},\mu,\sigma^2)$ given by
+$$ \ar(B)(Y_n-\mu) = \ma(B) \epsilon_n,$$
+where 
+$$\begin{eqnarray}
+\mu &=& \E[Y_n]
+\\
+\ar(x)&=&1-\ar_1 x-\dots -\ar_px^p,
+\\ 
+\ma(x)&=&1+\ma_1 x+\dots +\ma_qx^q, 
+\\
+\epsilon_n&\sim&\mathrm{ iid }\, N[0,\sigma^2].
+\end{eqnarray}$$
+
+* Let's tabulate some AIC values for a range of different choices of $p$ and $q$. The ARMA(2,2) model provides a good preditve power. We will choose it for the subsequent complicated model.
+```{r ARMA AIC, echo=FALSE}
+aic_table_1 <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+rand_1 <- de_1$random
+aic_table_arma <- aic_table_1(rand_1,4,5)
+kable(aic_table_arma,digits=2)
+```
+
+* Let's fit the ARMA(2,2) model recommended by consideration of AIC.
+```{r ARMA, include=TRUE}
+arima_1<-arima(rand_1, order = c(2,0,2))
+arima_1
+```
+
+* In the first plot, residuals generally distributed aroud the line. Thus the residuals follow normal distribution. The Shapiro-Wilk normality test also shows we can not reject the null hypothesis. In the third plot, the residuals generally distributed aroud the line=0. In the fourth plot, residuals are generally inside the dashed line showing pointwise acceptance regions at the 95% confidence level under a null hypothesis of no correlation between noise. Therefore, we can not reject the null hypothesis of Gaussian noise.
+```{r ARMA diagnostics, echo=FALSE}
+qqnorm(arima_1$residuals)
+qqline(arima_1$residuals)
+shapiro.test(arima_1$residuals)
+plot(arima_1$residuals)
+acf(arima_1$residuals,na.action = na.pass)
+```
+
+
+## 5. SARMA Model
+
+* Let's continue by adding the seasonable component. The SARMA$(2,2)\times(P,Q)_{6}$ model is
+$\eqspace \ar(B)\AR(B^{6}) (Y_n-\mu) = \ma(B)\MA(B^{6}) \epsilon_n$,
+where $\{\epsilon_n\}$ is a white noise process and
+$$\begin{eqnarray}
+\mu &=& \E[Y_n]
+\\
+\ar(x)&=&1-\ar_1 x-\ar_2x^2,
+\\ 
+\ma(x)&=&1+\ma_1 x+\ma_2x^2, 
+\\
+\AR(x)&=&1-\AR_1 x-\dots -\AR_px^P,
+\\ 
+\MA(x)&=&1+\MA_1 x+\dots +\MA_qx^Q.
+\end{eqnarray}$$
+
+* We need to tabulate some AIC values for a range of different choices of $P$ and $Q$. The $SARMA(2,2)\times(2,1)_{6}$ model is chosen based on the AIC table.
+```{r SARIMA AIC, echo=FALSE}
+aic_table_2 <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order = c(2,0,2),seasonal = list(order=c(p,0,q),period=6))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> SAR",0:P, "</b>", sep=""),paste("SMA",0:Q,sep=""))
+  table
+}
+sarima_aic_table <- aic_table_2(select2,3,3)
+kable(sarima_aic_table,digits=2)
+```
+```{r SARIMA, include=TRUE}
+sarima_1<-arima(select2,order = c(2,0,2),seasonal=list(order=c(2,0,0),period=6))
+sarima_1
+```
+```{r SARIMA diagonostics, echo=FALSE}
+acf(sarima_1$residuals,na.action = na.pass)
+```
+Therefore, the SARIMA model is acceptable.
+
+
+## 6. Forecast
+* To better examine the model constructed, 90% of the data is taken as train data and 10% as test data to do the forecasting. Most of the points were captured in the 95% confidence interval except some extreme peaks.
+```{r forecast, include=TRUE}
+train <- select2[1:((0.9)*length(select2))]
+test <- select2[(0.9*length(select2)+1):length(select2)]
+train22 <- arima(train,order = c(2,0,2),seasonal=list(order=c(2,0,0),period=6))
+pred_ <- predict(train22, n.ahead = (length(select2)-(0.9*length(select2))))
+ts.plot(test,pred_$pred,col=1:2)
+u=pred_$pred+1.96*pred_$se
+l=pred_$pred-1.96*pred_$se
+xx = c(time(u), rev(time(u)))
+yy = c(l, rev(u))
+polygon(xx, yy, border = 8, col = gray(.6, alpha = .2))
+lines(pred_$pred, type="p", col=2)
+```
+
+
+## 7. Conclusion and Discussion
+
+* The $SARMA(2,2)\times(2,0)_{6}$ model has been successfully constructed to simulate the MMC phase 3 motility pattern, though some further optimation might be needed to account for the extreme peaks;
+
+* The unsatisfactory part can be explained as the data has an unstable standard deviation and is right skewed. However, many time series analysis methods are built on the assumption of weak stationary: i. constant mean value function; and ii. the autocovariance function only depends on the length of time interval function;
+
+* In the next step, we will
+    + aggrregate all the phase 3 manometry data of the subject in mid-duodenum throughout the 7hrs to get a better idea of the motility pattern along the time course
+    + accumulate the phase 3 manometry data of all the subjects at different sites along the gastrointestinal tract,  build up a hierachical model to investigate the intra- and inter- subject variance and find out some significant covariable.
+
+
+## 8. Reference
+
+* DiMagno EP. Regulation of interdigestive gastrointestinal motility and secretion. Digestion 1997; 58 Suppl 1: 53-5.
+* Schuster MM, Crowell MD, Koch KL. Schuster Atlas of Gastrointestinal Motility in Health and Disease. 2 ed. London: BC Decker Inc; 2002.
+* Barrett KE. Gastrointestinal physiology.  McGraw-Hill's AccessMedicine. 2nd ed. New York, N.Y.: McGraw-Hill Education LLC,; 2014. p. xii, 321 p.
+* Orlaith Burke, "Classical Decomposition" Statistical Methods Autocorrelation: Decomposition and Smoothing(2011): 15-16.

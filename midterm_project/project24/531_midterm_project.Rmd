@@ -1,0 +1,392 @@
+---
+title: "A Study on US Natural Gas Storage and Weather"
+author: "STATS 531 Midterm Project"
+date: "March 07, 2018"
+output:
+  html_document:
+    highlight: tango
+    theme: cosmo
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE, fig.align='center', fig.height = 4, fig.width = 8)
+
+library(knitr)
+library(readr)
+library(data.table)
+library(ggplot2)
+library(reshape2)
+library(forecast)
+library(mFilter)
+```
+
+------
+
+------
+
+# 1. Introduction, Motivation, and Project Goal
+
+* Natural gas is the second largest energy consumption source in the United States. Natural gas is an important resource for heating in Winter and producing electricity in Summer, so in general, its storage is highly seasonal due to the heating and cooling demand. In the short-term, the storage level is also sensitive to the extreme weather change. 
+
+* Understanding the pattern and fluctuation of the natural gas storage is important for many utility and commodity trading companies. This project is interested in:
+
+  1) Using time series analysis methods to study the pattern of natural gas storage and weather, and the relationship between them. 
+
+  2) Based to the analysis, fit some reasonable models on the natural gas storage.
+
+
+* Dataset: This project will use data from 2005 to 2016. The US natural gas storage change data is from eia.gov (U.S. Energy Information Administration). For the weather data, instead of using temperature and humidity, HDD (heating degree days) and CDD (cooling degree days) are used because they are the measurements designed to quantify the demand for energy needed to heat or cool a building. For example, if the day's average temperature is 50°F, its HDD is 15. If that day's average is above 65°F, the result is set to zero.(Investopedia) In this project, the HDD and CDD are combined as CHDD, taking whichever is higher of that day, to jointly analyze the temperature influence during both summer and winter.
+
+Here is the glance of the dataset to get a better sense of the data.
+
+```{r echo=TRUE}
+data = read_csv("data.csv")
+data$OprDate = as.Date(data$OprDate, "%m/%d/%y")
+head(data)
+summary(data)
+```
+
+------
+
+------
+
+# 2. Data Analysis
+
+## 2.1 Exploratory Analysis
+
+```{r}
+data_plot = reshape2::melt(data[,c(1,2,5)], id=c("OprDate"))
+data_plot$variable = as.factor(data_plot$variable)
+levels(data_plot$variable) = c("ΔStorage (Billions Cubic Feet)", "USchdd °F")
+```
+
+```{r echo=TRUE}
+ggplot(data_plot, aes(x=OprDate)) + geom_line(aes(y=value, col=variable)) + 
+                                    scale_colour_manual(values=c("#1ABC9C", "#F39C12")) + 
+                                    labs(title="Fig-1: Natural Gas Storage Change vs Degree Day") + 
+                                    labs(x ="Year", y = "Value", colour='') + 
+                                    theme(legend.position="top",
+                                          plot.title = element_text(hjust = 0.5, face="bold"),
+                                          panel.background = element_blank())
+```
+
+In Figure1, the green line represents the daily natural gas storage change, and the orange line represents the daily heating degree day or cooling degree day (whichever is larger on that day) from 2005 to 2016.
+
+* We can see that the storage change and weather data have strong seasonality. Although the pattern is relatively stable from year to year, some extreme spikes do appear such as in 2013-14 winter due to unusual weather.
+
+* What's more, it is intuitive that the storage change is negatively related to the degree day. The larger temperature deviation from 65°F, the more natural gas storage decreases due to higher heating or cooling demand, especially during the winter.
+
+Thus, we can conclude that it could be plausible to study the association between the storage change and degree day. Also, it is worth taking detailed analysis on the seasonality (see section 2.2) and consider using SARIMA model to fit the data (see section 3.2). Furthermore, although it is not obvious that there is any trend in the data from the plot directly, it would be helpful to use smoothing method to do time series decomposition to reach a more solid conclusion (see section 2.3).
+
+```{r}
+# data processing
+weekly_data = data
+weekly_data$OprDate = paste0(format(weekly_data$OprDate, "%Y"), "-",
+                             ifelse(week(weekly_data$OprDate)<10, 
+                                    paste0(0, week(weekly_data$OprDate)), 
+                                    week(weekly_data$OprDate)))
+weekly_Storage = aggregate(weekly_data["Storage"], by=weekly_data["OprDate"], median)
+weekly_USchdd = aggregate(weekly_data["USchdd"], by=weekly_data["OprDate"], median)
+bind_weekly = ts(cbind(weekly_Storage$Storage, weekly_USchdd$USchdd), frequency=52)
+
+monthly_data = data
+monthly_data$OprDate = format(monthly_data$OprDate, "%Y-%m")
+monthly_Storage = aggregate(monthly_data["Storage"], by=monthly_data["OprDate"], median)
+monthly_USchdd = aggregate(monthly_data["USchdd"], by=monthly_data["OprDate"], median)
+bind_monthly = ts(cbind(monthly_Storage$Storage, monthly_USchdd$USchdd), start=2005, frequency=12)
+```
+
+------
+
+## 2.2 Seasonality Analysis
+
+In this section, spectrum and ACF methods are used to study the seasonality in the data.
+
+```{r echo=TRUE}
+spectrum(bind_weekly, spans=c(5, 3), col=c("#1ABC9C","#F39C12"), 
+         main="", xlab="Frequency (cycle/year)")
+title(main="Fig-2: Smoothed Periodogram for\nWeekly Storage Change (Green) and Degree Day (Orange)", 
+      line = -2, outer=TRUE)
+```
+
+To better interpret the frequency, the weekly data (the median data point of each week) are used to calculate the spectrum. In Figure2, the green solid line represents the spectrum of weekly natural gas storage change, and the orange dotted line represents the spectrum of weekly degree day. We set the time series frequency as 52, so the x-axis represents cycle/year.
+
+* Firstly, we can see that the most powerful frequencies are at 1 and 2, which indicates that there is a strong annual cycle, and a less strong cycle around 6 months. The blue cross on the top right corner shows the 0.95 confidence interval. These two peaks both fall into the CI, so that they are statistically significant. 
+
+* This is consistent with the demand cycle of natural gas as introduced in section 1. The major cycle is around 1 year, which is due to the strong heating demand during winter, and natural gas is one of the major resources for heating. The half-year cycle is due to using natural gas to generate electricity to meet the cooling demand during summer.
+
+* Secondly, the cycle patterns of spectrum for the storage change and degree day are highly consistent with each other. This also illustrates that these two data are associated with each other.
+
+```{r echo=TRUE}
+par(mfrow=c(1,2))
+acf(monthly_Storage$Storage, main="Fig-3.1 Monthly Storage Change", lag=36)
+acf(monthly_USchdd$USchdd, main="Fig-3.2 Monthly USchdd", lag=36)
+```
+
+We then zoom-out the time interval to get monthly data (taking the median data point for each month) and use ACF to double justify our findings. 
+
+* From Figure3, we can see a strong lag around every 12 months, and a less strong lag round every 6 months. This supports our findings discussed above.
+
+------
+
+## 2.3 Decomposition Analysis
+
+Although there is no obvious sign of existing any trend in the data from the exploratory analysis, it would be helpful to use smoothing method to decomposite the data and extract the low-frequency part. In this section, Loess smoothing (a local regression smoother) is used to decomposite the time series.
+
+```{r echo=TRUE}
+freq = 12
+decomp_data = monthly_Storage
+
+s_data = ts(decomp_data$Storage, start=2005, frequency=freq)
+s_low = ts(loess(Storage ~ seq(1:length(Storage)), decomp_data, span=0.5)$fitted, 
+           start=2005, frequency=freq)
+s_hi1 = ts(s_data - loess(Storage ~ seq(1:length(Storage)), decomp_data, span=0.1)$fitted, 
+          start=2005, frequency=freq)
+s_hi2 = ts(s_data - loess(Storage ~ seq(1:length(Storage)), decomp_data, span=0.05)$fitted, 
+          start=2005, frequency=freq)
+s_cycles1 = s_data - s_hi1 - s_low
+s_cycles2 = s_data - s_hi2 - s_low
+s_cycles = s_cycles2
+
+plot(ts.union(s_data, s_hi1, s_hi2, s_low, s_cycles1, s_cycles2), col="#1ABC9C", main="")
+title(main="Fig-4.1 Decomposition of Monthly Storage Change\nas Trend + Noise + Cycles")
+```
+
+```{r echo=TRUE}
+freq = 12
+decomp_data = monthly_USchdd
+
+dd_data = ts(decomp_data$USchdd, start=2005, frequency=freq)
+dd_low = ts(loess(USchdd ~ seq(1:length(USchdd)), decomp_data, span=0.5)$fitted, 
+            start=2005, frequency=freq)
+dd_hi1 = ts(dd_data - loess(USchdd ~ seq(1:length(USchdd)), decomp_data, span=0.1)$fitted, 
+           start=2005, frequency=freq)
+dd_hi2 = ts(dd_data - loess(USchdd ~ seq(1:length(USchdd)), decomp_data, span=0.05)$fitted, 
+           start=2005, frequency=freq)
+dd_cycles1 = dd_data - dd_hi1 - dd_low
+dd_cycles2 = dd_data - dd_hi2 - dd_low
+dd_cycles = dd_cycles2
+
+plot(ts.union(dd_data, dd_hi1, dd_hi2, dd_low, dd_cycles1, dd_cycles2), col="#F39C12", main="")
+title(main="Fig-4.2 Decomposition of Monthly Degree Day\nas Trend + Noise + Cycles")
+```
+
+Figure4-1 and Figure4-2 show the decomposition of monthly storage change and degree day in terms of trend, noise, and cycles. After trying different span values, we used a span of 0.5 to extract low-frequency trend, and a span of 0.1 and 0.05 to extract two levels of high frequency. 
+
+* Trend: After smoothing, it seems that the trends are not stable for storage change and degree day, and they go for opposite directions. The degree day seems to have a downtrend from 2014 to 2016, which might be due to two folds. On one hand, 2013-14 winter experienced some extremely cold days, causing a bump in the trend. On the other hand, we only observed 11 years data in this project, however, there might exist other long-term cycles that can not be captured from our limited data points. The trend of the storage change is consistent with the temperature movement, with a higher demand during 2013-14 winter.
+
+* Cycles: When span = 0.1, the major annual cycle is nicely extracted. However, from section 2.2, we learned that there exists two major frequencies in the data. Thus, we further tried to set span = 0.05 so that the significant half-year cycle can also be extracted.
+
+* Noise: When comparing the low frequencies for both data under span = 0.1 and span = 0.05, we can see that the residuals under span = 0.1 still shows cycles, while the residuals are much more uncorrelated when span = 0.05. The ACF plots on the residuals (Figure5) also confirmed that the former residuals contain a lag of 3 months showing seasonality, while the latter residuals are less correlated.
+
+```{r}
+par(mfrow=c(1,2))
+acf(s_hi1, main="span = 0.1", lag=72)
+acf(s_hi2, main="span = 0.05", lag=72)
+title(main="Fig-5.1 Monthly Storage Change Residuals", outer=TRUE, line=-1)
+
+par(mfrow=c(1,2))
+acf(dd_hi1, main="span = 0.1", lag=72)
+acf(dd_hi2, main="span = 0.05", lag=72)
+title(main="Fig-5.2 Monthly Degree Day Residuals", outer=TRUE, line=-1)
+```
+
+------
+
+------
+
+# 3. Model Fitting
+
+In this section, we are going to fit two models on the weekly cycles of natural gas storage change and compare the performance.
+
+* SARIMA$(p,d,q)\times(P,D,Q)_{n}$ Model: Based on the analysis above, we know that a Seasonal ARIMA model could be a good candidate model. Since we are fitting monthly data, we will pick the major frequency and set period = 12.
+
+* SARIMA Errors Model: We have seen that the storage change and degree day have a strong association, so we could also consider ARMA Errors Model to fit the storage change by add noise to the degree day, and we expect that the model could catch the second major half-year cycle in the model.
+
+We are going to use AIC to pick parameters, diagnose model residuals, and compare the performance between the two models.
+
+------
+
+## 3.1 Fit a SARIMA Model
+
+```{r echo=TRUE}
+sarima_aic_table = function(data, P, Q, xreg = NULL){
+  table = matrix(NA, (P+1), (Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1, q+1] = arima(data, order = c(p,0,q), seasonal=list(order=c(0,0,0), period=12))$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR", 0:P, "</b>", sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+res_sarima_aic_table = sarima_aic_table(s_cycles, 5, 5)
+
+kable(res_sarima_aic_table, digits = 2)
+```
+
+We select ARMA$(3,3)$ as the candidate. ARMA$(2,3)$ and ARMA$(4,1)$ are not chosen because by adding one more parameter to the model, the AIC value should increase at most by 2, because $$AIC = -2 \times {\ell}({\theta^*}) + 2D$$ where ${\ell}({\theta^*})$ is the maximized log likelihood and D is the number of parameters. However, ARMA$(3,3)$ - ARMA$(2,3)$ and ARMA$(4,2)$ - ARMA$(4,1)$ are above 2, so these values are not proper here.
+
+```{r echo=TRUE}
+par(mfrow=c(1,2))
+
+sarima_0 = Arima(s_cycles,order=c(3,0,3), seasonal=list(order=c(0,1,0),period=12))
+acf(sarima_0$residuals, main="ARIMA(3,0,3)", 72)
+sarima = Arima(s_cycles, order=c(3,0,3), seasonal=list(order=c(1,1,2), period=12))
+acf(sarima$residuals, main="SARIMA(3,0,3)x(1,1,2)_12", 72)
+
+title(main="Fig-6 Residuals of SARIMA Model", outer=TRUE, line=-1)
+```
+
+By checking residual of the ARIMA$(3,0,3)$ model, we can see significant lags every 3 months, which is obviously due to seasonality. After adding the seasonal part, the residual of the SARIMA$(3,0,3)\times(1,1,2)_{12}$ Model becomes much more uncorrelated.
+
+------
+
+## 3.2 Fit a SARIMA Errors Model
+
+```{r echo=TRUE}
+plot(-s_cycles, col="#1ABC9C", type="l", xlab="Year", ylab="", ylim=c(-20,30))
+par(new=TRUE)
+plot(dd_cycles, col="#F39C12", type="l", axes=FALSE, xlab="", ylab="", ylim=c(-15,20))
+axis(side=4, col="black")
+legend("topleft",legend=c("ΔStorage (Billions Cubic Feet)", "USchdd °F"), col=c("#1ABC9C", "#F39C12"),
+       cex=0.8,lty=1,bty="n")
+
+title(main="Fig-7 Monthly Storage Negative Change and Degree Day Cycle",
+      outer=TRUE, line = -1)
+```
+
+From Figure7, we can clearly see that the cycle of storage change and the cycle of degree day have a strong association, thus we consider fitting an Errors Model.
+
+```{r echo=TRUE}
+sarima_error_aic_table = function(data, P, Q, xreg = NULL){
+  table = matrix(NA, (P+1), (Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1, q+1] = arima(data, order = c(p,0,q), xreg = xreg,
+                               seasonal=list(order=c(0,0,0),period=12))$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR", 0:P, "</b>", sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+res_sarima_error_aic_table = sarima_error_aic_table(s_cycles, 5, 5, xreg = dd_cycles)
+
+kable(res_sarima_error_aic_table, digits = 2)
+```
+
+We select ARMA$(3,4)$ as the candidate. ARMA$(1,3)$ is not chosen because ARMA$(1,4)$ - ARMA$(1,3)$ is above 2, so the value is not proper here.
+
+```{r echo=TRUE}
+par(mfrow=c(1,2))
+
+sarima_error_0 = Arima(s_cycles,order=c(3,0,4), seasonal=list(order=c(0,1,0),period=12))
+acf(sarima_error_0$residuals, main="ARIMA(3,0,4)", 72)
+sarima_error = Arima(s_cycles, order=c(3,0,4), seasonal=list(order=c(1,1,1), period=12))
+acf(sarima_error$residuals, main="SARIMA(3,0,4)x(1,1,1)_12", 72)
+
+title(main="Fig-8 Residuals of SARIMA Errors Model", outer=TRUE, line=-1)
+```
+
+By checking residual of the ARIMA$(3,0,4)$ Errors model, we can see significant lags every 3 months, which is obviously due to seasonality. After adding the seasonal part, the residual of the SARIMA$(3,0,4)\times(1,1,1)_{12}$ Errors Model becomes much more uncorrelated. Note that at each lag h, the chance that the estimated ACF falls within this dotted line is approximately 95% under the null hypothesis. Thus, under the null hypothesis, one expects a fraction of 1/20 of the lags of the sample ACF to fall outside this band. (Ionides, Note2)
+
+------
+
+## 3.3 Diagnostic Analysis
+
+```{r}
+sarima
+sarima_error
+```
+
+```{r echo=TRUE}
+par(mfrow=c(1,2))
+plot(sarima$residuals)
+plot(sarima_error$residuals)
+title(main="Fig-9 Diagnostic Analysis: SARIMA(left), SARIMA_Errors(right)", outer=TRUE, line=-1)
+
+par(mfrow=c(1,2))
+acf(sarima$residuals, lag=72)
+acf(sarima_error$residuals, lag=72)
+
+par(mfrow=c(1,2))
+qqnorm(sarima$residuals)
+qqline(sarima$residuals)
+qqnorm(sarima_error$residuals)
+qqline(sarima_error$residuals)
+
+par(mfrow=c(1,2))
+plot(data$Storage, col="#FFE221", type="l", axes=FALSE, xlab="", ylab="", ylim=c(-60,40))
+par(new=TRUE)
+plot(sarima$x + s_low, col="#1ABC9C", type="l", xlab="Year", ylab="", ylim=c(-60,40), 
+     main="Original Data and Fitted Result")
+par(new=TRUE)
+plot(fitted(sarima) + s_low, col="#C06C84", type="l", axes=FALSE, xlab="", ylab="", ylim=c(-60,40))
+legend("topleft", col=c("#FFE221", "#1ABC9C", "#C06C84"), cex=0.8, lty=1, bty="n",
+       legend=c("ΔStorage - Original", "ΔStorage - Cycles + Trend", "ΔStorage - Fitted + Trend"))
+
+plot(data$Storage, col="#FFE221", type="l", axes=FALSE, xlab="", ylab="", ylim=c(-60,40))
+par(new=TRUE)
+plot(sarima_error$x + s_low, col="#1ABC9C", type="l", xlab="Year", ylab="", ylim=c(-60,40), 
+     main="Original Data and Fitted Result")
+par(new=TRUE)
+plot(fitted(sarima_error) + s_low, col="#C06C84", type="l", axes=FALSE, xlab="", ylab="", ylim=c(-60,40))
+legend("topleft", col=c("#FFE221", "#1ABC9C", "#C06C84"), cex=0.8, lty=1, bty="n",
+       legend=c("ΔStorage - Original", "ΔStorage - Cycles + Trend", "ΔStorage - Fitted + Trend"))
+```
+
+From Figure 9, we can see that:
+
+* The residuals are uncorrelated for both models.
+
+* The Q-Q plots are majorly along the straight line. I also tried to set span = 0.04 to extract the cycle, and the Q-Q plots are more normal but heavy-tailed in that case.
+
+* Both models fit the data well, while SARIMA$(3,0,3)\times(1,1,2)_{12}$ has lower AIC and BIC.
+
+* The box test also shows that the residuals for both models are uncorrelated.
+
+```{r}
+Box.test(sarima$residuals)
+Box.test(sarima_error$residuals)
+```
+
+------
+
+------
+
+# 4. Conclusion
+
+```{r}
+###### Reaching a conclusion:
+# You should say what you have concluded, as well as describing things you might have liked to do that were beyond the scope of this midterm project.
+# A. Thoughtful self-critical reflection on what has and has not been demonstrated by the analysis presented.
+# B. Conclusions are noted, but at a lower level of response. Possibly, some incorrect interpretations.
+# C. Conclusion largly absent, inappropriate, or incorrect.
+```
+
+In this project, we carefully analyzed the pattern and association of the US natural gas storage change and cooling and heating degree day. We found that:
+
+* Both data have a stong seasonality with a major annual cycle and a less strong but still significant half-year cycle. According to the spectrum analysis, we can conclude that the storage change is strongly associated with the degree day, which is consistent with the intuition.
+
+* Although we didn't find the obvious trend in the exploratory analysis, we can see a trend for both data after smoothing, which may be caused by the extreme weather in 2013-14 winter, or some long-term trends that are not obvious for an 11-year window.
+
+* Both SARIMA$(3,0,3)\times(1,1,2)_{12}$ and SARIMA$(3,0,4)\times(1,1,1)_{12}$ Errors Model fit the data well according to the diagnosis of the residuals.
+
+------
+
+------
+
+# 5. Reference
+
+1. Ionides, E. (n.d.). Stats 531 (Winter 2018) ‘Analysis of Time Series’ Retrieved March 07, 2018, from http://ionides.github.io/531w18/
+
+2. Heating Degree Day - HDD. Investopedia. Retrieved March 07, 2018, from https://www.investopedia.com/terms/h/heatingdegreeday.asp
+
+3. Natural Gas Storage. Retrieved March 07, 2018, from https://www.eia.gov/naturalgas/data.php#storage
+
+4. U.S. Energy Information Administration. 2015. Natural Gas Consumption and Prices Short-Term Energy Outlook. U.S. Department of Energy, Washington, DC.
+
+5. Sebastian Nick, Stefan Thoenes. 2013. What Drives Natural Gas Prices? – A Structural VAR Approach l. EWI Working Paper, No 13/02. Institute of Energy Economics at the University of Cologne
+
+

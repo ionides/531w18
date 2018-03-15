@@ -1,0 +1,265 @@
+---
+title: "STATS 531 Midterm Project"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\I}{\mathbbm{1}} % indicator function
+
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+
+\newcommand{\eg}{e.g.}
+\newcommand{\ie}{i.e.}
+
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\estimate[1]{\data{#1}}
+\newcommand\params{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\eqspace{\quad\quad\quad}
+\newcommand\lik{\mathscr{L}}
+\newcommand\loglik{\ell}
+\newcommand\profileloglik[1]{\ell^\mathrm{profile}_#1}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\AR{\Phi}
+\newcommand\MA{\Psi}
+
+---
+
+##Introduction
+
+In this project, we analyze a monthly economic time series from the Brazilian economy. The dataset comes from the website [1], which in turn comes from the article [2] by Huerta and Lopes, 1999. The dataset contains monthly IPI (Industrial Production Index) in Brazil from January 1980 to December 1997, 216 months in total. IPI is an economic indicator that measures the real production output of manufacturing, mining, and utilities. The monthly IPI is usually used to reflect short-term changes in industrial production. The growth in IPI from month to month indicates the growth in the industry. [3]
+
+We want to get a basic idea of the changes in Brazilian industry from 1980 to 1997 by studying IPI time series data. Specifically, we will check whether the data has any trends, cycles by making use of specturm analysis and local linear regression. Then we want to fit an appropriate model to the IPI data, which would enable us to forecast future IPI.
+
+##Data Exploration
+
+```{r echo=FALSE}
+dt = read.table(file="dt.csv", header=TRUE)
+IPI = dt[,2]
+summary(IPI)
+```
+
+The above is a brief summary of IPI over 216 months. We do not see any missing values, so we can proceed to make a time series plot.
+
+```{r echo=FALSE}
+plot(IPI, type="l", main="Time Series Plot of IPI")
+```
+
+From the time series plot above, we observe the seasonality property of IPI data. Visually, there seems to be some evidences for an increasing trend, especially in the later months. However, the evidences are not strong. There are also considerable fluctuations.
+
+```{r echo=FALSE}
+spectrum(IPI, spans=c(3,5,3), main="Smoothed periodogram")
+```
+
+The smoothed periodogram above suggests a dominant frequency of 0.08, which corresponds to a cycle of 12 months. This means IPI in Brazil has a cycle of boom and recession every 12 months, or 1 year. We can see from the smoothed periodogram other peeks of frequencies about 0.17, 0.25, 0.35 and 0.42, corresponding to cycles about 6 months, 4 months, 3 months and 2.5 months. However, these peeks are much weaker than the dominant one.
+
+Following notes08 in [4], we try to extract business cycles of IPI data by a band pass filter. For the IPI data, high frequency variation might be treated as "noise" and low frequency variation might be treated as "trend". A band of mid-range frequencies might be considered to correspond to the business cycle.
+
+```{r echo=FALSE}
+I_low = ts(loess(IPI~seq(1:216), span=0.5)$fitted)
+I_high = ts(IPI - loess(IPI~seq(1:216), span=0.1)$fitted)
+I_cycles = IPI - I_low - I_high
+plot(ts.union(IPI, I_low, I_high, I_cycles), main="Decomposition of IPI as Trend + Noise + Cycle")
+```
+
+From the I_low plot above, we again see some evidences for an increasing trend, especially in the later months, but the trend is not strong. From the I_high plot, we observe some noise with high frequency. From the I_cycles plot, IPI achieves peaks around the middle of each year, specifically, May, June and July; IPI reaches trough around the end of each year, specifically, December, January and February.
+
+##Model Selection
+
+###ARMA Model
+
+Following notes05 in [4], let’s start by fitting a stationary ARMA$(p,q)$ model under the null hypothesis that there is no trend. This hypothesis, which asserts that nothing has substantially changed in IPI over the 216 months, is not entirely unreasonable from looking at the data.
+
+We seek to fit a stationary Gaussian ARMA$(p,q)$ model with parameter vector $\theta=(\ar_{1:p},\ma_{1:q},\mu,\sigma^2)$ given by
+$$ \ar(B)(Y_n-\mu) = \ma(B) \epsilon_n,$$
+where 
+$$\begin{eqnarray}
+\mu &=& \E[Y_n]
+\\
+\ar(x)&=&1-\ar_1 x-\dots -\ar_px^p,
+\\ 
+\ma(x)&=&1+\ma_1 x+\dots +\ma_qx^q, 
+\\
+\epsilon_n&\sim&\mathrm{ iid }\, N[0,\sigma^2].
+\end{eqnarray}$$
+
+We need to decide where to start in terms of values of $p$ and $q$. Akaike's information criterion (AIC) is often useful when we want to select a model with reasonable predictive skill from a range of possibilities, where **AIC** is given by
+$$ AIC = -2 \times \loglik(\data{\theta}) + 2D$$
+and $D$ is the number of parameters in the model.
+
+Let's tabulate some AIC values for a range of different choices of $p$ and $q$.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+arma_aic_table = function(data, P, Q) {
+  table = matrix(NA, P+1, Q+1)
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] = arima(data, order=c(p,0,q), method="ML")$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR", 0:P, "</b>", sep=""), paste("MA", 0:Q, sep=""))
+  table
+}
+IPI_arma_aic_table = arma_aic_table(IPI,4,5)
+require(knitr)
+kable(IPI_arma_aic_table, digits=2)
+```
+
+ARMA(3,4) model is recommended by the consideration of AIC. Let's fit it and diagnose whether the model fits reasonably to the data.
+
+```{r,echo=FALSE}
+IPI_arma = arima(IPI, order=c(3,0,4))
+plot(seq(1,216), IPI, type='l', main="ARMA(3,4) model", col="blue", xlab="Index", ylab="IPI")
+legend(0,130, c("original","fitted"), cex=0.8, col=c("blue","red"), pch=21:22, lty=1:2);
+lines(seq(1,216),IPI-IPI_arma$residuals, type="l", col='red', pch=22, lty=2)
+```
+
+We see from the plot above that this model captures major fluctuations of IPI data, but it does not estimate the peaks well. The model tends to overestimate the peaks. The following are some diagnostics.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+par(mfrow=c(2,2))
+plot(resid(IPI_arma), ylab=" ", main="Residuals") 
+plot(abs(IPI_arma$residuals), ylab=" ", main="Absolute value of Residuals")
+acf(resid(IPI_arma), main="ACF of residuals")
+qqnorm(IPI_arma$residuals)
+qqline(IPI_arma$residuals)
+```
+
+From the diagnostics plots, residuals seem to have mean zero and constant variance despite the existance of one extreme outlier. The normality approximately holds. However, the ACF plot shows a nonzero correlation that happens at lag 12. The seasonality property of IPI data makes usual ARMA model unsuitable. The lag 12 and seasonality property of IPI data motivates us to consider SARIMA model.
+
+###SARIMA Model
+
+Following notes06 in [4], a general SARIMA$(p,d,q)\times(P,D,Q)_{12}$ model for monthly data is
+$$\begin{eqnarray}
+\ar(B)\AR(B^{12}) ((1-B)^{d}(1-B^{12})^{D}Y_n-\mu) = \ma(B)\MA(B^{12}) \epsilon_n
+\end{eqnarray}$$
+where $\{\epsilon_n\}$ is a white noise process, $\mu$ is the mean of the differenced data $(1-B)^{d}(1-B^{12})^{D}Y_n$ and
+$$\begin{eqnarray}
+\ar(x)&=&1-\ar_1 x-\dots -\ar_px^p,
+\\ 
+\ma(x)&=&1+\ma_1 x+\dots +\ma_qx^q, 
+\\
+\AR(x)&=&1-\AR_1 x-\dots -\AR_Px^P,
+\\ 
+\MA(x)&=&1+\MA_1 x+\dots +\MA_Qx^Q.
+\end{eqnarray}$$
+
+Recall that in data exploration phase, we find that the smoothed periodogram suggests a dominant frequency of 0.08, which corresponds to a cycle of 12 months. Also, when we try to fit an ARMA(3,4) model, we discover strong correlation of residuals at lag 12. These two observations together suggest we should difference the data with lag 12. The following is ACF plot of IPI data. The peak at lag 12 confirms that the idea of differencing the data with lag 12 is reasonable.
+
+```{r echo=FALSE}
+acf(IPI, main="ACF of IPI data")
+```
+
+Another benefit of applying a difference operation to the data is that the differenced data looks more stationary and thus more suitable for SARMA modeling. Therefore we apply $(1-B^{12})$ operator to the IPI data and then fit an ARMA model for the differenced data. This is equivalent to SARIMA$(p,0,q)\times(0,1,0)_{12}$ model. It remains to find the appropriate $p$ and $q$. Let's tabulate some AIC values for a range of different choices of $p$ and $q$.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+sarima_aic_table = function(data, P, Q) {
+  table = matrix(NA, P+1, Q+1)
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] = arima(data, order=c(p,0,q), seasonal=list(order=c(0,1,0),period=12), method="ML")$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR", 0:P, "</b>", sep=""), paste("MA", 0:Q, sep=""))
+  table
+}
+IPI_sarima_aic_table = sarima_aic_table(IPI,4,5)
+require(knitr)
+kable(IPI_sarima_aic_table, digits=2)
+```
+
+SARIMA$(4,0,4)\times(0,1,0)_{12}$ is recommended with AIC is about 1297. However, we observe from the table above that SARIMA$(1,0,0)\times(0,1,0)_{12}$ has AIC value about 1316, which is very close to the AIC value for SARIMA$(4,0,4)\times(0,1,0)_{12}$, but SARIMA$(1,0,0)\times(0,1,0)_{12}$ is a much simplier model. The benefit of a simplier model is that it is more robust to overfitting issue. By considering both AIC and model complexity, we choose to fit a SARIMA$(1,0,0)\times(0,1,0)_{12}$ model. The mathematical form of this model is
+$$\begin{eqnarray}
+(1 - \phi_1 Y_n)((1-B^{12})Y_n - \mu) = \epsilon_n
+\end{eqnarray}$$
+where $\{\epsilon_n\}$ is a white noise process and $\mu$ is the mean of the differenced data $(1-B^{12})Y_n$.
+
+We now use R to compute the parameters.
+
+```{r echo=FALSE}
+IPI_sarima = arima(IPI, order=c(1,0,0), seasonal=list(order=c(0,1,0),period=12))
+IPI_sarima
+```
+
+```{r}
+mean(diff(IPI, lag=12))
+```
+
+
+The fitted model is
+$$\begin{eqnarray}
+(1 - 0.7488 Y_n)((1-B^{12})Y_n - 1.029755) = \epsilon_n
+\end{eqnarray}$$
+
+```{r echo=FALSE}
+plot(seq(1,216), IPI, type='l', main="SARIMA(1,0,1)x(0,1,0)_12 model", col="blue", xlab="Index", ylab="IPI")
+legend(0,130, c("original","fitted"), cex=0.8, col=c("blue","red"), pch=21:22, lty=1:2);
+lines(seq(1,216),IPI-IPI_sarima$residuals, type="l", col='red', pch=22, lty=2)
+```
+
+We see from the plot above that this model fits the data reasonably well. The model captures most of the fluctuations and does a better job at estimating the peaks than ARMA(3,4) model. However, it still does not fit the peaks quite well. The following are some diagnostics.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+par(mfrow=c(2,2))
+plot(resid(IPI_sarima), ylab=" ", main="Residuals") 
+plot(abs(IPI_sarima$residuals), ylab=" ", main="Absolute value of Residuals")
+acf(resid(IPI_sarima), main="ACF of residuals")
+qqnorm(IPI_sarima$residuals)
+qqline(IPI_sarima$residuals)
+```
+
+From the diagnostics plots, residuals seem to have mean zero and constant variance despite the existance of one or two extreme outliers. The normality approximately holds. However, the ACF plot shows a nonzero correlation that happens at lag 12. This suggests that we still need to tune SARIMA model by introducing seasonal polynomial.
+
+According to notes06 in [4], SARIMA$(0,1,1)\times(0,1,1)_{12}$ model has often been used for forecasting monthly time series in economics and business. Let's try this model.
+
+```{r echo=FALSE}
+IPI_sarima1 = arima(IPI, order=c(0,1,1), seasonal=list(order=c(0,1,1),period=12))
+IPI_sarima1
+plot(seq(1,216), IPI, type='l', main="SARIMA(0,1,1)x(0,1,1)_12 model", col="blue", xlab="Index", ylab="IPI")
+legend(0,130, c("original","fitted"), cex=0.8, col=c("blue","red"), pch=21:22, lty=1:2);
+lines(seq(1,216),IPI-IPI_sarima1$residuals, type="l", col='red', pch=22, lty=2)
+```
+
+We see from the plot above that this model fits the data very well. The model not only captures most of the fluctuations, but also fits the peaks closely, which is an improvement compared with SARIMA$(1,0,0)\times(0,1,0)_{12}$ model. The following are some diagnostics.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+par(mfrow=c(2,2))
+plot(resid(IPI_sarima1), ylab=" ", main="Residuals") 
+plot(abs(IPI_sarima1$residuals), ylab=" ", main="Absolute value of Residuals")
+acf(resid(IPI_sarima1), main="ACF of residuals")
+qqnorm(IPI_sarima1$residuals)
+qqline(IPI_sarima1$residuals)
+```
+
+Residuals seem to have mean zero and constant variance despite the existance of one or two extreme outliers. The normality approximately holds. This time the ACF plot does not show any correlation significantly deviating from zero.
+
+##Conclusion
+
+In this project, we analyze monthly IPI data in Brazil from 1980 to 1997. We observe seasonality property of the data with dominant period 12 months. This indicates the boom and recession of IPI every 12 months. In extracting business cycles, we see some evidences for increasing trend of IPI, but the evidences are not strong. We find SARIMA$(0,1,1)\times(0,1,1)_{12}$ model fits the data pretty closely, which outperforms ARMA(4,3) model and SARIMA$(1,0,0)\times(0,1,0)_{12}$ model. SARIMA$(1,0,0)\times(0,1,0)_{12}$ model is better than ARMA(4,3) model because it takes seasonality property into account. SARIMA$(0,1,1)\times(0,1,1)_{12}$ model is better than SARIMA$(1,0,0)\times(0,1,0)_{12}$ model because it in addition takes into consideration that the dominant period is 12 months. We now have a better sense of how IPI in Brazil changes. SARIMA$(0,1,1)\times(0,1,1)_{12}$ model can be used to forecast future IPI in Brazil.
+
+However, there are still some remaining problems. First, although SARIMA$(0,1,1)\times(0,1,1)_{12}$ model fits the IPI data pretty well, we still need to keep in mind the potential overfitting issue. Second, it is not obvious how to interpret the model to get some insights in reality.
+
+##Reference
+
+[1] http://www2.stat.duke.edu/~mw/ts_data_sets.html.
+
+[2] Huerta, G., Lopes, H. F. 1999. Bayesian forecasting and inference in latent structure for the Brazilian GDP and Industrial Production Index. ftp://ftp.stat.duke.edu/pub/WorkingPapers/99-08.html.
+
+[3] https://fred.stlouisfed.org/series/INDPRO
+
+[4] https://ionides.github.io/531w18/
+
+

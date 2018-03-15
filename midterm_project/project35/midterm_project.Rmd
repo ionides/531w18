@@ -1,0 +1,311 @@
+---
+title: "Stats 531 Midterm Project"
+date: "March 5, 2018"
+output: html_document
+---
+
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+-----------------------------
+
+### Summary
+
+This project aims at time series analysis of PM2.5 concentration in Shanghai, China.
+
+- Hourly data from Jan 01 2015 to Jan 31 2015 is analysed. Log transformation is applied to stablize variance. Since the data shows certain trend, first difference is taken to achieve mean stationary.
+
+- An ARIMA(2,1,0) model is selected by AIC, but the residuals are not normally distributed. There is no significant seasonality. 
+
+- The association between PM2.5 level and multiple environmental covariates (humidity, temperatur and etc.) are examined. The statistical test shows that the only significant covariate is cumulated wind speed. 
+
+-----------------------------
+
+### 1. Introduction
+
+#### 1.1 Background
+
+Air pollution has long been a crucial environmental concern in many countries since the rise of industrialization. This issue is particularly pressing in China. As a developing country with fast expanding manufacture industry and ongoing urbanization, China is suffering from poor air quality in many of its major cities. 
+
+Among all air pollution indicators, PM2.5 is a representitive particle to measure the air quality and is most discussed by general public. Hourly PM2.5 concentration data in 5 Chinese cities has been recorded for years and the data is currently available online. In this project, I am going to focus on the data in Shanghai, the city that I spent 9 years living in.  
+
+
+#### 1.2 Objective
+
+This project aims to answer or bring insights to following questions:
+
+- What time series model fits PM2.5 hourly data well (in a monthly time span)? Is there any significant seasonality?
+
+- What factors can help explain the pattern of PM2.5 concentration? Does PM2.5 level associate with temperature, humidity, or other variables?
+
+The exploration of above aspects would help us better understand the dynamic of PM2.5 pollution and encourage more effective solution to this environmental problem.  
+
+```{r warning=FALSE,message=FALSE,echo=FALSE}
+sh<-read.csv("ShanghaiPM20100101_20151231.csv")
+```
+
+#### 1.3 Scope of Data
+
+To narrow down the scope of this project, hourly PM2.5 data from Jan 01 2015 to Jan 31 2015 is selected to form a time series $Y_n$ with $N=744$. 
+
+Some key environmental variables of the same length are also kept for later analysis.
+
+
+```{r sh_data_cleaning, echo=FALSE}
+sh15<-sh[sh$year==2015,]
+
+sh15$pm<-sh15$PM_US.Post
+sh15[is.na(sh15$pm),]$pm<-sh15[is.na(sh15$pm),]$PM_Xuhui
+sh15[is.na(sh15$pm),]$pm<-(sh15[sh15$No %in% (sh15[is.na(sh15$pm),]$No-1),]$pm+
+                          sh15[sh15$No %in% (sh15[is.na(sh15$pm),]$No+1),]$pm)/2 
+  
+
+sh15[is.na(sh15$TEMP),]$TEMP<-(
+  sh15[sh15$No %in% (sh15[is.na(sh15$TEMP),]$No-1),]$TEMP +
+  sh15[sh15$No %in% (sh15[is.na(sh15$TEMP),]$No+1),]$TEMP)/2
+
+
+sh15[is.na(sh15$HUMI),]$HUMI<-(
+  sh15[sh15$No %in% (sh15[is.na(sh15$HUMI),]$No-1),]$HUMI +
+  sh15[sh15$No %in% (sh15[is.na(sh15$HUMI),]$No+1),]$HUMI)/2
+
+sh15[is.na(sh15$precipitation),]$precipitation<-(
+  sh15[sh15$No %in% (sh15[is.na(sh15$precipitation),]$No-1),]$precipitation +
+  sh15[sh15$No %in% (sh15[is.na(sh15$precipitation),]$No+1),]$precipitation)/2
+
+
+sh15jan<-sh15[sh15$month==1,]
+
+keep.col<-c("HUMI","Iws","precipitation","TEMP","pm")
+sh15jan<-sh15jan[,keep.col]
+
+str(sh15jan)
+summary(sh15jan)
+```                       
+
+-----------------------------
+
+### 2. Data Exploration
+
+Judging by the plot, this series is clearly not mean stationary, and the variance is not stable. We can take the log to stablized variance and take temporal difference to de-trend the data. 
+
+Zoomed the plot at two particular days, we can also observe a pattern within each day: PM2.5 level has the first peak around 8-11 (possibly associated with morning commute), drops during noon and early afternoon, and peaks again across the evening (possibly associated with evening commute and the lack of sunlight). 
+
+
+```{r sh_raw_plot,echo=FALSE}
+sh.pm.raw<-ts(sh15jan$pm, frequency=24)
+
+plot(sh.pm.raw,xlab="Date",ylab="PM2.5 concentration (ug/m^3)",main="Hourly PM2.5 Concentration in Shanghai Jan 2015")
+
+par(mfrow=c(1,2),oma = c(0, 0, 2, 0))
+plot(ts(sh.pm.raw[1:24]),xlab="Hour",main="Jan-01-2015",ylab="PM2.5 concentration (ug/m^3)")
+plot(ts(sh.pm.raw[169:193]),xlab="Hour", main="Jan-08-2015",ylab="PM2.5 concentration (ug/m^3)")
+
+mtext("Hourly PM2.5 Concentration in Shanghai",outer=TRUE,cex=1.5)
+```
+
+### 3. De-trend Data 
+
+Based on previous observation, we first take the log of data to get a new series, and then take the first difference in model fitting:
+$$Z_n = log(Y_n) $$
+$$\Delta Z_n=\Delta log(Y_n)= log(Y_n)-log(Y_{n-1})$$
+
+Now the variance is more stable and a mean stationary model is applicable.
+
+```{r sh_pm_diff_plot, echo=FALSE}
+sh.pm<-log(sh.pm.raw)
+sh.pm.diff<-c(sh.pm,0)-c(0,sh.pm)
+sh.pm.diff<-sh.pm.diff[-c(1,length(sh.pm.diff))]
+sh.pm.diff<-ts(sh.pm.diff,frequency=24)
+summary(sh.pm.diff)
+plot(sh.pm.diff,xlab="Date",ylab="Hourly Change of log PM2.5 (ug/m^3)",main="First Difference of Log PM2.5 Concentration")
+```
+
+The ACF of the first difference of this time series has a vague sinusoidal pattern. An AR model might be applicable. The spectrum estimation with AR method suggests an AR(2) model.
+
+```{r acf_spec, echo=FALSE}
+acf(sh.pm.diff,xlab="lag (days)",main="ACF of Log PM2.5 Hourly Change")
+spectrum(sh.pm.diff,method="ar",xlab="Frequency (Cycles per Day)",main="Spectrum Estimation with AR(2) Model")
+
+```
+
+-----------------------------
+
+### 4. Model Fitting:
+
+#### 4.1 ARMA Model Selection
+
+To select a suitable model, an AIC table is constructed (see supplementary material). Taking both AIC value and the simplicity of model into consideration, ARIMA(2,1,0) model is the best choice. Besides, the roots of AR polynomial are both outside unit circle. The fitted ARMA is causal, which is desired. 
+
+
+```{r arma21, echo=FALSE}
+sh.pm.arma21<-arima(sh.pm,order=c(2,1,0))
+sh.pm.arma21
+```
+
+Roots of polynomial of AR:
+
+```{r root, echo=FALSE}
+AR_roots <- polyroot(c(1,-coef(sh.pm.arma21)[c("ar1","ar2")]))
+print(AR_roots)
+```
+
+#### 4.2 Hypothesis Testing
+
+Judging by the estimated values and standard errors of two AR parameters, they are both significantly different from zero. A formal Likelihood Ratio Test can be conducted:
+
+$H_0:\phi_1=\phi_2=0$
+
+$H_a:\phi_1\ or\ \phi_2\neq0$
+
+We run the null model to get the log likelihood of it and then calculate the test statistics. Under null hypothesis, the test statistics follow a $\chi_2^2$ distribution
+
+```{r hypothesis, echo=FALSE}
+arima(sh.pm,order=c(0,1,0))
+```
+
+$LRT=2[log L(\theta_a)-log L(\theta_0)]=2*(249.05-238.76)=20.58>\chi_{2,0.95}^2$
+
+The AR parameters are significant.
+
+
+#### 4.3 Residual Diagnostics
+
+Now we examine the residuals from this ARIMA(2,1,0) model. The residuals of is symmetric with bell shape, but its tail is heavier than normal distribution. Judging by the plot from section 2, the variance is not constant across the series. A few time points have larger variance. The unconstant variance might be the reason behind the non-normality of residuals. The ACF plot suggests that residuals may be mildly correlated. Perhaps there are other unknown covariates driving the trend behind this time series.
+
+
+```{r residual, echo=FALSE}
+r<-sh.pm.arma21$residuals
+acf(r)
+hist(r)
+qqnorm(r)
+qqline(r)
+```
+
+#### 4.4 Seasonality 
+
+To further improve the model, we can try to add seasonality factors. The natural time cycle is 24 hour/day. With this factor added, the log likelihood sightly improved. We can also use Likelihood Ratio Test to test the significance of this seasonal parameter.
+
+```{r arma21_season, echo=FALSE}
+seasonal<-arima(sh.pm,order=c(2,1,0),seasonal=list(order=c(1,0,0),period=24))
+seasonal
+```
+
+$H_0:$ Seasonal AR parameter $\Phi_1=0$
+
+$H_a:$ Seasonal AR parameter $\Phi_1\neq0$
+
+$LRT=2[log L(\theta_a)-log L(\theta_0)]=2*(249.26-249.05)<<\chi_{1,0.95}^2$
+
+Therefore the 24 hour seasonal parameter is not significant. To keep the simplicity of the model, we can exclude this parameter.
+
+-----------------------------
+
+### 5. Further Exploration on Trend
+
+To better explain the pattern of PM2.5 Concentration, we can leverage other environmental variables available in this dataset. 
+
+Four environmental variables: humidity, cumulated wind speed, precipitation, and temperature, are added to the ARIMA(2,1,0) respectively. Likelihood Ratio Test are also conducted.
+
+According to the output, the only significant covariate is cumulated wind speed.
+
+```{r xreg, echo=FALSE}
+logL<-rep(NA,4)
+var<-c("HUMI","Iws","precipitation","TEMP")
+names<-c("Humidity", "Cumulated Wind Speed", "Precipitation","Temperature")
+
+for (i in 1:4) {
+  logL[i]<-round(arima(sh.pm,order=c(2,1,0),xreg=sh15jan[,var[i]])$loglik,3)
+}
+
+LRT<-round(2*(logL-sh.pm.arma21$loglik),3)
+
+p_val<-round(1-pchisq(LRT,1),3)
+
+summary<-cbind(logL,LRT,p_val)
+rownames(summary)<-names
+summary
+```
+
+```{r final, echo=FALSE}
+arma21.wind<-arima(sh.pm,order=c(2,1,0),xreg=sh15jan$Iws)
+arma21.wind
+```
+
+-----------------------------
+
+### 6. Conclusion
+
+* In conclusion, we decide to use an ARIMA(2,1,0) model to describe this time series. The fitted model is:
+
+$$(1-0.1324B-0.1095B^2)[(1-B)log(Y_n)-0.0008W_n]=\epsilon_n$$
+
+$W_n$ is the cumulated wind speed at $t_n$ (m/s). $Y_n$ is the PM2.5 concentration at $t_n$ (ug/m^3). $\epsilon_n$ is gaussian white noise $\epsilon_n \overset{iid} \sim N[0,\sigma^2]$, where $\sigma^2=0.0296$
+
+* Daily seasonality is not significant in this model, observed daily cycle is de-trended through first difference.
+
+* Among all available environmental variables, cumulated wind speed is the only significant covariate to predict the trend of PM2.5 concentration.
+
+-----------------------------
+
+### 7. Future Analysis
+
+- **Variance stablization:** As mentioned in section 3.3, the residuals are not fully aligned with normal assumption. Advanced variance stablization methods could be applied on time series before model fitting.
+
+- **Model generalization:** The model is constructed with data of only one month. We can test its fitness on data from other months, or calibrate the parameter with longer series. Some long-term seasonality can be discovered if the analysis includes data across years.
+
+- **Comparison among cities:** We can apply similar analysis procedure on PM2.5 concentration data from other cities, and compare the pattern among different cities.
+
+-----------------------------
+
+### 8. Supplementary Material
+
+**1. Model selection by AIC**
+
+```{r aic_select, warning=FALSE,echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,1,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+sh_pm_aic_table <- aic_table(sh.pm,4,5)
+require(knitr)
+kable(sh_pm_aic_table,digits=2)
+```
+
+**2. Data Source**
+
+- [The data](https://archive.ics.uci.edu/ml/datasets/PM2.5+Data+of+Five+Chinese+Cities) is from UCI Machine Learning Repository. Detail variable description can be found in the repository.
+
+- The original dataset contains hourly PM2.5 concentration data from 5 cities in China from year 2010 to 2015. Temperature, humidity and other environmental variables are also available in this dataset.
+
+**3. Missing data**
+
+- PM2.5 concentration is measured by different detectors in the city. The data from those detectors are only slightly different at each time point. I primarily use the data from "US.Post" detector. If it is missing, I use the data from "Xuhui" detector to replace the NAs. After this process there are only 3 missing datas, I use the average of nearby time points to replace them. 
+
+- For other variables (wind speed, precipitation and etc.), missing data is rare. I also use the average of nearby time points to replace NAs.
+
+-----------------------------
+
+### 9. Reference
+
+[1] https://archive.ics.uci.edu/ml/datasets/PM2.5+Data+of+Five+Chinese+Cities
+\
+[2] Liang, X., S. Li, S. Zhang, H. Huang, and S. X. Chen (2016), PM2.5 data reliability, consistency, and air quality assessment in five Chinese cities, J. Geophys. Res. Atmos., 121, 10220-10236
+\
+[3] Lecture notes and source code of Stats 531: https://ionides.github.io/531w18/
+\
+[4] Guerrero, Victor M. and Perera, Rafael (2004) "Variance Stabilizing Power Transformation for Time Series," Journal of Modern Applied Statistical Methods: Vol.3: Iss. 2, Article 9
+
+
+
+

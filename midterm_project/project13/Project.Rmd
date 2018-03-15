@@ -1,0 +1,445 @@
+---
+title: "STAT531 Midterm Project: Study on Association between Car Accident and temperature in New York"
+date: "2018/2/23"
+output: 
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\params{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\eqspace{\quad\quad\quad}
+\newcommand\lik{\mathscr{L}}
+\newcommand\loglik{\ell}
+\newcommand\profileloglik[1]{\ell^\mathrm{profile}_#1}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\AR{\Phi}
+\newcommand\MA{\Psi}
+
+------
+
+------
+
+```{r setup, include=FALSE}
+#knitr::opts_chunk$set(echo = FALSE) 
+knitr::opts_chunk$set(message = FALSE) 
+knitr::opts_chunk$set(warning =  FALSE) 
+```
+
+# 1. Introduction  
+
+As the largest city in the United States, there are many car accident happening each day in New York City. Based on the common sense, there should be some connection between the number of car accident and the weather. Because as the temperature goes down, it more likely to have snowy weather and ice on roads, which may increase the chance of car accident.
+
+Obviously I'm going to use two dataset in this study. The data of car accident is "NYPD Motor Vehicle Collisions" from data.gov(http://data.gov/). The data of temperature in New York is from NOAA https://www.ncdc.noaa.gov/cdo-web/search. Those two dataset would need pre-process before using, and I'm going to talk about it in section 2.
+
+In this study I'm going to use time series models to fit the data of car accident and try to find the relationship between temperature and number of car accident. I'm going to make use of most of the materials learned in class, like spectrum analysis, AIC, likelihood ratio test, ARMA and SARMA model and diagnostic. This is a study based on my previous work in STAT 506, in which I used regression methods to check the relationship between temperature and car accident.
+
+------
+
+------
+
+# 2. Data Process 
+
+Here we first load the data of car accident. The data are collected with date, time, location and detail information about the car accident. In this study we only concern about the number of car accident on each day. So we group by the column "DATE" and drop columns we won't need. Here we only take the data of 2013, which can provide us 365 data points, enough to identify pattern or trend.
+```{r}  
+library(data.table) 
+library(tidyr) 
+library(dplyr)
+### The car accident data
+data = read.csv("NYPD_Motor_Vehicle_Collisions-2.csv", header = TRUE, sep = ",") 
+data = as.data.table(data)  
+data = data[, .(DATE)] 
+data = data[, .N, by=DATE]   
+
+# specify the new column names:
+vars <- c("month", "date", "year")
+# then separate the column according to regex and drop extra columns:
+data_split = separate(data, DATE, into = vars, sep = "/", extra = "drop") 
+# Sort data with year, month and date
+data_split = data_split[order(data_split[,3], data_split[,1], data_split[,2]), ]  
+# Select only samples from 2013 and 2014 
+data_split = data_split[year == 2013] 
+data_split$time = paste(data_split$year,data_split$month,data_split$date, sep = "") 
+data_split = data_split[order(data_split$time)]
+```
+
+* Next we load the data of temperature. The data contain information about date, location of station and different kind temperature record. Here we take the record "TMIN", which means the lowest recorded temperature in that day. The reason I take the particular station at Newark Airport is it has the comprehensive data from 2013 to 2014 and no missing value.
+
+```{r,echo=FALSE} 
+### The weeather data
+data_weather = read.csv("1232705.csv", header = TRUE, sep = ",")  
+data_weather = as.data.table(data_weather) 
+head(data_weather)
+# Use the weather data from station Boonton, which has the temperature data for the whole year
+data_weather = data_weather[NAME=="NEWARK LIBERTY INTERNATIONAL AIRPORT, NJ US", .(DATE, TMIN)] 
+vars <- c("year", "month", "date") 
+# same as above
+data_weather_split = separate(data_weather, DATE, into = vars, sep = "-", extra = "drop")  
+
+data_weather_split$time = paste(data_weather_split$year, data_weather_split$month, 
+                                data_weather_split$date, sep = "") 
+data_weather_split = data_weather_split[order(data_weather_split$time)] 
+data_weather_split = data_weather_split[year == 2013]
+```
+
+* Then we merge the data of car accident and temperature and drop columns we won't use.
+
+```{r}
+total = merge(data_split, data_weather_split, by=c("year", "month", "date")) 
+total$time = paste(total$year, total$month, total$date, sep = "-")
+total$month = NULL 
+total$date = NULL 
+total$year = NULL  
+
+data = total 
+data$time = as.Date(data$time) 
+data$time.x = NULL 
+data$time.y = NULL
+```
+
+------
+
+------
+
+# 3. Explore the data
+
+## 3.1 Time Plot
+
+We first use time plot to see whether there are significant seasonal pattern or trend in temperature and number of car accident, and whether one can be a good proxy for another.
+
+```{r}
+# Time Plot
+date = data$time 
+temperature = data$TMIN 
+traffic = data$N
+par(mar=c(6, 5, 4, 5))
+plot(date, traffic,xlim = c(as.Date("2013-01-01"), as.Date("2013-12-31")), 
+     xlab = "Month", ylab = "Number of Car Accident", main = "Time Plot of Car Accident Number", 
+     sub = "Fig 1", type = "l")  
+
+par(new = T) 
+plot(date, temperature,xlim = c(as.Date("2013-01-01"), as.Date("2013-12-31")), 
+     xlab = "",ylab = "", col = "red", type = "l") 
+
+axis(side = 4)
+mtext("Temperature (Fahrenheit)", side = 4, line = 3)
+```
+
+* From Fig 1 We can identify a clear seasonal pattern in temperature (red line) from the plot. But the number of car accident seems to be less associate with the temperature and show no clear pattern or trend. So we will first use the spectrum analysis to see frequency domain of temperature and number of car accident. If they are close, there should be some connection between them. 
+
+## 3.2 Spectrum Analysis
+```{r,eval=FALSE,echo=FALSE}
+summary(temperature) 
+summary(traffic)
+```
+
+
+We perform the spectrum analysis of the temperature data, which can see a cycle pattern about 1 year from the time plot in Fig 1.
+
+```{r}
+spec_temp = spectrum(temperature,  main="Spectrum periodogram of Temperature", xlab = "Frequency \n Fig 2") 
+cycle = spec_temp$freq[which.max(spec_temp$spec)]  
+cat("The frequency domain is ", cycle, "cycle per observation (day).", "\n",  
+    "The cycle period is ",1/cycle, "days.")
+
+```
+
+* 375 days for 1 cycle, this is quite close to 1 year. From Fig 2 we can see no other peak, so we just have 1 statistically significant frequency domain.   
+ 
+Then let's see the spectrum analysis of car accident data. 
+
+```{r} 
+# define a function to find the nth largest number in a array without changing the sequence of data. 
+find_nth =function(n,list){
+  temp = list  
+  i = 1
+  for (i in 1:(n-1)){
+      temp[which.max(temp)] = 0 
+  }
+  return(which.max(temp))
+}
+
+#####################
+spec_traf = spectrum(traffic, main = "Smoothed periodogram", xlab = "Frequency \n Fig 3") 
+
+cycle = spec_traf$freq[which.max(spec_traf$spec)] 
+cat("The frequency domain is ", cycle, "cycle per observation (day).", "\n", 
+    "The cycle period is ",1/cycle, "days.\n")
+
+
+
+cycle = spec_traf$freq[find_nth(2, spec_traf$spec)] 
+cat("The second largest peak", "The frequency domain is ", cycle, "cycle per observation (day).", "\n", 
+    "The cycle period is ",1/cycle, "days.\n")
+
+
+
+cycle = spec_traf$freq[find_nth(3, spec_traf$spec)] 
+cat("The third largest peak", "The frequency domain is ", cycle, "cycle per observation (day).", "\n", 
+    "The cycle period is ",1/cycle, "days.\n")
+
+```
+
+* 3.5 days per cycle, which is likely to be 2 cycle per week. This is far away from the cycle of temperature. Also there are two peaks other than the frequency domain that are statistically significant, the second largest has a cycle approximately 1 week and third largest peak has a cycle close to 0.5 year. The cycle of temperature is common multiple of cycle of car accident. However, it's hardly to consider this as a prove of association between temperature and car accident.
+
+* So far we haven't get any evidence that show a connection between temperature and number of car accident. Next we are going to fit signal plus ARMA noise model with the data.
+
+
+## 3.3 Fitting Model 
+
+We use AIC table to choose the best signal plus ARMA noise model. The formula of the model is **Ref**:
+$$ Y = Z\beta + \eta.$$
+Where $\mu_n$ is a trend function that has a linear specification:
+$$\mu_n = \sum_{k=1}^K Z_{n,k}\beta_k,$$
+And $\eta$ is a is a stationary, causal, invertible ARMA(p,q) process with mean zero.
+
+As we know, the ARMA noise model can predict the trend with the data that is not fitted in ARMA model. If there is a connection between temperature and car accident, the model should fit nicely.
+
+```{r}
+require(knitr)
+aic_table <- function(data, P, Q, xreg = NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q),xreg = xreg, method = "ML")$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+traffic_aic_table <- aic_table(traffic, 4, 4, xreg = temperature)
+
+traffic_aic_table
+
+```
+
+* Here is one thing to mention. The default for arima function is using CSS (conditional sum of squares), it is possible for the autoregressive coefficients to be non-stationary, which may result an error. So here I force R to use MLE (maximum likelihood estimation) instead by using the argument method="ML". This is slower but gives better estimates and always returns a stationary model.
+
+* From the AIC table we can see the ARMA(4,4) have the lowest AIC value. However, here we have some problem about the AIC of ARMA(4,4). Indeed it is the lowest, but the difference between it and AIC of ARMA(3,4) is greater than 2. This means something wrong in the maximization of log-likelihood. Also ARMA(4,4) is a large model with many roots in AR and MA polynomial, so we need to check the roots to make sure it satisfied the causality and invertibility.
+
+
+```{r}
+arma = arima(data$N, order = c(4,0,4), xreg = temperature, method = "ML")
+AR_roots = polyroot(c(1,-coef(arma)[c("ar1", "ar2", "ar3","ar4")]))
+MA_roots = polyroot(c(1, coef(arma)[c("ma1", "ma2", "ma3","ma4")]))  
+
+## Define a function to chekc the roots whether landed outside the unit circle
+mod_check = function(roots){
+  for (i in roots){
+    if (Mod(i) - 1 >= 0.001){
+      cat("satisfied", "\n")
+    }
+    else{
+      cat("not satisfied", "\n")
+    }
+  }
+  
+}
+
+mod_check(AR_roots) 
+
+mod_check(MA_roots)
+```
+
+* I write a function to check whether the roots are too close to the boundry of unit circle. There are two roots that in AR and MA model that may not satisfy the causality and invertibility. So based on the analysis above, the ARMA(4,4) model has some problems and we can't just choose it based on AIC.  
+
+------
+
+------
+
+# 4. Diagnostic and Model Selection
+
+## 4.1 Signal Plus ARMA Noise Model
+
+Based on the AIC table and our preference for smaller model, we choose ARMA(2,2) model.  
+
+```{r, echo=FALSE}
+arima(traffic, xreg = temperature, order = c(2, 0, 2))
+```
+
+* The standard error of "temperature" is so large that suggesting there is no association between temperature and number of car accident. We can also perform likelihood ratio test to confirm this. 
+
+```{r,echo=FALSE}
+log_lik_ratio = as.numeric(logLik(arima(traffic, xreg = temperature, order = c(2, 0, 2)))
+                           - logLik(arima(traffic, order = c(2, 0, 2))))
+p = 1 - pchisq(2*log_lik_ratio, df = 1)
+cat("The p-value is ", p)
+```
+
+* p-value greater than 0.05. Can't reject the null hypothesis that there is no connection between temperature and number of car accident. This is corresponding with the result above.
+
+## 4.2 Signal Plus White Noise Model
+
+We can fitting the temperature as explanatory variable and compare the result with signal plus white noise model. 
+
+```{r} 
+a = seq(1,365, by = 1)
+fit0 = lm(traffic ~ a)
+fit1 = lm(traffic ~ temperature) 
+cat("The AIC of signal plus white noise model is ",AIC(fit0), "\n", 
+    "The AIC of the model with temperature as explanatory variable is ",AIC(fit1), "\n")
+summary(fit1)
+```
+
+* The AIC of white noise model is even lower. From the summary, the R-squared is too small to consider there is a linear relationship between temperature and traffic.       
+
+* So far we have confirmed there is no significant association between temperature and number of car accident in New York. However, we haven't find the best arma model to fit the car accident data yet. 
+
+## 4.3 Find the best fitted ARMA model 
+
+We can start by checking the ACF plot of ARMA(2,2) model. Here I remove the term "xreg" in arima function, since we have confirmed there is no need for fitting temperature in model.
+
+```{r}
+residuals = resid(arima(traffic, order = c(2, 0, 2))) 
+par(mar=c(6, 5, 4, 5))
+acf(residuals, xlab = "Lag \n Fig 4", main = "ACF plot of ARMA(2,2)")
+```
+
+* The ACF plot shows 9 lags out of the CI for 25 lags in total. This is a violation of the null hypothesis of Gaussian white noise.And there is a seasonal pattern in every 7 days. Remember the result in spectrum analysis, there is a cycle in 7 days, which is easier to interpret. Based on that we try to fit SARMA model next.
+
+## 4.4 SARMA Model
+
+The ACF plot of the residuals of SARMA(2,2)×(1,1) with period 7 is shown in Fig 5.
+
+```{r}
+residuals = resid(arima(traffic, order = c(2, 0, 2), seasonal=list(order=c(1,0,1),period=7))) 
+par(mar=c(6, 5, 4, 5))
+acf(residuals, xlab = "Lag \n Fig 5", main = "ACF plot of SARMA(2,2)×(1,1)" ) 
+```
+
+* There are no lags ouside the CI. This suggests that the residuals are nicely following the null hypothesis of Gaussian white noise. 
+
+We can also construct a AIC table to check whether SARMA(2,2)×(1,1) has the lowest AIC value.
+
+```{r}
+require(knitr)
+aic_table <- function(data, P, Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q), method = "ML",seasonal=list(order=c(1,0,1),period=7))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+traffic_aic_table <- aic_table(traffic, 4, 4)
+
+traffic_aic_table
+
+```
+
+* By changing the coefficient P, Q in SARMA(P,Q)×(1,1), we find that SARMA(2,1)×(1,1) has the lowest AIC value. So we need to decide which one is better by checking the ACF plot and residual plot.
+
+```{r} 
+par(mfrow=c(2,2)) 
+par(mar=c(4, 4, 4, 4))
+acf(residuals, xlab = "Lag ", main = "ACF of SARMA(2,2)×(1,1)" ) 
+residuals = resid(arima(traffic, order = c(2, 0, 1), seasonal=list(order=c(1,0,1),period=7))) 
+acf(residuals, xlab = "Lag ", main = "ACF of SARMA(2,1)×(1,1)" )  
+plot(resid(arima(traffic, order = c(2, 0, 2), seasonal=list(order=c(1,0,1),period=7))), 
+     main = "Residual plot of SARMA(2,2)×(1,1)", ylab = "Residuals") 
+plot(residuals, main = "Residual plot of SARMA(2,1)×(1,1)")
+```
+
+* The residual plot and the ACF plot are almost the same, and they both satisfied the null hypothesis. So we would like to choose the SARMA(2,1)×(1,1) model since it has lowest AIC and simpler than SARMA(2,2)×(1,1). 
+
+## 4.5 Forecasting based on SARMA model
+
+As we find the fitted model, it natural to compare the fitted values with the original data.
+
+```{r,echo=FALSE}
+library(forecast) 
+fit = Arima(traffic, order = c(2, 0, 1), method = "ML",seasonal=list(order=c(1,0,1),period=7))
+par(mar=c(4, 4, 4, 4))
+plot(date, traffic, col = "black", type = "l", xlim = c(as.Date("2013-01-01"), as.Date("2013-12-31")), xlab = "Month", ylab = "Number of Car Accident", main = "Fitted Value and Original Value")
+lines(date, fitted(fit), col = "red")
+```
+
+* The result is promising. The fitted value (red line) captured most of the peaks and shared the same pattern as the original data. Therefore SARMA(2,1)×(1,1) is a nicely fitted model for car accident data.
+
+------
+
+------
+
+# 5. Conclusion 
+
+* Based on the analysis above, temperature has no assoication with number of car accident in New York. In other word, it is as likely to have car accident in winter as in summer.
+
+* There is no clear trend in the car accident data.  
+
+* The temperature data have only one statistically significant frequency domain, which is 375 days per cycle. This result is reasonable as it corresponding to the season changes in one year. 
+
+* The car accident data have three statistically significant frequency, and the spectrum of those three are very close. We find the cycle of 7 days is easier for interpretation. As the traffic on Monday is heavier than other days.  
+
+* The diagnositic on SARMA model confirmed the cycle of 7 days is reasonable and find the best fitted model is SARMA(2,1)×(1,1).
+
+
+------
+
+------
+
+# 6. Further Discussion 
+
+The result that temperature has no association with number of car accident in New York is quite surprising to me at first. As I seek for a better explanation,several ideas comes up: 
+
+* The car accident data we used in this study measured the number of car accidents each day. But the amount of traffic on the road varies day by day, and a larger number of car accident may not necessarily means a higher chance of crash. Maybe we have a large number on Monday  
+just because it is most crowded on that day. So in order to get a more accurate result, we should instead use the percentage of car accident for analysis. 
+
+* Drivers take more cautions in winter than in summer, as they know there might be snow and ice on the road. And they tend to drive slow in limited visibility condition (like snowy days). Therefore, they offset the bad effect of temperature. 
+
+* As the largest city in America, New York has the best road cleaning team and police force to maintain the traffic all year round. This may also offset the effect of temperature. 
+
+------
+
+------
+
+# 7. References  
+
+1. NYPD Motor Vehicle Collisions - From DATA.GOV **https://catalog.data.gov/dataset/nypd-motor-vehicle-collisions-07420** 
+
+2. Daily Weather Report - From NOAA **https://www.ncdc.noaa.gov/cdo-web/search**
+
+3. Lecture Note-6, Prof. Edward Ionides, University of Michigan 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

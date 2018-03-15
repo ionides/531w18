@@ -1,0 +1,200 @@
+---
+title: "Relationship between CNH to USD Exchange Rate and S&P 500 Index"
+date: "March 7, 2018"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+```
+
+# 1. Introduction
+CNH to USD pair represents the offshore Chinese Yuan against US Dollar, CNH uses the letters CNY when trading inside of China. The Yuan used to be pegged to the US Dollar but is now allowed to trade a limited distance against the reserve currency on a daily basis. China has used its control over its exchange rate to help ward off global financial crisis.
+
+The Standard & Poor's 500, often abbreviated as the S&P 500, or just the S&P, is an American stock market index based on the market capitalizations of 500 large companies having common stock listed on the NYSE or NASDAQ. 
+
+This project is to investigate the relationship between CNH to USD exchange rate and S&P 500 index, and furthermore, whether US currency rate on emerging market relys on US equity market performance. If any proven relationship is discovered or confirmed, it can be a used as an effective proxy for exchange rate prediction. It can also make a significant impact on macroeconomic decisions of central banks, hedging and risk management for investors as well as any cross-border business that requires more than one currency for clearing and settlement purpose.
+
+# 2. Data Overview
+In this project, we look at the CNH to USD exchange rate and S&P 500 index in 2017 (251 trading days). For the convenience of the data processing, two data sets have been combined into one .csv file and here is a quick look at the data sets after we read them. The historical data is downloaded from Investing.com $^{[2]}$ and Yahoo finance $^{[3]}$. A time plot for both time series may give a general overview of their behavior.
+```{r}
+data = read.csv(file="C:/Users/hwycl/OneDrive/Course 2017-2018 Winter/STATS531/mid project/midtermdata.csv", header = TRUE)
+head(data)
+c = data$CurPrice
+s = data$SP500
+plot(ts(cbind(c,s)),main = "CNH to USD Exchange Rate and S&P 500 Index in 2017",xlab="Day")
+plot(ts(cbind(log(c),log(s))),main = "CNH to USD Exchange Rate and S&P 500 Index in Logrithm in 2017",xlab="Day")
+```
+
+# 3. Cycles and Seasonalities
+We would like to check whether there is any common monthly or quaterly seasonality in two time series. Let's plot the smoothed periodogram for both time series first. It seems that there is no obvious cycles in neither CNHUSD exchange rate nor S&P500 index in 2017. After taking first order difference, we observed different frequency patterns in both time series.
+```{r}
+spectrum(c,spans=c(3,5,3),main="CNH to USD Exchange Specturm")
+spectrum(s,spans=c(3,5,3),main="S&P 500 Exchange Specturm")
+```
+
+The frequency peaks for two time series do no overlap after taking first order difference
+```{r}
+spectrum(diff(c),spans=c(3,5,3),main="First Order Difference CNH to USD Exchange Specturm")
+spectrum(diff(s),spans=c(3,5,3),main="First Order Difference S&P 500 Exchange Specturm")
+```
+
+# 4. Data Analysis
+
+## 4.1 Remove Trend
+Both time series as increasing in the past 2017, there might be underlying relationship between these two time series. However, we need to de-trend them first.
+
+```{r}
+dc=diff(c)
+ds=diff(s)
+plot(ts(cbind(dc,ds)),main = "Daily Difference on CNH to USD Exchange Rate and S&P 500 Index",xlab="Day")
+```
+
+## 4.2 Autocorrelation
+
+We also would like to see the correlation function for first order difference of these two time series. Neither of them has obvious autocorrelation, however, ACF values follow a similar pattern as lags grows. 
+```{r}
+acf(dc,main="ACF of Daily Difference on CNH to USD Exchange Rate")
+acf(ds,main="ACF of Daily Difference on S&P 500 Index")
+```
+
+
+## 4.3 Model Fitting
+
+### 4.3.1 Model CNH USD Exchange Rate without S&P 500 Index
+Let's conduct AIC analysis for first order difference of CNH USD Exchange rate, ARMA(4,4) is the may be the best fit. That is to say, we adopt ARIMA(4,1,4) for original time series.
+```{r,warning=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+dc_aic_table <- aic_table(dc,5,5)
+require(knitr)
+kable(dc_aic_table,digits=2)
+```
+
+After fitting the data to ARMA(4,4), we can test the residual as follows. The $/sigma^2$ for error term is pretty small and there is no obvious evidence against normality of error terms. 
+```{r}
+armadc=arima(x=dc,order = c(4,0,4))
+armadc
+plot(armadc$residuals,type="p")
+acf(armadc$residuals)
+qqnorm(armadc$residuals)
+qqline(armadc$residuals, col = 2)
+```
+
+
+### 4.3.2 Model CNH USD Exchange Rate with S&P 500 Index
+To get start, we tried to fit the model using linear regression. Furthermore, the residuals do not follow the normal distribution, we need to think about fitting a regression on ARMA error model.
+```{r}
+l=lm(c~s)
+summary(l)
+plot(l$residuals)
+acf(l$residuals)
+qqnorm(l$residuals)
+qqline(l$residuals, col = 2)
+```
+
+Let's conduct AIC analysis for residuals, ARMA(5,4) is the may be the best fit for the residuals.
+```{r,warning=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+residual_l_aic_table <- aic_table(l$residuals,5,5)
+require(knitr)
+kable(residual_l_aic_table,digits=2)
+```
+
+Theoretically we can do better than linear regression, and this can be done by fitting a regression with ARMA(5,4) error model, as follows. We see a lower $\sigma^2$ for error terms. However, I actually don't think it improves that much. $AIC=-3206.28$, almost the same as the previous model 4.3.1 where $AIC = -3202.55$. Moreover, the coefficient for S&P 500 index $s$ is zero, which also indicates that it does not really helps predicting CNH USD exchange rate. 
+
+```{r}
+armalr=arima(x=c,order = c(5,0,4),xreg=s)
+armalr
+```
+
+### 4.3.3 Model First Order Difference CNH USD Exchange Rate with S&P 500 Index
+Here we basically follow the same procedure as 4.3.2, except we use first order difference rather than original time series, we start with linear regression. Apparently, noted that the coefficient for S&P 500 index $ds$ is pretty small. Furthermore, the residuals do not follow the normal distribution, we need to think about fitting a regression on ARMA error model.
+```{r}
+lr=lm(dc~ds)
+summary(lr)
+plot(lr$residuals)
+acf(lr$residuals)
+qqnorm(lr$residuals)
+qqline(lr$residuals, col = 2)
+```
+
+Let's conduct AIC analysis for residuals, ARMA(2,4) is the may be the best fit for the residuals.
+```{r,warning=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+residual_aic_table <- aic_table(lr$residuals,5,5)
+require(knitr)
+kable(residual_aic_table,digits=2)
+```
+
+Theoretically we can do better than linear regression, and this can be done by fitting a regression with ARMA(2,4) error model, as follows. We see a lower $\sigma^2$ for error terms. However, I actually don't think it improves that much. $AIC=-3206.53$, almost the same as the previous model 4.3.1 where $AIC = -3202.55$. Moreover, the coefficient for S&P 500 index $ds$ is zero, which also indicates that it does not really helps predicting CNH USD exchange rate. 
+
+```{r,warning=FALSE}
+armalr=arima(x=dc,order = c(2,0,4),xreg=ds)
+armalr
+```
+
+
+# 5. Conclusion
+
+## 5.1 Simulation and Back Testing
+We decided to adopt ARIMA(4,1,4) to model 2017 CNH USD exchange rate. Let's simulation a ARIMA(4,1,4) process and compare it with origianl time series. We can say that the specturm captured some important information of data set. As a time series, CNH USD itself is a decent predictor if ARIMA(4,1,4) is as prediction model.
+
+```{r}
+simuc=arima.sim(n=251,list(order=c(4,1,4),ar=armadc$coef[1:4],ma=armadc$coef[5:8]))
+spectrum(simuc,spans=c(3,5,3),main="Simulated CNH to USD Exchange Specturm")
+```
+
+
+## 5.2 Reason and Future Improvement
+After the analysis above, there is no strong evidence to claim S&P 500 index can greatly help predicting CNH USD exchange rate, based on 2017 data. It might have several reasons:
+
++ US equity market is not a driving factor for CNH USD exchange rate. 
++ Other factors, such as bond yield, inflation rate and interest rate, etc, are more appropriate for CNH USD exchange rate prediction.
++ Time window sample is too short. 
++ The relationship is actually not linear.
+
+We can add other predicting factors to our analysis, or extend time window to include more data points, or conduct nonlinear variable transformation if we plan to further imporve our analysis.
+
+# 6. Appendix
+## 6.1 Explaination
+The data analysis report is very intuitive and easy to follow. We first conducted data overview for two time series respectively, and tried to find out common pattern is frequency. Then we estimate two models, with or without S&P 500 index. By comparing coefficients value, AIC and $\sigma^2$ for error terms, we reached our conclusion. 
+
+## 6.2 Source
+[1] Edward L. Ionides, STATS 531 Class notes 4,5,6,7
+
+[2] CNH to USD Exchange Rate, https://www.investing.com/currencies/usd-cnh-historical-data
+
+[3] S&P 500 Index, https://finance.yahoo.com/quote/%5EGSPC/history?p=%5EGSPC
+
+[4] R.H.Shmway and D.S.Stoffer,Time Series Analysis and Its Application, Chapter 4

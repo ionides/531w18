@@ -1,0 +1,410 @@
+---
+title: "STATS 531 Midterm Project: The Association of the Performance of Gun Stocks with the Party of the President and Mass Shootings"
+date: "3/8/2018"
+output: 
+  html_document:
+    toc: true
+bibliography: bib.bibtex
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr);
+library(tseries); 
+library(forecast); 
+library(boot); 
+```
+
+# Introduction
+
+Guns, the sale of guns, and gun control have always been a major part of the American political landscape. The issue of gun control has recently made national headlines with the Marjory Stoneman Douglas High School shooting in Parkland, Florida on February 14, 2018, which left 17 dead and 14 injured [@sullivanetal]. Other recent shootings, such as the Las Vegas Route 91 Music Festival shooting on October 1, 2017 that left 58 dead and 851 injured, have triggered similar headlines and discussions about gun control [@lvmpd2017].
+
+In the wake of mass shootings, the price of gun stocks usually rally [@fredimbert2018], meaning that gun stocks see a quick rise in prices. In the wake of the Marjory Stoneman Douglas High School shooting, for instance, Sturm Ruger (\$RGR) rose by 2.8\% and Smith \& Wesson's parent company American Outdoor Brands (\$AOBC) rose by 5.6\% by the end of trading on February 14 (ibid.). The fear of stronger gun laws in the wake of mass shootings encourages gunowners to stockpile guns. 
+
+On the other hand, the National Rifle Association (NRA) has (in)famously lobbied both federal and state politicians to prevent gun control laws from being passed. In political science, the NRA is considered one of the top three most powerful lobbying groups in Washington, D.C. [@wilsonetal]. Even in the wake of the Sandy Hook Elementary School shooting on December 14, 2012, which left 20 young children and 7 adults dead, the NRA fought back against Barack Obama's call for legislation on guns and refused to endorse any type of restrictions against assault-style guns or to endorse any types of restrictions on gun ownership [@shesreport]. 
+
+Because Democratic politicians are generally pro-gun control legislation and Republican politicians are generally anti-gun control legislation, it would seem logical that gun companies should flourish under Republican presidents. Yet, Remington Arms filed for Chapter 11 bankruptcy protection in February 2018, citing falling sales during Trump's presidency and the mounting lawsuits after it was discovered that the Bushmaster AR-15 rifle was used in the Sandy Hook Elementary School shooting [@remington]. In fact, gun companies have performed far worse under Donald Trump than under Barack Obama. NBC found that background checks, a barometer for gun sales, fell faster in 2017 than any other year since 1998, the year that the FBI began tracking background checks (ibid.). Sturm Ruger and American Outdoor Brands, both publicly traded, have also had their stocks fall precipitously since Trump's election. 
+
+The hypothesis is that gun owners do not rush to stockpile guns when there is a Republican president, because there is no threat of gun control legislation being pushed through the government. However, when there is a Democratic president, there is a rush to stockpile guns because there is a higher chance of gun control legislation being pushed through, such as Bill Clinton's ban on assault weapons under the Federal Assault Weapons Ban in 1994 [@federalassaults]. Perhaps for this reason, Obama was described by Brian W. Ruttenbur, an analyst at BB\&T Capital Markets, as "the best salesman for firearms" [@nyt]. 
+
+## Statement of Problem and Hypotheses
+In the above section, there are two proposed drivers of increased gun purchases: fear of gun control legislation being enacted in the aftermath of a mass shooting, and fear of a Democratic president pushing gun control legislation. Of course, these factors may not be independent---the increase in gun purchases in the aftermath of a mass shooting may be amplified in the face of a Democratic president. <b> Thus, this project seeks to answer the following research question: what is the association of the performance of gun stocks with the party of the president and/or the recent occurrence of a mass shooting?</b> There are three hypotheses: 
+
+<b> Hypothesis 1: </b> The (closing) price of gun stocks increase when there is a Democratic president.
+
+<b> Hypothesis 2: </b> The (closing) price of gun stocks increase in the immediate aftermath of a mass shooting.
+
+<b> Hypothesis 3: </b> The (closing) price of gun stocks increase even further in the immediate aftermath of a mass shooting under a Democratic president. 
+
+# Data Preparation
+## Setting Up Variables of Interest
+To answer our question, we look at the stock of American Outdoor Brand Corporation (\$AOBC), a "family-friendly" name that Smith \& Wesson adopted in 2017. Smith \& Wesson itself was founded in 1852, but the stock only went public on December 12, 2002. I chose to analyze AOBC over other gun stocks, such as Sturm, Ruger, and Co. (\$RGR) or Vista Outdoor Inc. (\$VSTO) for several reasons. VSTO was ruled out because it only went public in 2015, which meant that the data was not sufficient. RGR, on the other hand, has been public since the 1960s, but was only formally listed on the NYSE since 1990. RGR has a unique dividend structure that causes significant differences between their adjusted closing prices and listed closing prices; thus, it was not clear which type of closing price should be used and what justifies it. A larger project would include a much more formal analysis of RGR; however, for this project, I choose to focus on AOBC. 
+
+I use daily closing prices for AOBC; the adjusted closing prices are exactly the same each day. I also use the corresponding closing price of the Dow Jones Industrial Average (DJIA) in this analysis to control for overall market performance. 
+
+For the party of the president, I mark the variable <tt>party</tt> as 0 for a Republican president and 1 for a Democratic president. I denote the party of the president based on the day they were <i>elected</i> as president, not the day they took office. Because markets are fundamentally forward looking, traders trade on the basis of the prospect of a Democratic or Republican president. Thus, the <tt>party</tt> variable was marked as 1 starting on November 5, 2008, the day after Obama was elected president. Likewise, <tt>party</tt> was marked as 0 starting on November 9, 2008, the day after Trump was elected president.
+
+To indicate mass shootings, I include an indicator variable named <tt>recent_mass_shootings</tt>. I marked the day that a mass shooting occurred and the two weeks after the shooting as the "recent mass shooting" period. This is a period typically marked by headlines about the shooting, discussions about gun control, etc., with the discussion tapering off after two weeks. The choice of two weeks is simply a heuristic choice; some discussions about gun violence end more quickly, while others persist longer. The mass shootings I used are those that are those in the top twenty deadliest shootings in U.S. history. Specifically, I used the Las Vegas shooting in 2017, the Orlando nightclub shooting in 2016, the Virginia Tech shooting in 2007, the Sandy Hook Elementary School shooting in 2012, the Sutherland Springs church shooting in 2017, the Stoneman Douglas High School shooting in 2018, the San Bernardino attack in 2015, the Binghampton shootings in 2009, the Fort Hood shooting in 2009, the Washington Navy Yard shooting in 2013, the Aurora shooting in 2012, the Red Lake shootings  in 2005, and the Umpqua Community College shooting in 2015 [@deadliestshootings]. There is heterogeneity in the types of shooting that took place and the subsequent public response to them. For example, the reaction to the Sandy Hook Elementary School shooting was very different than the reaction to the Fort Hood shooting, which took place on a military base. Thus, this is nowhere close to being a perfect indicator variable about recent mass shootings; what they do share in common, however, is that these shootings all made national headlines. 
+
+## Basic Data Exploration of Stock Prices
+With all this said, we dive into our data. Below is a graph indicating the closing prices of AOBC and DJIA.
+
+```{r datasetup, echo = FALSE, fig.align="center"}
+aobc = read.csv("AOBC.csv"); 
+djia = read.csv("DJI_AOBC.csv");
+colnames(aobc) = paste("aobc", colnames(aobc), sep="_");
+colnames(djia) = paste("djia", colnames(djia), sep="_");
+colnames(aobc)[1] = "Date";
+colnames(djia)[1] = "Date";
+combined = merge(djia,aobc,by=c("Date"));
+
+combined$Date = as.Date(combined$Date, "%Y-%m-%d");
+
+# Presidencies
+combined$bush = ifelse(combined$Date >= as.Date("12/13/1999", format = "%m/%d/%Y") & combined$Date <= as.Date("11/04/2008", format = "%m/%d/%Y"), 1, 0);
+combined$obama = ifelse(combined$Date >= as.Date("11/05/2008", format = "%m/%d/%Y") & combined$Date <= as.Date("11/08/2016", format = "%m/%d/%Y"), 1, 0); 
+combined$trump = ifelse(combined$Date >= as.Date("11/09/2016", format = "%m/%d/%Y"), 1, 0); 
+combined$party = ifelse(combined$obama == 1, 1, 0);
+
+# Mass Shootings
+combined$lv = ifelse(combined$Date >= as.Date("10/02/2017", format = "%m/%d/%Y") & combined$Date <= as.Date("10/16/2017", format = "%m/%d/%Y"), 1, 0);
+combined$orlando = ifelse(combined$Date >= as.Date("06/12/2016", format = "%m/%d/%Y") & combined$Date <= as.Date("06/26/2016", format = "%m/%d/%Y"), 1, 0);
+combined$vt = ifelse(combined$Date >= as.Date("04/16/2007", format = "%m/%d/%Y") & combined$Date <= as.Date("04/30/2007", format = "%m/%d/%Y"), 1, 0);
+combined$sandyhook = ifelse(combined$Date >= as.Date("12/14/2012", format = "%m/%d/%Y") & combined$Date <= as.Date("12/28/2012", format = "%m/%d/%Y"), 1, 0);
+combined$sutherland = ifelse(combined$Date >= as.Date("11/05/2017", format = "%m/%d/%Y") & combined$Date <= as.Date("11/19/2017", format = "%m/%d/%Y"), 1, 0);
+combined$stonemandouglas = ifelse(combined$Date >= as.Date("02/14/2018", format = "%m/%d/%Y") & combined$Date <= as.Date("02/28/2018", format = "%m/%d/%Y"), 1, 0);
+combined$sanbernardino = ifelse(combined$Date >= as.Date("12/03/2015", format = "%m/%d/%Y") & combined$Date <= as.Date("12/17/2015", format = "%m/%d/%Y"), 1, 0);
+combined$binghampton = ifelse(combined$Date >= as.Date("04/03/2009", format = "%m/%d/%Y") & combined$Date <= as.Date("04/17/2009", format = "%m/%d/%Y"), 1, 0);
+combined$forthood = ifelse(combined$Date >= as.Date("11/05/2009", format = "%m/%d/%Y") & combined$Date <= as.Date("11/19/2009", format = "%m/%d/%Y"), 1, 0);
+combined$navyyard = ifelse(combined$Date >= as.Date("09/16/2013", format = "%m/%d/%Y") & combined$Date <= as.Date("09/30/2013", format = "%m/%d/%Y"), 1, 0);
+combined$aurora = ifelse(combined$Date >= as.Date("07/20/2012", format = "%m/%d/%Y") & combined$Date <= as.Date("08/03/2012", format = "%m/%d/%Y"), 1, 0);
+combined$geneva = ifelse(combined$Date >= as.Date("03/11/2009", format = "%m/%d/%Y") & combined$Date <= as.Date("03/25/2009", format = "%m/%d/%Y"), 1, 0);
+combined$redlake = ifelse(combined$Date >= as.Date("03/22/2005", format = "%m/%d/%Y") & combined$Date <= as.Date("04/05/2005", format = "%m/%d/%Y"), 1, 0);
+combined$umpqua = ifelse(combined$Date >= as.Date("10/01/2015", format = "%m/%d/%Y") & combined$Date <= as.Date("10/15/2015", format = "%m/%d/%Y"), 1, 0);
+combined$recent_mass_shooting = combined$lv + combined$orlando + combined$vt + combined$sandyhook + combined$sutherland + combined$stonemandouglas + combined$sanbernardino + combined$binghampton + combined$forthood + combined$navyyard + combined$aurora + combined$geneva + combined$redlake + combined$umpqua;
+
+combined$diffed_aobc_Close = c(NA, diff(combined$aobc_Close)); 
+combined$diffed_djia_Close = c(NA, diff(combined$djia_Close)); 
+
+combined$diffed_aobc_Close_log = c(NA, diff(log(combined$aobc_Close))); 
+combined$diffed_djia_Close_log = c(NA, diff(log(combined$djia_Close))); 
+
+combined$diffed_aobc_Volume_log = c(NA, diff(log(combined$aobc_Volume)));
+
+diffed_aobc_Close = diff(combined$aobc_Close);
+diffed_djia_Close = diff(combined$djia_Close);
+diffed_aobc_Close_log = diff(log(combined$aobc_Close));
+diffed_djia_Close_log = diff(log(combined$djia_Close));
+party = combined$party[-1];
+recent_mass_shooting = combined$recent_mass_shooting[-1];
+partyxrecent_mass_shooting = party * recent_mass_shooting;
+date = combined$Date[-1]; 
+
+bush = combined$bush[-1];
+obama = combined$obama[-1]; 
+trump = combined$trump[-1]; 
+
+bushxrecent_mass_shooting = bush * recent_mass_shooting; 
+obamaxrecent_mass_shooting = obama * recent_mass_shooting; 
+trumpxrecent_mass_shooting = trump * recent_mass_shooting; 
+
+# Basic Plots
+plot(x = date, y = combined$aobc_Close[-1], type = "l", main = "Daily Closing Price of AOBC", ylab = "Price", xlab = "Date");
+plot(x = date, y = combined$djia_Close[-1], type = "l", main = "Daily Closing Price of DJIA", ylab = "Price", xlab = "Date");
+```
+
+AOBC and DJIA seem to follow somewhat similar paths, except there is a major dropoff for AOBC starting at the end of 2016 (when Trump was elected!). Clearly, this data is not stationary. To induce stationarity, we difference the data such that $\Delta y_n = y_n - y_{n-1}$.   
+
+```{r differencedplots, echo=FALSE, fig.align="center"}
+plot(x = date, y = diffed_aobc_Close, type = "l", main = "Differenced Daily Closing Price of AOBC", ylab = "Daily Difference in Closing Prices", xlab = "Date"); 
+plot(x = date, y = diffed_djia_Close, type = "l", main = "Differenced Daily Closing Price of DJIA", ylab = "Daily Difference in Closing Prices", xlab = "Date");
+```
+
+Now, the trend is mean stationary around zero; however, the covariance in the differenced daily closing price of AOBC between any two given points may not be the same, which would violate one of the definitions of weak stationarity [@ionidesnotes]. Instead, using a logarithmic transformation of the stock prices first, which is a standard transformation with financial stock data, and then taking differences may help alleviate this issue. 
+
+```{r differencedplots_log, echo=FALSE, fig.align="center"}
+plot(x = date, y = diffed_aobc_Close_log, type = "l", main = "Differenced Log Daily Closing Price of AOBC", ylab = "Daily Difference in Log Prices", xlab = "Date"); 
+plot(x = date, y = diffed_djia_Close_log, type = "l", main = "Differenced Log Daily Closing Price of DJIA", ylab = "Daily Difference in Log Prices", xlab = "Date");
+
+```
+```{r df_tests, include = FALSE}
+# Augmented Dickey-Fuller Test, Just to Check
+adf.test(combined$djia_Close); 
+adf.test(combined$aobc_Close); 
+
+adf.test(diffed_djia_Close); 
+adf.test(diffed_aobc_Close); 
+
+adf.test(diffed_djia_Close_log); 
+adf.test(diffed_aobc_Close_log); 
+```
+
+As these graphs indicate, the issue of covariance stability is now largely resolved, particularly for AOBC.^[An Augmented Dickey-Fuller test, which formally tests for the presence of a unit root, further confirms that both time series are now stationary [@fomby].] We can also look at the plot of an estimate of the autocorrelation function (ACF). The estimated ACF plots show that there is an exponential decay in the estimated autocorrelation, further indicating stationarity. 
+
+```{r acf_data_log, echo = FALSE, fig.align = "center"}
+par(mfrow=c(1,2)); 
+acf(diffed_aobc_Close_log, main = "ACF of the Differenced \n Log Daily Prices of AOBC"); 
+acf(diffed_djia_Close_log, main = "ACF of the Differenced \n Log Daily Prices of DJIA"); 
+```
+
+Lastly, we want to investigate if there is seasonality. Although it is well-known that there is no seasonality in the Dow Jones Industry Average, it is not as clear if there are seasons to gun stock companies, because of hunting seasons. As the periodograms indicate below, however, seasonality is not an issue. 
+
+```{r seasonality_check, echo = FALSE, fig.align = "center"}
+par(mfrow=c(1,2)); 
+spectrum(combined$aobc_Close, spans = c(5,10,5), main = "Smoothed Periodogram of \n Closing Prices for AOBC", xlab = "frequency (cycles/day)");
+spectrum(combined$djia_Close, spans = c(5,10,5), main = "Smoothed Periodogram of \n Closing Prices for DJIA", xlab = "frequency (cycles/day)"); 
+```
+
+```{r aic_table_xreg, include = FALSE}
+aic_table = function(data, P, Q, xreg){
+  table = matrix(NA,(P+1),(Q+1));
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] = arima(data, order = c(p,0,q), optim.control = list(maxit = 1000), xreg = xreg)$aic;
+    }
+  }
+  dimnames(table) = list(paste("<b> AR", 0:P, "</b>", sep = ""), paste("MA", 0:Q, sep = "")); 
+  table;
+}
+```
+
+# Models
+## Model 1: Analyzing the Association of AOBC's Closing Price with the President's Party
+Our first model analyzes the association between AOBC's closing price (in the form of differenced log daily closing prices) and the president's party. To do this, I fit a linear regression model with ARMA noise. 
+
+### Model 1 Selection
+Because I substantively want to include the indicator variable of the president's party and control for market performance through DJIA, I do not model select on regressors. Instead, I use Akaike's information criterion (AIC) to select the best ARMA model to model the noise [@ionidesnotes]. To do this, I create a table of AIC values with an autoregressive order up to $p = 5$ and a moving average order up to $q = 5$, with any value beyond this resulting in possible overfitting. 
+
+```{r aic_log_party, echo = FALSE}
+xreg_log_party = cbind(diffed_djia_Close_log, party);
+aic_log_party = aic_table(diffed_aobc_Close_log, 5, 5, xreg_log_party);
+kable(aic_log_party, digits = 2);
+```
+
+The models to consider here are ARMA(0,0), ARMA(2,2), and ARMA(5,5). I rule out using ARMA(5,5) out of fears of overfitting. To determine whether to use ARMA(0,0) or ARMA(2,2) to model noise, I employ a likelihood ratio test, which can be determined from the AIC values using the following formula.
+\[2l^{<1>} - 2l^{<0>} = AIC_0 - AIC_1 - 2\times(k_0 - k_1) \sim \chi^2_{k_1 - k_0} \tag{1}\]
+Here, $AIC_1$ and $AIC_0$ represent the alternative and null models AIC values, respectively, and $k_1$ and $k_0$ represent the number of parameters in the alternative and null models, respectively. The above is derived from the equation of AIC, which is $-2 \times l(\theta^*) + 2k$ [@ionidesnotes]. Thus, calculating this using the AIC values above, we get the following. 
+
+```{r lrt_log_party}
+lr = -14940.18 - (-14942.39) - 2*(2 - 6); 
+print(pchisq(lr, df = 4));
+```
+
+Thus, with a p-value of 0.96, I choose to model the noise using an ARMA(0,0) model. 
+
+### Model 1 and Results
+Thus, according to the model selection process in the previous section, my model is simply
+\[\Delta(log(\text{AOBC Closing Price}))_t = \alpha + \beta_1(\Delta(log(\text{DJIA Closing Price})_t) + \beta_2(\text{Party}_t) + \varepsilon_t\]
+where $\varepsilon_t \sim N(0,\sigma^2)$. Fitting the model, we get the following results.
+
+```{r log_party_results, echo = FALSE}
+mod_log_party = lm(diffed_aobc_Close_log ~ diffed_djia_Close_log + party); 
+summary(mod_log_party);
+```
+
+From these results, it is clear that party has no significant association with the differenced log daily closing prices of the party, although the sign is positive (recall that <tt>party</tt> is coded as 1 for a Democratic president).
+
+### Model 1 Diagnostics
+To see if my model above meets the linear regression with ARMA noise assumptions, I look at the an estimation of the autocorrelation of the residuals to see if it behaves like Gaussian white noise, the QQ plot of the residuals to examine normality, a plot of the residuals against the dates to see if there are any signs of heteroskedasticity, and a periodogram of the residuals to see if there is seasonality within the residuals. 
+
+```{r modeldiagnostics_log_party, echo = FALSE, fig.align = "center", out.width = "130%"}
+m = matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE); 
+layout(m); 
+acf(mod_log_party$residuals, main = "ACF of Residuals");
+qqnorm(mod_log_party$residuals); 
+qqline(mod_log_party$residuals);
+plot(x = date, y = mod_log_party$residuals, main = "Residuals Against Dates", xlab = "Date", ylab = "Residuals"); 
+spectrum(mod_log_party$residuals, span = c(10,20,10), main = "Smoothed Periodogram of Residuals", xlab = "frequency (cycles/day)");
+```
+
+Overall, the assumptions of the model are mostly met: there does not seem to be autocorrelation between the residuals, with exceptions at lags 18 and 27, there does not seem to be much evidence of heteroskedasticity, and there is no seasonality in the residuals. The major violation is that the residuals are very heavy-tailed compared to the normal distribution. For this reason, the standard errors in the previous results are not valid. To fix this issue, I use a fixed block bootstrap.
+
+### Fixed Block Bootstrap for Model 1
+The fundamental issue with an ordinary bootstrap approach is that it destroys any autocorrelation that may exist between datapoints. Thus, to get around this issue, a block bootstrap can be used on time series data. In short, what the fixed block bootstrap does is that it samples blocks of length $l$ from the time series until a time series of the original length is built [@shalizi2017]. Shalizi suggests blocks of length $m = n/k$, where $k = O(n^{1/3})$, which he argues is optimal in the sense that larger sample sizes yield longer blocks, capturing more dependence (ibid.). For my purposes, I choose $k = n^{1/3}$, which yields a block length of $m = 245$ when $n = 3835$. To save space, I obtain bootstrapped 95\% confidence intervals for only the <tt>party</tt> variable's coefficient. 
+
+```{r block_bootstrap_log_party}
+require(boot); 
+
+diffed_df_log_party = cbind(diffed_aobc_Close_log, diffed_djia_Close_log, party); 
+
+blockboot_log_party = function(data){
+  return(coefficients(lm(data[,1] ~ data[,2] + data[,3]))); 
+}
+
+set.seed(10003); 
+boot_log_party = tsboot(diffed_df_log_party, blockboot_log_party, R = 10000, l = 245, sim = "fixed");
+print(noquote( paste("(", quantile(boot_log_party$t[,3], 0.025, na.rm = TRUE), ", ", quantile(boot_log_party$t[,3], 0.975, na.rm = TRUE), ")") ));
+
+```
+
+Thus, I obtain a bootstrapped 95\% confidence interval, using percentiles over the bootstrap replicates, of $(-0.001209, 0.004170)$, which confirms that the party of the president is not statistically significantly associated with an increase in the logged closing prices of AOBC. 
+
+## Model 2: Analyzing the Association of AOBC's Closing Price with Mass Shootings
+Our second model analyzes the association of AOBC's closing price (in the form of differenced log daily closing prices) with the occurrence of a mass shooting, as defined in the Data Preparation section. To do this, I fit a linear regression model with ARMA noise. 
+
+### Model 2 Selection
+Using the same approach as Model 1, I first find the AIC values of linear regression models with ARMA noise up to orders $p = 5$ and $q = 5$. 
+```{r aic_log_ms, echo = FALSE}
+xreg_log_ms = cbind(diffed_djia_Close_log, recent_mass_shooting);
+aic_log_ms = aic_table(diffed_aobc_Close_log, 5, 5, xreg_log_ms);
+kable(aic_log_ms, digits = 2);
+```
+
+The models to consider here are, again, ARMA(0,0), ARMA(2,2), and ARMA(5,5). Again, I rule out using ARMA(5,5) out of fears of overfitting. To determine whether to use ARMA(0,0) or ARMA(2,2) to model noise, I use equation (1). 
+
+```{r lrt_log_ms}
+lr = -14939.38 - (-14941.62) - 2*(2 - 6); 
+print(pchisq(lr, df = 4));
+```
+
+With a p-value of 0.96, I model the noise using an ARMA(0,0) model.  
+
+### Model 2 and Results
+Thus, according to the model selection process in the previous section, my model is simply
+\[\Delta(log(\text{AOBC Closing Price}))_t = \alpha + \beta_1(\Delta(log(\text{DJIA Closing Price})_t) + \beta_2(\text{Recent Mass Shooting }_t) + \varepsilon_t\]
+where $\varepsilon_t \sim N(0,\sigma^2)$. Fitting the model, we get the following results.
+
+```{r log_ms_results, echo = FALSE}
+mod_log_ms = lm(diffed_aobc_Close_log ~ diffed_djia_Close_log + recent_mass_shooting); 
+summary(mod_log_ms);
+```
+
+From these results, it is clear that the recent occurrence of a mass shooting has no significant association with the differenced log daily closing prices of the party, although the sign is positive. 
+
+### Model 2 Diagnostics
+I look at the same set of model diagnostics as Model 1 too see if the model above violates any of our model assumptions. 
+
+```{r modeldiagnostics_log_ms, echo = FALSE, fig.align = "center", out.width = "130%"}
+m = matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE); 
+layout(m); 
+acf(mod_log_ms$residuals, main = "ACF of Residuals");
+qqnorm(mod_log_ms$residuals); 
+qqline(mod_log_ms$residuals);
+plot(x = date, y = mod_log_ms$residuals, main = "Residuals Against Dates", xlab = "Date", ylab = "Residuals"); 
+spectrum(mod_log_ms$residuals, span = c(10,20,10), main = "Smoothed Periodogram of Residuals", xlab = "frequency (cycles/day)");
+```
+
+Again, the assumptions of the model are mostly met: there does not seem to be autocorrelation between the residuals, with exceptions at lags 18 and 27, there does not seem to be much evidence of heteroskedasticity, and there is no seasonality in the residuals. Again, the major violation is that the residuals are very heavy-tailed compared to the normal distribution. For this reason, the standard errors in the previous results are not valid. To fix this issue, I use a fixed block bootstrap.
+
+### Fixed Block Bootstrap for Model 2
+I use a fixed block bootstrap as described in the section on fixed block bootstrap for Model 1, with the same block length of $l = 245$, to obtain 95\% confidence intervals. Again, to save space, I only obtain the bootstrapped 95\% confidence interval for the recent mass shootings coefficient. 
+
+```{r block_bootstrap_log_ms}
+require(boot); 
+
+diffed_df_log_ms = cbind(diffed_aobc_Close_log, diffed_djia_Close_log, recent_mass_shooting); 
+
+blockboot_log_ms = function(data){
+  return(coefficients(lm(data[,1] ~ data[,2] + data[,3]))); 
+}
+
+set.seed(92603); 
+boot_log_ms = tsboot(diffed_df_log_ms, blockboot_log_ms, R = 10000, l = 245, sim = "fixed");
+print(noquote( paste("(", quantile(boot_log_ms$t[,3], 0.025, na.rm = TRUE), ", ", quantile(boot_log_ms$t[,3], 0.975, na.rm = TRUE), ")") ));
+```
+
+The bootstrapped 95\% confidence interval, using percentiles over the bootstrapped replicates, is $(-0.006179, 0.011472)$. This confirms that the recent occurrence of a mass shooting does not have an association with the log closing price of AOBC.   
+
+Note that we have to remove the NA values produced by the bootstrap because the <tt>recent_mass_shooting</tt> indicator variable is relatively sparse compared to the time series data. Thus, there are a few iterations where no observations from <tt>recent_mass_shooting</tt> is picked up. This is a drawback of the fixed block bootstrapping approach. A more advanced version of the block bootstrap could be implemented to solve this problem.
+
+## Model 3: Analyzing the Association of AOBC's Closing Price with the President's Party and Mass Shootings
+The third and last model we look at combines the two previous model by analyzing the association between AOBC's closing price (in the form of differenced log daily closing prices), the president's party, and the occurrence of mass shootings. To do this, I again fit a linear regression model with ARMA noise. This time, I use the party indicator variable, the recent mass shootings indicator variable, and an interaction term between these two variables. 
+
+### Model 3 Selection
+Model selection follows the same procedure as described in the previous two models. I first obtain AIC values for linear regression models with ARMA noise for orders up to $p=5$ and $q=5$. 
+```{r aic_log_ms_party, echo = FALSE, warning = FALSE}
+xreg_log_ms_party = cbind(diffed_djia_Close_log, party, recent_mass_shooting, partyxrecent_mass_shooting);
+aic_log_ms_party = aic_table(diffed_aobc_Close_log, 5, 5, xreg_log_ms_party); 
+kable(aic_log_ms_party, digits = 2);
+```
+
+Again, we reject ARMA(5,5) because of concerns regarding overfitting. We can compare ARMA(0,0) and ARMA(2,2) using a likelihood ratio test. Using Equation (1) again, and using ARMA(0,0) as the null model and ARMA(2,2) as the alternative model, we calculate the p-value as follows.  
+
+```{r lrt_log_ms_party}
+lr = -14943.51 - (-14945.78) - 2*(4 - 8); 
+print(pchisq(lr, df = 4));
+```
+
+We obtain a p-value of 0.964, meaning that I will model the noise with an ARMA(0,0) model. It is also important to note that there are some severe numerical issues with the calculation of the AIC above---notice that jumping ARMA(2,2) to ARMA(3,2) yielded an increase of approximately 5 in the AIC, which is not possible. Moreover, there was a warning indicating that NaNs were produced, further indicating the numerical issues with the procedure above. 
+
+### Model 3 and Results
+Thus, according to the model selection process in the previous section, my model is simply
+\begin{align*}
+  \Delta(log(\text{AOBC Closing Price}))_t &= \alpha + \beta_1(\Delta(log(\text{DJIA Closing Price})_t) + \beta_2(\text{Party}_t) \\
+&+\beta_3(\text{Recent Mass Shooting }_t) + \beta_4(\text{Party}_t \times \text{Recent Mass Shooting }_t) + \varepsilon_t
+\end{align*}
+where $\varepsilon_t \sim N(0,\sigma^2)$. Fitting the model, we get the following results.
+
+```{r log_ms_party_results, echo = FALSE}
+mod_log_ms_party = lm(diffed_aobc_Close_log ~ diffed_djia_Close_log + party + recent_mass_shooting + partyxrecent_mass_shooting); 
+summary(mod_log_ms_party);
+```
+
+The party of the president indicator variable's coefficient, in this model with the interaction term, should be interpreted as the associated increase in the differenced log closing price of AOBC under a Democratic president when there is no recent mass shooting. The recent mass shooting indicator variable's coefficient should likewise be interpreted as the associated decrease in the differenced log closing price of AOBC when there is a mass shooting under a Republican president. Although the signs of these coefficients are interesting, they are not significant. 
+
+Perhaps what is most interesting is that the interaction term is significant. This is the associated increase in the differenced log closing price of AOBC under a Democratic president when there has recently been a mass shooting. That is, according to this model, holding the differenced log closing price of DJIA constant, there is an immediate 1.16\% increase in AOBC's price (calculated from $e^{0.0154490}$) when a mass shooting takes place and the president is a Democrat. 
+
+### Model 3 Diagnostics
+The standard errors above only hold if the model assumptions are not violated. I check the model assumptions as detailed in the Model 1 model diagnostics section. 
+
+```{r modeldiagnostics_log_ms_party, echo = FALSE, fig.align = "center", out.width = "130%"}
+m = matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE); 
+layout(m); 
+acf(mod_log_ms_party$residuals, main = "ACF of Residuals");
+qqnorm(mod_log_ms_party$residuals); 
+qqline(mod_log_ms_party$residuals);
+plot(x = date, y = mod_log_ms_party$residuals, main = "Residuals Against Dates", xlab = "Date", ylab = "Residuals"); 
+spectrum(mod_log_ms_party$residuals, span = c(10,20,10), main = "Smoothed Periodogram of Residuals", xlab = "frequency (cycles/day)");
+```
+
+Again, the assumptions of the model are mostly met: there does not seem to be autocorrelation between the residuals, with an exception at lag 27, there does not seem to be much evidence of heteroskedasticity, and there is no seasonality in the residuals. Again, the major violation is that the residuals are very heavy-tailed compared to the normal distribution. For this reason, the standard errors in the previous results are not valid. To fix this issue, I use a fixed block bootstrap.
+
+### Fixed Block Bootstrap for Model 3
+I use a fixed block bootstrap as described in the section on fixed block bootstrap for Model 1, with the same block length of $l = 245$. I obtain the bootstrapped confidence interval for the party of the president indicator coefficient, the recent mass shootings coefficient, and the interaction term's cofficient. 
+
+```{r block_bootstrap_log_ms_party}
+require(boot); 
+
+diffed_df_log_ms_party = cbind(diffed_aobc_Close_log, diffed_djia_Close_log, party, recent_mass_shooting, partyxrecent_mass_shooting); 
+
+blockboot_log_ms_party = function(data){
+  return(coefficients(lm(data[,1] ~ data[,2] + data[,3] + data[,4] + data[,5]))); 
+}
+
+set.seed(48109); 
+boot_log_ms_party = tsboot(diffed_df_log_ms_party, blockboot_log_ms_party, R = 10000, l = 245, sim = "fixed");
+
+# Confidence Interval for Party Coefficient
+print(noquote(paste("(", quantile(boot_log_ms_party$t[,3], 0.025, na.rm = TRUE), ",", quantile(boot_log_ms_party$t[,3], 0.975, na.rm = TRUE), ")")));
+
+# Confidence Interval for Recent Mass Shooting Coefficient
+print(noquote(paste("(", quantile(boot_log_ms_party$t[,4], 0.025, na.rm = TRUE), ",", quantile(boot_log_ms_party$t[,4], 0.975, na.rm = TRUE), ")")));
+
+# Confidence Interval for Interaction Coefficient
+print(noquote(paste("(", quantile(boot_log_ms_party$t[,5], 0.025, na.rm = TRUE), ",", quantile(boot_log_ms_party$t[,5], 0.975, na.rm = TRUE), ")")));
+```
+
+These bootstrapped 95\% confidence intervals confirm the conclusions found in the original model---that is, the coefficient for the party indicator variable (95\% CI: $(-0.001745, 0.003548)$) and the coefficient for the recent mass shooting indicator (95\% CI: $(-0.012779, 0.002304)$) are not statistically significant, but the coefficient for the interaction term between the party and recent mass shooting variables is statistically significant (95\% CI: $(0.002019, 0.025708)$) and is positive. Thus, it seems like there is an association between a recent mass shooting under a Democratic president and an increase in AOBC's closing stock price. 
+
+# Conclusion
+The three models above do not wholly confirm any of the three hypotheses I put forward in Introduction. The closing price of AOBC did <i>not</i> increase under a Democratic president, the closing price of AOBC did <i>not</i> increase in the immediate aftermath of a mass shooting, and the closing price of AOBC did not <i>further</i> increase when there was both a recent mass shooting and a Democratic president. Rather, it was <i>only</i> under the condition of both a recent mass shooting and a sitting Democratic president that a mass shooting would increase the closing price of AOBC. Thus, Hypothesis 3 most closely matched our findings in Model 3, although the interaction between the party of the president and the recent occurrence of a mass shooting represented the <i>only</i> situation in which there was an associated increase in AOBC's stock prices, not a <i>further</i> increase beyond the two factors themselves. Model 3 indicated that there was a 1.16\% increase in the closing price of AOBC in the two week aftermath of a mass shooting under a Democratic president; the bootstrapped 95\% (logged) confidence interval is $(0.002019,0.025708)$. 
+
+Does this mean that the news sites and analysts, such as Fred Imbert, are wrong about an increase in gun stock prices after a mass shooting [@fredimbert2018]? Not necessarily, but often, prices may increase quickly but then regress back to their mean after a few days. Thus, perhaps what best characterizes the analysis above is that there is a more <i>durable</i> increase in AOBC's stock prices in the immediate aftermath of a mass shooting under a Democratic president. 
+
+Why is there an associated increase in prices only when a recent mass shooting takes place under a Democratic president? Perhaps it is precisely in this combination of conditions that drives gunholders to stockpile guns. After all, it is a very select slice of the American population that actually owns guns. According to the results of a Harvard-Northwestern survey, 78\% of American adults do not own guns, 19\% of American adults own 50\% of the guns, and only 3\% of American adults own the other 50\% [@ingraham]. Thus, this 3\% of American adults that stockpile guns may be very sensitive to both the party of the president and the occurrence of a recent mass shooting. 
+
+Of course, these are simply theoretical speculations about what drives the association I find in Model 3 between an increase in AOBC's stock price and the occurrence of a mass shooting under a Democratic president. This is an interesting finding, but it represents a first cut at a very complex issue. Further work must be done and more advanced methods must be used to establish causality and to fully unpack the forces at work here. The last section looks at some of possible further work. 
+
+## Further Work and Extensions
+The primary problem with the above analysis is that it only involves three presidents---namely, George W. Bush, Barack Obama, and Donald Trump. Since AOBC (formerly Smith \& Wesson) has only been public since 2002, there is not a lot of variation in presidents. Thus, looking at a company that has been public for a long period of time, such as Ruger, might be fruitful to further confirm the above analysis. The Data Preparation section explains why I did not use Ruger's stock, but further work could be done to establish a firm closing price for the company. 
+
+Another problem with the above analysis is the frequency of mass shootings. Of the 20 deadliest shootings in U.S. history, 9 occurred under Obama. On the other hand, 2 occurred under Bush, and 3 occurred under Trump. Thus, there could be a case of spurious regression here. Models 1 and Models 2 alleviate some of the concerns around spurious regression, but more advanced methods must be employed to ensure there is no spurious association. 
+
+This is also related to a major methodological concern: causality. Nothing in the above model is causal. More advanced techniques, such as an instrumental variable analysis, must be used to establish causality. Because the market surged under Obama's presidency along with a major influx in deadly mass shootings, the association found above may be nothing more than a spurious finding. Of course, Models 1 and 2 along with controlling for the performance of the overall market using the Dow Jones Industrial Average also helps alleviate some of these concerns, but there is no way to ascertain that there is a causal relationship.
+
+Lastly, stocks may not be the best measure of how gun companies performed. Companies can often perform stock buy backs when the stock is not doing as well, making the company perform better during harder times. Gun companies are now also diversifying beyond guns. Vista Outdoors Inc. not only sells guns and ammunition through its various gun brands, such as Savage Arms and Federal Premium, but it also owns CamelBak, Bell Sports, Giro, and various optics brands such as Bushnell [@vista]. Thus, the performance of its stock may not be exclusively tied to its gun sales.   
+
+Looking at the actual sales numbers of guns may be a better way to further understand consumer behavior in the wake of a mass shooting vis-a-vis the party of the president. Unfortunately, such sales figures are not collected; gun companies are also not required to disclose them publicly. Gregor Aisch and Josh Keller, analysts at the <i>New York Times</i>, do estimate the number of gun sales using the number of background checks that take place, which is a piece of information the Bureau of Alcohol, Tobacco, Firearms, and Explosives (ATF) does make public [@nyt]. The background checks are not a perfect one-to-one measurement of firearms sales. Not all background checks are registered in the system, sometimes one background check takes place for multiple purchases, and it does not capture private sales or gun show sales [@nytgithub]. This approach requires much more care to accurately estimate how many gun sales took place in the United States. 
+
+# References

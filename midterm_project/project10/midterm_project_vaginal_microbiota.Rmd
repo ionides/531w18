@@ -1,0 +1,388 @@
+---
+title: "Stats 531 Midterm Project: Application of ARMA models to describe vaginal microbiota composition"
+output: 
+  html_document:
+    theme: yeti
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\estimate[1]{\data{#1}}
+\newcommand\params{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\eqspace{\quad\quad\quad}
+\newcommand\lik{\mathscr{L}}
+\newcommand\loglik{\ell}
+\newcommand\profileloglik[1]{\ell^\mathrm{profile}_#1}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+
+
+
+--------
+
+##1. Vaginal microbiota background
+</br>
+The vaginal microbiota is the community of microorganisms that reside in the vagina. For most women of reproductive age, the vaginal microbiota is dominated by one or more species of <i>Lactobacillus</i>.<sup>1,2</sup> Lactobacilli have long been thought to promote vaginal health through the production of lactic acid, which acidifies the vagina and can inhibit pathogens.<sup>3,4</sup> However, recent applications of DNA sequencing-based approaches to characterize the composition of the vaginal microbiota have revealed that different <i>Lactobacillus</i> species behave differently in the vagina, and that they are not all strongly associated with health.<sup>1,2</sup> In particular, <i>L. crispatus</i> and <i>L. iners</i> are two of the most common lactobacilli found in the vaginal microbiota, and they are the species this analysis will focus on. While <i>L. crispatus</i>-dominated vaginal microbial communities are associated with low (acidic) vaginal pH and vaginal health, <i>L. iners</i>-dominated communities are associated with higher (more neutral) pH and may predispose women to bacterial vaginosis and accompanying sexual and reproductive health risks.<sup>1,2</sup> This is of public health concern because bacterial vaginosis is implicated in a range of adverse outcomes, incuding preterm birth, sexually transmitted infection acquisition, and gynecologic cancer.<sup>5-10</sup> 
+</br></br>
+Studying the vaginal microbiota presents certain study design and data analysis challenges for a few reasons. First, the vaginal microbiota is a dynamic community whose composition changes over time in response to a number of different factors, including the menstrual cycle and menstruation.<sup>2,11-16</sup> Additionally, the composition and dynamics of the vaginal microbiota can be vary widely between women.<sup>1,2</sup> For these reasons, longitudinal studies that collect multiple vaginal samples from the same woman over time are best suited to study vaginal microbial dynamics, and the relationships between the vaginal microbiota and sexual and reproductive health outcomes. However, the applicability of ARMA models to vaginal microbiota data has not been reported. Given that some species are known to promote stable microbial communities and those species tend to persist in the vaginal microbiota, while other species are associated with more dynamic communities with many transient members,<sup>1,2</sup> ARMA models are a promising candidate for describing vaginal microbtiota composition.
+</br></br>
+The goal of this analysis is to explore several applications of ARMA models to vaginal microbiota composition data from a longitudinal study. Compared to many other areas of health research, this field is still quite young and there is no well-agreed-upon or standard approach to data analysis. As such, now is an optimal time to explore a range of different analysis approaches now in order to identify methods that perform well.
+</br>
+
+-------
+
+##2. Data exploration
+</br>
+This analysis will work with two vaginal microbiota composition time series that were generated as part of a larger study of the impact of tampon use on the vaginal microbiota (not yet published). This study collected biweekly vaginal swab samples from 22 women over the course of four menstrual cycles. Bacterial DNA was extracted from the swabs, and then all 16S rRNA genes in the samples were amplified by polymerase chain reaction (PCR) and sequenced.<sup>17,18</sup> The 16S rRNA gene is present in all bacteria, and it has enough sequence dissimilarity between species that its sequence can be used to identify the bacterial species present in a sample. Moreover, because there is one copy of the 16S rRNA gene in every bacterium, the number of sequences from a species in a sample after PCR and sequencing is proportional to the number of bacteria of the species that were present in the original sample.
+</br></br>
+This analysis will use a series of <i>L. crispatus</i> sequence counts, and a series of <i>L. iners</i> sequence counts from a single subject of the study discussed above. Each series contains 32 observations that were collected twice-weekly over 16 weeks. Below is a plot of the <i>L. crispatus</i> and <i>L. iners</i> sequence counts for this subject through the course of the study.
+</br></br>
+```{r read_plot_6, echo=F, message=F,fig.align="center"}
+library(ggplot2)
+subject6<-read.csv(file="subject6counts.csv", header=T)
+crisp<-subject6[,c(4,13)]
+crisp$Species<-"lcrisp"
+crisp$count<-crisp$lcrisp
+crisp<-crisp[,2:4]
+iners<-subject6[,c(5,13)]
+iners$Species<-"liners"
+iners$count<-iners$liners
+iners<-iners[,2:4]
+subject6_long<-rbind(crisp,iners)
+ggplot(subject6_long,aes(week,count,color=Species))+xlab("Week")+ylab("Count")+geom_line()+scale_color_manual(values=c("mediumslateblue","indianred2"),labels=c(expression(italic("L. crispatus")),expression(italic("L. iners"))))+scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+ggtitle(expression(italic("Lactobacillus")~"species counts across four menstrual cycles"))+theme(legend.text.align = 0)
+```
+</br>
+At first glance, both series resemble white noise. Upon closer inspection, it looks like there may be a slight downward trend in <i>L. crispatus</i> counts over the 16 weeks. In these series, each consecutive block of four weeks corresponds to a single menstrual cycle with menstruation at the end of the cycle. Considering this, it looks like there may be cyclic patterns in <i>L. crispatus</i> and <i>L. iners</i> counts. For menstrual cycles 1, 2, and 3, <i>L. crispatus</i> count drops at the end of the cycle during  menstruation. For menstrual cycles 1, 3, and 4, <i>L. iners</i> count rises sharply at the end of the cycle during menstruation. This suggests some periodic behavior in <i>Lactobacillus</i> species counts, so it might be of interest to fit SARMA models for these series.
+</br>
+
+------
+
+##3. Modeling <i>Lactobacillus</i> species counts with ARMA models
+</br>
+We will start by fitting ARMA models to the <i>L. crispatus</i> and <i>L. iners</i> count series, followed by SARMA models, and finally by linear regression models with ARMA errors. Given the exploratory nature of this analysis, AIC values will be used to identify ARMA specifications for the two series that might suit the data well. 
+</br></br>
+<center><b><i>L. crispatus</i> count AICs</b></center>
+```{r crisp_arma_aic,echo=F,message=F,warning=F}
+crisp_count<-crisp[,3]
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+crisp_aic_table <- aic_table(crisp_count,4,5)
+require(knitr)
+kable(crisp_aic_table,digits=2,"markdown",hline.after=c(1))
+```
+
+</br>
+<center><b><i>L. iners</i> count AICs</b></center>
+```{r liners_arma_aic,echo=F,message=F,warning=F}
+iners_count<-iners[,3]
+iners_aic_table <- aic_table(iners_count,4,5)
+require(knitr)
+kable(iners_aic_table,digits=2)
+```
+
+</br>
+An MA(2) model looks to be most suitable for the <i>L. crispatus</i> counts. AICs suggest the <i>L. iners</i> counts may be best modeled as white noise, which is not surprising based on the plot above. However, because the goal of this analysis is to explore whether time series models are viable options for describing vaginal microbiota composition, an MA(1) model of <i>L. iners</i> counts will be considered (it has the second lowest AIC). It should be noted that the <i>L. crispatus</i> AIC tables suggest that there may be numerical instability in maximizing and evaluating the likelihood function (AIC increases by more than two units when a single parameter is added to the ARMA(2,2) model to make the ARMA(3,2) model, and when a single parameter is added to the AR(4) model to make the ARMA(4,1) model). We should bear this in mind throughout the analysis, and take a conservative approach to interpretting AIC comparisons, especially when the AIC difference between models is small.
+</br>
+
+------
+
+####3.1 MA(2) model of <i>L. crispatus</i> counts
+
+We will start by fitting a stationary, Gaussian MA(2) model of <i>L. crispatus</i> counts under the null hypothesis of no trend:
+$$\begin{eqnarray} Y_n=\epsilon_n+\psi_1\epsilon_{n-1}+\psi_2\epsilon_{n-2}\end{eqnarray}$$
+$$\begin{eqnarray} \epsilon_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma^2]\end{eqnarray}$$
+
+```{r crisp_ma2, echo=F, message=F}
+crisp_ma2<-arima(crisp_count,order=c(0,0,2))
+crisp_ma2
+```
+```{r crisp_ma2_roots,echo=F,message=F,results="hide"}
+crisp_ma2_roots<-polyroot(c(1,coef(crisp_ma2)[c("ma1","ma2")]))
+crisp_ma2_roots
+```
+</br>
+The MA polynomial's root's are  $\begin{eqnarray} -0.52+1.16i \end{eqnarray}$ and $\begin{eqnarray} -0.52-1.16i \end{eqnarray}$. This model is not invertible, which limits our ability to examine the model's residuals to identify model misspecifications. However, the two roots have exactly the same value, with the exception that the imaginary part of the MA(1) root is positive whereas it is negative for the MA(2) root. This indicates that the second MA term may be redundant with the first, so we will fit a stationary, Gaussian MA(1) model instead: 
+$$\begin{eqnarray} Y_n=\epsilon_n+\psi_1\epsilon_{n-1}\end{eqnarray}$$
+$$\begin{eqnarray} \epsilon_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma^2]\end{eqnarray}$$
+
+```{r crisp_ma1, echo=F, message=F}
+crisp_ma1<-arima(crisp_count,order=c(0,0,1))
+crisp_ma1
+```
+```{r crisp_ma1_roots,echo=F,message=F,results="hide"}
+crisp_ma1_roots<-polyroot(c(1,coef(crisp_ma1)[c("ma1")]))
+crisp_ma1_roots
+```
+</br>
+The MA polynomial's root is -2.92, and this model is invertible. Below is an ACF plot of the residuals of the MA(1) model of the <i>L.crispatus</i> counts that we will use to diagnose any model misspecifications:
+</br>
+```{r crisp_arma_acfs, message=F, echo=F,fig.align="center"}
+acf(resid(crisp_ma1),main=expression("ACF of"~italic("L. crispatus")~"MA(1) model residuals"))
+```
+</br>
+There is some oscillatory behavior about 0, suggesting that the <i>L. crispatus</i> counts may be better-modeled with an AR polynomial in addition to the MA polynomial. While the <i>L. crispatus</i> AIC table suggests that the best model including an AR polynomial would be ARMA(1,2), we've already seen that there are issues with including multiple MA terms. Moreover, the series is only 32 observations long so we should be concerned about the possibility of over-parameterizing and may want to opt for more parsimonious models whenever reasonable. We will fit a stationary, Gaussian ARMA(1,1) model:
+$$\begin{eqnarray} Y_n=\phi_1Y_{n-1}+\epsilon_n+\psi_1\epsilon_{n-1}\end{eqnarray}$$
+$$\begin{eqnarray} \epsilon_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma^2]\end{eqnarray}$$
+
+```{r crisp_arma11, echo=F, message=F}
+crisp_arma11<-arima(crisp_count,order=c(1,0,1))
+crisp_arma11
+```
+```{r crisp_arma11_roots,echo=F,message=F,results="hide"}
+crisp_arma11_roots<-polyroot(c(1,-coef(crisp_arma11)[c("ar1")],coef(crisp_arma11)[c("ma1")]))
+crisp_arma11_roots
+```
+</br>
+The AR root is 1.82, and the MA root is -34.68, so we have a causal, invertible model of <i>L. crispatus</i> counts. Additionally, this ARMA(1,1) model's AIC is smaller than that of the MA(1) model of the same series, suggesting the ARMA(1,1) model is better able to predict the <i>L. crispatus</i> counts. We can also compare the models using a likelihood ratio test with the null hypothesis that the series is better-modeled as MA(1) than ARMA(1,1):
+$$\begin{eqnarray} LRT=-2logL_0-2logL_1\end{eqnarray}$$
+$$\begin{eqnarray} LRT=-2logL_{MA(1)}-2logL_{ARMA(1,1)}=613.48-610.3=3.18\end{eqnarray}$$
+$$\begin{eqnarray} LRT&\sim&\chi^2_1\end{eqnarray}$$
+```{r crisp_lrt_1,echo=F,message=F,results="hide"}
+dchisq(3.18,1)
+```
+
+This test gives p=0.045. We can reject the null hypothesis and conclude that the ARMA(1,1) model is more suitbale for the <i>L. crispatus</i> counts than the MA(1) model.
+</br>
+
+------
+
+####3.2 MA(1) model of <i>L. iners</i> counts
+
+We'll take the same approach for modeling the <i>L. iners</i> counts as we did for the <i>L. crispatus</i> counts, starting with a stationary, Gaussian MA(1) model suggested by AIC:
+$$\begin{eqnarray} Y_n=\epsilon_n+\psi_1\epsilon_{n-1}\end{eqnarray}$$
+$$\begin{eqnarray} \epsilon_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma^2]\end{eqnarray}$$
+
+```{r iners_ma1, echo=F, message=F}
+iners_ma1<-arima(iners_count,order=c(0,0,1))
+iners_ma1
+```
+```{r iners_ma1_roots,echo=F,message=F,results="hide"}
+iners_ma1_roots<-polyroot(c(1,coef(iners_ma1)[c("ma1")]))
+iners_ma1_roots
+``` 
+</br>
+The MA(1) polynomial's root is -5.34, and the model is invertible. The sample ACF plot of this model's residuals (below) shows no oscillatory behavior, and there are no significant correlations between residuals at any lag. From this analysis, it looks like an MA(1) model is a viable option for the <i>L. iners</i> counts.
+</br>
+```{r iners_arma_acfs, message=F, echo=F,fig.align="center"}
+acf(resid(iners_ma1),main=expression("ACF of"~italic("L. iners")~"MA(1) model residuals"))
+```
+
+------
+
+##4. Modeling <i>Lactobacillus</i> species counts with SARMA models
+</br>
+Recall the cyclic behavior in the <i>L. crispatus</i> and <i>L. iners</i> counts where <i>L. iners</i> count rapidly increased at the end of the menstrual cycle during menstruation, while <i>L. crispatus</i> count decreased. Examining a smoothed periodogram of each series and identifying the  dominant frequency can provide insight into SARMA model specifications that might capture these cyclic patterns well:
+</br>
+```{r spectra,echo=F,message=F,fig.align="center"}
+crisp_spec_smooth<-spectrum(crisp_count,spans=c(3,3),main=expression(italic("L. crispatus")~"count smoothed periodogram"),xlab="Frequency (cycles per week)",ylab="Estimated spectrum",ci=0,sub="")
+abline(v=.125,lty="dashed",col="blue")
+crisp_freq<-crisp_spec_smooth$freq[which.max(crisp_spec_smooth$spec)]
+cat("L. crispatus dominant frequency:",crisp_freq,"cycles per week")
+iners_spec_smooth<-spectrum(iners_count,spans=c(3),main=expression(italic("L. iners")~"count  smoothed periodogram"),xlab="Frequency (cycles per week)",ylab="Estimated spectrum",ci=0,sub="")
+abline(v=.0625,lty="dashed",col="blue")
+iners_freq<-iners_spec_smooth$freq[which.max(iners_spec_smooth$spec)]
+cat("L. iners dominant frequency:",iners_freq,"cycles per week")
+```
+</br>
+The dominant frequency for the <i>L. crispatus</i> count series corresponds to a cycle time of 4 weeks, which matches our observations and aligns perfectly with 4 week menstrual cycles. The analysis of the <i>L. crispatus</i> counts will move forward with a SARMA model that has 4-week cycles. The dominant frequency for the <i>L. iners</i> count series corresponds to a cycle time of 8 weeks. This doesn't quite match our observations, but it does align with a whole number of menstural cycles. However, given that the series is only 16 weeks long, and that 4 week cycles in vaginal microbiota composition are more biologically plausible than 8 week cycles, the analysis of the <i>L. iners</i> counts will also move forward with a SARMA model that has 4-week cycles, as opposed to 8 week cycles.
+</br>
+
+------
+
+####4.1 SARMA models of <i>L. crispatus</i> counts
+</br>
+We will model the <i>L. crispatus</i> count series with a few stationary, Gaussian SARMA(1,1)x(P,Q)<sub>8</sub> models with simple specifications for the cycle polynomial: SAR(1) and/or SMA(1). Recall that observations were taken biweekly, which is why the cyclic period here is 8. The models are given by: 
+$$\begin{eqnarray} Y_n=\phi_1Y_{n-1}+\Phi_1Y_{n-8}+...+\Phi_PY_{n-8P}+\epsilon_n+\psi_1\epsilon_{n-1}+\Psi_1\epsilon_{n-8}+...+\Psi_Q\epsilon_{n-8Q}\end{eqnarray}$$
+$$\begin{eqnarray} \epsilon_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma^2]\end{eqnarray}$$ 
+
+```{r crisp_sarma_01x11,echo=F,message=F,warning=F}
+crisp_sarma_11x10<-arima(crisp_count,order=c(1,0,1),seasonal=list(order=c(1,0,0),period=8))
+crisp_sarma_11x10
+crisp_sarma_11x01<-arima(crisp_count,order=c(1,0,1),seasonal=list(order=c(0,0,1),period=8))
+crisp_sarma_11x01
+crisp_sarma_11x11<-arima(crisp_count,order=c(1,0,1),seasonal=list(order=c(1,0,1),period=8))
+crisp_sarma_11x11
+```
+</br>
+AIC prefers the SARMA(1,1)x(1,0)<sub>8</sub> model over the two other SARMA models for <i>L. crispatus</i> counts, but the difference in AIC values between these models is modest. Given that the SARMA(1,1)x(1,0)<sub>8</sub> and SARMA(1,1)x(0,1)<sub>8</sub> models are not nested and cannot be compared via likelihood ratio test, and the numerical instability in evaluating the <i>L. crispatus</i> likelihood function, we should consider these models to have similar predictive skill. On the other hand, the SARMA(1,1)x(1,0)<sub>8</sub> and SARMA(1,1)x(1,1)<sub>8</sub> models can be compared via likelihood ratio test with the null hypothesis that the data are better-modeled by the SARMA(1,1)x(1,0)<sub>8</sub> model. The test statistic is 1.2 ($\begin{eqnarray} &\sim&\chi^2_1\end{eqnarray}$), giving p=0.2, so the addition of the cyclic MA(1) polynomial does not significantly improve the SARMA(1,1)x(1,0)<sub>8</sub> model.
+```{r crisp_lrt_2,echo=F,message=F,results="hide"}
+dchisq(1.2,1)
+```
+</br>
+This analysis suggests that SARMA(1,1)x(1,0)<sub>8</sub> may be the most suitable SARMA model specification to describe the <i>L. crispatus</i> counts, but is this model any better than the ARMA(1,1) model? According to AIC, the SARMA(1,1)x(1,0)<sub>8</sub> model has somewhat better predictive skill than the ARMA(1,1) model. Again, we should interpret this AIC difference with caution. We can compare the two models via likelihood ratio test with the null hypothesis that the the ARMA(1,1) performs better. The test statistic is 2.98 ($\begin{eqnarray} &\sim&\chi^2_1\end{eqnarray}$), giving p=0.052, just at the edge of significance.  While it is biologically plausible that a SARMA model acocunting for cyclic behavior of the vaginal microbiota should suit our data better than an ARMA model, we did not lay out a corresponding a priori hypotheses before starting this analysis. As such, we should avoid interpreting this p value as "boarderline" or "nearly" or "suggestive of" significance. Instead, the p value shows that this test was unable to provide evidence in favor of the SARMA model over the ARMA model. We can speculate that this may be an artifact of the length of our series, but we should use that speculation in designing future studies so that repeat analyses are better-powered, and not to flimsily interpret the LRT result. 
+```{r crisp_lrt_3,echo=F,message=F,results="hide"}
+dchisq(2.98,1)
+```
+
+------
+
+####4.2 SARMA models of <i>L. iners</i> counts
+</br>
+Again, we will take the same approach for the <i>L. iners</i> series as we did for the <i>L. crispatus</i> series. We will fit a few stationary, Gaussian SARMA(0,1)x(P,Q)<sub>8</sub> models with simple specifications for the cycle polynomial:
+$$\begin{eqnarray} Y_n=\Phi_1Y_{n-8}+...+\Phi_PY_{n-8P}+\epsilon_n+\psi_1\epsilon_{n-1}+\Psi_1\epsilon_{n-8}+...+\Psi_Q\epsilon_{n-8Q}\end{eqnarray}$$
+$$\begin{eqnarray} \epsilon_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma^2]\end{eqnarray}$$ 
+```{r iners_sarma_01x11,echo=F,message=F,warning=F}
+iners_sarma_01x10<-arima(iners_count,order=c(0,0,1),seasonal=list(order=c(1,0,0),period=8))
+iners_sarma_01x10
+iners_sarma_01x01<-arima(iners_count,order=c(0,0,1),seasonal=list(order=c(0,0,1),period=8))
+iners_sarma_01x01
+iners_sarma_01x11<-arima(iners_count,order=c(0,0,1),seasonal=list(order=c(1,0,1),period=8))
+iners_sarma_01x11
+```
+</br>
+The SARMA(0,1)x(1,0)<sub>8</sub> model and SARMA(0,1)x(0,1)<sub>8</sub> model have the same log likelihood, and the same number of parmaeters, so these two SARMA specifications are equally suitbale for the <i>L. iners</i> count series. AIC prefers either the SARMA(0,1)x(1,0)<sub>8</sub> model or SARMA(0,1)x(0,1)<sub>8</sub> model to the SARMA(0,1)x(1,1)<sub>8</sub> model. We can compare both the SARMA(0,1)x(1,0)<sub>8</sub> model and the SARMA(0,1)x(0,1)<sub>8</sub> model to the SARMA(0,1)x(1,1)<sub>8</sub> model via LRT with the null hypothesis that the nested model is preferred. The test statistic is 0.81 ($\begin{eqnarray} &\sim&\chi^2_1\end{eqnarray}$), giving p=0.81, and we conclude that modeling the <i>L. iners</i> counts with cyclic AR(1) and MA(1) polynomials is not better than modeling this series with either the cyclic AR(1) or the cyclic MA(1) polynomial alone.
+
+```{r iners_lrt_1,echo=F,message=F,results="hide"}
+dchisq(0.2,1)
+```
+</br>
+Of the SARMA models explored here, SARMA(0,1)x(1,0)<sub>8</sub> or SARMA(0,1)x(0,1)<sub>8</sub> may be suitable for describing the <i>L. iners</i> count series. But are these models any better than the MA(1) model? The MA(1) model is preferred by AIC, suggesting it has more predictive skill than either SARMA model. However, all three of these models have the  same log likelihood, meaning that the addition of the cyclic polynomial (AR(1) or MA(1)) did not significantly improve the model. 
+</br></br>
+Thus far in the analysis, it looks like the <i>L. crispatus</i> and <i>L. iners</i> count series are best-modeled by ARMA(1,1) and MA(1) models, respectively. It is a bit unsatisfying that the SARMA models did not perform better than the ARMA models, but it would be of interest to perform a similar analysis with longer series. We will examine one more set of models that may be able to account for the changes in <i>L. crispatus</i> and <i>L. iners</i> counts that occur during menstruation.
+</br>
+
+------
+
+##5. Modeling <i>Lactobacillus</i> species counts as trend with ARMA errors
+</br>
+The study that the <i>Lactobacillus</i> species count series were drawn from also collected data on whether the woman was menstruating when a vaginal swab was collected. This provides another option to account for <i>L. crispatus</i> and <i>L. iners </i> count changes that we see during menstruation in our models. 
+</br>
+
+------
+
+####5.1 Linear regression models of <i>L. crispatus</i> counts with ARMA errors
+</br>
+The last set of models we will fit are linear regressions of species counts on time and/or menstruation, with ARMA errors. The model of <i>L. crispatus</i> counts is given as: 
+$$\begin{eqnarray} Y_n=\alpha+Z_n\beta+\epsilon_n\end{eqnarray}$$
+$$\begin{eqnarray} \alpha=E[Y_n]\end{eqnarray}$$
+<center>$\begin{eqnarray} Z_n \end{eqnarray}$is a matrix of covariates, including time and/or menses</center> 
+$$\begin{eqnarray} \epsilon_n=\phi\epsilon_{n-1}+\omega_n+\psi\omega_{n-1}\end{eqnarray}$$ 
+$$\begin{eqnarray} \omega_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma^2]\end{eqnarray}$$ 
+
+```{r crisp_trend,echo=F,message=F,warning=F}
+week<-crisp[,1]
+crisp_trend<-arima(x=crisp_count,order=c(1,0,1),xreg=week)
+crisp_trend
+```
+
+```{r crisp_mens,echo=F,message=F,warning=F}
+mens<-subject6[,11]
+crisp_mens<-arima(x=crisp_count,order=c(1,0,1),xreg=mens)
+crisp_mens
+```
+
+```{r crisp_trend_mens,echo=F,message=F,warning=F}
+week_mens<-cbind(week,mens)
+crisp_trend_mens<-arima(x=crisp_count,order=c(1,0,1),xreg=week_mens)
+crisp_trend_mens
+```
+</br></br>
+According to AIC, the model with both time and menses has the best predictive skill for <i>L. crispatus</i> counts. The model with both time and menses can be compared to the model with only time via a likelihood ratio test with the null hypothesis that model with only time as a predictor performs better. The test statistic is  8.14 ($\begin{eqnarray} &\sim&\chi^2_1\end{eqnarray}$), giving p=0.002, and we can conclude that the addition of menses as a predictor significantly improves the model. We can also compare the model with both time and menses to the model with only menses via a likelihood ratio test with the null hypothesis that model with only menses as a predictor performs better. The test statistic is  2.54 ($\begin{eqnarray} &\sim&\chi^2_1\end{eqnarray}$), giving p=0.07, so the addition of time as a predictor does not significantly improve the menses-only model. Given the result of this LRT and that the AIC of the menses-only model is only slightly higher than the menses and time model (611.57 v 611.04, respectively), it is reasonable to move forward with the more parimonious menses-only model.
+```{r crisp_lrt_4,echo=F,message=F,results="hide"}
+dchisq(8.14,1)
+```
+```{r crisp_lrt_5,echo=F,message=F,results="hide"}
+dchisq(2.54,1)
+```
+</br>
+A compsrison of AIC values favors the menses-only linear regression model with ARMA errors to the ARMA(1,1) and SARMA(1,1)x(1,0)<sub>8</sub> models of <i>L. crispatus</i> counts. This suggests that linear models accounting for factors known to influence vaginal microbiota composition and including ARMA errors may be well-suited to describe vaginal microbiota species count data. This finding is not surprising, given that a substantial body of research has demonatrated that changes to the vaginal environment influence the composition of the vaginal microbiota.<sup>1,2,19</sup> While (S)ARMA models that use prior values and errors to predict future values might not perform poorly for modeling vaginal microbiota species count data, we wouldn't expect these models to be the optimal choice for a system that depends on external factors. However, we also wouldn't expect standard regression models to be optimal. Some species are known to promote stable microbial communities, and those species tend to persist in the vaginal microbiota.<sup>1,2</sup> Other species are associated with more dynamic communities with many transient members.<sup>1,2</sup> This lends itself well to modeling species counts with (S)ARMA models. So regression models accounting for factors known to influence vaginal microbiota composition as well as ARMA errors seem like a logical way to account for the vaginal microbiota's dependence on it's prior states as well as vaginal environment perturbations.
+</br>
+
+------
+
+####5.2 Linear regression models of <i>L. iners</i> counts with MA errors
+</br>
+Finally, we will fit a similar set of models for the <i>L. iners</i> counts. The models are given as:
+$$\begin{eqnarray} Y_n=\alpha+Z_n\beta+\epsilon_n\end{eqnarray}$$
+$$\begin{eqnarray} \alpha=E[Y_n]\end{eqnarray}$$
+<center>$\begin{eqnarray} Z_n \end{eqnarray}$is a matrix of covariates, including time and/or menses</center> 
+$$\begin{eqnarray} \epsilon_n=\omega_n+\psi\omega_{n-1}\end{eqnarray}$$ 
+$$\begin{eqnarray} \omega_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma^2]\end{eqnarray}$$ 
+
+```{r iners_trend,echo=F,message=F,warning=F}
+iners_trend<-arima(x=iners_count,order=c(0,0,1),xreg=week)
+iners_trend
+```
+
+```{r iners_mens,echo=F,message=F,warning=F}
+iners_mens<-arima(x=iners_count,order=c(0,0,1),xreg=mens)
+iners_mens
+```
+
+```{r iners_trend_mens,echo=F,message=F,warning=F}
+iners_trend_mens<-arima(x=iners_count,order=c(0,0,1),xreg=week_mens)
+iners_trend_mens
+```
+</br>
+The models of <i>L. iners</i> counts with either time or menses as predictors are both favored by AIC over the model with both time and menses. The time-only and time and menses models have the same log likelihood, so the addition of menses to the model does not improve the model. The LRT comparing the menses-only and time and menses model gives a test statistic of 0.16 ($\begin{eqnarray} &\sim&\chi^2_1\end{eqnarray}$), and p=0.92. Again, the addition of the second predictor does not improve the model. The time-only and menses-only models have similar AIC values (636.57 and 636.73, respectively), so it is hard to comment on which may describe the <i>L. iners</i> counts better.
+</br></br>
+Comparison of AIC values of the MA(1), SARMA(0,1)x(0,1)<sub>8</sub>, and linear regression models with MA errors favors the MA(1) model of <i>L. iners</i> counts. Unlike the <i>L. crispatus</i> counts, it looks like the simplest model we fit, the MA(1) model, is best-suited to describe the <i>L. iners</i> series. For reasons discussed above, this is rather surprising. 
+</br></br>
+
+------
+
+##6. Conclusions
+</br>
+This analysis explored several applications of ARMA models to time series of vaginal microbiota composition data with the goal of assessing whether these time series models might be useful for describing and analyzing vaginal microbiota composition. In general, we can conclude that ARMA models are a viable option for describing vaginal microbiota composition. More specifically, after fitting a range of ARMA models, SARMA models, and linear regression models with ARMA errors to two series of <i>Lactobacillus</i> species counts, we have reached different conclusions for the different species. <i>L. crispatus</i> counts were best-modeled by linear regression with ARMA errors that accounts for menstruation. As discussed above, this model corresponds well with current knowledge of vaginal microbiota dynamics. For future studies, this model presents a nice opportunity for exploring a range of different factors that might influence vaginal microbiota composition: as long as data on such factors are collected along with vaginal microbiota samples, they can be incorporated into the linear regression model.
+</br></br>
+On the other hand, <i>L. iners</i> counts were best-modeled by an MA(1) model that did not account for menstruation. This is surprising given not only the current knowledge of vaginal microbiota dynamics, but also the cyclic behavior of <i>L. iners</i> counts observed in our inital exploration of the data. It is possible that the SARMA models and linear regression models with ARMA errors including menses as a predictor did not perform better due to the sharp decrease in <i>L. iners</i> count seen during menstruation of the second menstrual cycle (week 8). This change was in the opposite direction of the that of cycles 1, 3, and 4, and it diluted the series-long effect of menstruation on <i>L. iners</i> counts. As such, it would be of interest to explore similar models using a longer time series that spans more menstrual cycles and would have more power to detect menstruation-associated changes in species counts. 
+</br></br>
+In addition to the short length of the series used, this analysis was also limited by the fact that it only explored the vaginal microbiota composition of a single woman (constrained by the size of the original study and missing data for other women in that study). As discussed in the introduction, vaginal microbiota composition and dynamics vary widely between different women.<sup>1,2</sup> While we can draw conclusions about the application of ARMA models to describe a single woman's vaginal microbiota composition, we cannot generalize our findings to other women without first replicating them in a larger analysis that includes data from many women. Considering the limitations of this analysis (really, the limitations of the original study's dataset), future studies should span a larger number of menstrual cycles, enroll a larger number of women, and incorporate design features that minimize missing data.
+</br>
+
+------
+
+##7. References
+
+1. Ravel, J., et al. (2011). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3063603/"> "Vaginal microbiome of reproductive-age women." </a> Proc Natl Acad Sci U S A 108(Supplement 1): 4680-4687.
+
+2. Gajer, P., et al. (2012). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3722878/"> "Temporal Dynamics of the Human Vaginal Microbiota." </a>Sci. Transl. Med. 4(132): 132ra152-132ra152.
+
+3. Hickey, R. J., et al. (2012). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3444549/"> "Understanding vaginal microbiome complexity from an ecological perspective." </a> Transl Res 160(4): 267-282.
+
+4. Borges, S., et al. (2014). <a href="https://link.springer.com/article/10.1007%2Fs00404-013-3064-9"> "The role of lactobacilli and probiotics in maintaining vaginal health." </a> Arch Gynecol Obstet 289(3): 479-489.
+
+5. Brotman, R. M. (2011). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3225992/"> "Vaginal microbiome and sexually transmitted infections: an epidemiologic perspective." </a> J. Clin. Invest. 121(12): 4610-4617.
+
+6. van Oostrum, N., et al. (2013). <a href="https://academic.oup.com/humrep/article/28/7/1809/611205"> "Risks associated with bacterial vaginosis in infertility patients: a systematic review and meta-analysis." </a> Human Reproduction.
+
+7. Sharma, H., et al. (2014). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4148456/"> "Microbiota and Pelvic Inflammatory Disease." </a> Seminars in Reproductive Medicine 32(1): 43-49.
+
+8. Nelson, D. B., et al. (2016). <a href="https://www.sciencedirect.com/science/article/pii/S1075996416300981"> "The role of the bacterial microbiota on reproductive and pregnancy health." </a> Anaerobe 42: 67-73.
+
+9. Champer, M., et al. (2017). <a href="http://onlinelibrary.wiley.com/doi/10.1111/1471-0528.14631/full"> "The role of the vaginal microbiome in gynaecological cancer." </a> BJOG.
+
+10. van de Wijgert, J. H. H. M. and V. Jespers (2017). <a href="https://www.ncbi.nlm.nih.gov/pubmed/28257809"> "The global health impact of vaginal dysbiosis." </a> Res. Microbiol.
+
+11. Lopes dos Santos Santiago, G., et al. (2011). <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0028180"> "Longitudinal Study of the Dynamics of Vaginal Microflora during Two Consecutive Menstrual Cycles." </a> PLoS One 6(11): e28180.
+
+12. Hickey, R. J., et al. (2013). <a href="http://onlinelibrary.wiley.com/doi/10.1111/1471-0528.12151/abstract"> "Effects of tampons and menses on the composition and diversity of vaginal microbial communities over time." </a> BJOG: An International Journal of Obstetrics & Gynaecology 120(6): 695-706.
+
+13. Chaban, B., et al. (2014). <a href="https://microbiomejournal.biomedcentral.com/articles/10.1186/2049-2618-2-23"> "Characterization of the vaginal microbiota of healthy Canadian women through the menstrual cycle." </a> Microbiome 2(1): 1-12.
+
+14. Priestley, C. J., et al. (1997). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1195755/"> "What is normal vaginal flora?" </a> Genitourinary Medicine 73(1): 23-28.
+
+15. Eschenbach, D. A., et al. (2000). <a href="https://academic.oup.com/cid/article/30/6/901/432360"> "Influence of the Normal Menstrual Cycle on Vaginal Tissue, Discharge, and Microflora." </a> Clinical Infectious Diseases 30(6): 901-907.
+
+16. Srinivasan, S., et al. (2010). <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0010197"> "Temporal Variability of Human Vaginal Bacteria and Relationship with Bacterial Vaginosis." </a> PLoS One 5(4): e10197.
+
+17. Kozich, J. J., et al. (2013). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3753973/"> "Development of a Dual-Index Sequencing Strategy and Curation Pipeline for Analyzing Amplicon Sequence Data on the MiSeq Illumina Sequencing Platform." </a> Applied and Environmental Microbiology 79(17): 5112-5120.
+
+18. Seekatz, A. M., et al. (2015). <a href="http://iai.asm.org/content/83/10/3838.full"> "Fecal Microbiota Transplantation Eliminates Clostridium difficile in a Murine Model of Relapsing Disease." </a> Infect. Immun. 83(10): 3838-3846.
+
+19. Bautista, C. T., et al. (2016). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4752809/"> "Bacterial vaginosis: a synthesis of the literature on etiology, prevalence, risk factors, and relationship with chlamydia and gonorrhea infections." </a> Military Medical Research 3: 4.

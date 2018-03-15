@@ -1,0 +1,179 @@
+---
+title: "Stats 531 Midterm Project: Study of Snowfall(Precipitation in Winter) in Michigan"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+# Introduction
+
+Winter in Ann Arbor is not easy, especially because of the heavy snow. It would be nice if we could fit a model to historical snowfall data and maybe use it for prediction. The analysis may provide some insight for a better understanding of the climate change overall; forecast may even help us get more prepared for a harsh winter.
+
+# Data Exploration
+
+Unfortunately I couldn't find data for Ann Arbor snowfall. The closest one I could find is the monthly precipitation in Michigan. Because in winter most of the precipitation comes from snowfall, especially in January, we choose the average precipitation(inches) in Michigan from 1895 to 2018 as our data[1], which should be a good measure of snowfall. 
+
+```{r, echo=FALSE}
+dfpcpn <- read.table('climdiv-pcpnst-v1.0.0-20180205') #precipitation
+dftmpc <- read.table('climdiv-tmpcst-v1.0.0-20180205') #mean temperature, for later use
+#dftmin <- read.table('ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-tminst-v1.0.0-20180205')
+#dftmax <- read.table('ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-tmaxst-v1.0.0-20180205')
+year <- seq(1895, 2018)
+codeMI <- 20
+past <- length(year)*(codeMI-1)
+rows <- seq(past+1,past+length(year))
+pcpn <- dfpcpn[rows,2]
+tmpc <- dftmpc[rows,2]
+#tmin <- dftmin[rows,2]
+#tmax <- dftmax[rows,2]
+```
+
+Plots of data in both time and frequency domain are shown below:
+```{r, echo=FALSE}
+par(mfrow=c(1,2))
+plot(year, pcpn, ylab='Precipitation',type='l')
+spectrum(pcpn, span = c(3,5,3), main='Smoothed Periodogram of precipitation')
+```
+
+We almost couldn't tell any trend from the time domain plot, and even though it seems like there is some periodicity corresponding to the peak in periodogram around frequency $0.1 \text{cycles/year}$, we notice that the confidence interval shown by the verticle bar in the plot is very large compared to the peak so it is not really reliable. This is confirmed by the plot of autocorrelation function(ACF) below, which shows no statistically significant correlation for any lag. 
+```{r, echo=FALSE}
+acf(pcpn, main='ACF of Precipitation')
+```
+
+All of these suggest a stationary non-seasonal ARMA model could be a good fit to our data.
+
+# Fit ARMA models
+
+## Under assumption of no trend
+
+We first try to fit a stationary Gaussian $ARMA(p,q)$ model to our data under the null hypothesis of no trend, which seems reasonable from previous plot. 
+
+In order to determine appropriate $p$ and $q$, we use Akaike’s information criterion(AIC) as a reference and get following AIC table:
+
+```{r, echo=FALSE,warning=FALSE}
+aic_table <- function(data, P, d, Q, xreg = NULL){
+  table <- matrix(NA, (P+1), (Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1, q+1] = arima(data, order = c(p, d, q), xreg = xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "</b>", sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+```
+
+```{r, echo=FALSE, warning=FALSE}
+pcpnAicTable <- aic_table(pcpn, 4, 0, 5)
+library(knitr)
+kable(pcpnAicTable, caption = 'AIC table with no trend', digits = 2)
+```
+
+The AIC table seems to suggest an $ARMA(3,2)$ model as it gives lowest AIC value, but if we actually fit the model and check the roots of its MA polynomial, we will find:
+```{r, echo=FALSE}
+arma32 <- arima(pcpn, order=c(3,0,2))
+#arRoots32 <- polyroot(c(1,-coef(arma32)[c("ar1","ar2","ar3")]))
+maRoots32 <- polyroot(c(1,coef(arma32)[c("ma1","ma2")]))
+data.frame('MA_roots'=maRoots32, 'Absolute_value'=abs(maRoots32))
+```
+
+The MA roots are really just on the unit circle, which means the model is practically not invertible(we even checked higher order models, but up to $ARMA(4,5)$ as shown in the AIC table they all have the same non-invertible problem). Besides, the difference between its AIC value and that of $AR(1)$ model couldn't justify our choice of such a complex model as it usually has issues like numerical unstabilitiy, etc. 
+
+Based on the argument above, we finally choose an $AR(1)$ model to fit our data, which generates following result:
+```{r, echo=FALSE}
+ar1 <- arima(pcpn, order=c(1,0,0))
+ar1
+```
+
+## Under assumption of trend being monthly mean temperature
+
+It seems like a common sense that a colder winter will have more snow, so we decided to check whether an ARMA error model with monthly average temperature as signal will give better fit.(we also checked both min and max tempature as well, but they have almost linear relationship with mean temperature so we don't test them further)
+
+We plot the average temperature(F) of Janaury in Michigan[2] together with precipitation as below:
+
+```{r, echo=FALSE}
+par(mfrow=c(2,1))
+plot(year, pcpn, ylab='Precipitation',type='l')
+plot(year, tmpc, ylab='Temperature',type='l')
+```
+
+It looks like there is no apparent dependence. But if we decompose both series into trend + noise + cycles as below, both trends seem to follow the same oscillation pattern. The cycles plot agrees with our former claim of no apparent periodicity.
+```{r, echo=FALSE}
+pcpn_low <- ts(loess(pcpn~year,span=0.5)$fitted,start=1895,frequency=1)
+pcpn_hi <- ts(pcpn - loess(pcpn~year,span=0.1)$fitted,start=1895,frequency=1)
+pcpn_cycles <- pcpn - pcpn_hi - pcpn_low
+plot(ts.union(pcpn, pcpn_low, pcpn_hi,pcpn_cycles),
+  main="Decomposition of precipitation as trend + noise + cycles")
+```
+
+```{r, echo=FALSE}
+tmpc_low <- ts(loess(tmpc~year,span=0.5)$fitted,start=1895,frequency=1)
+tmpc_hi <- ts(tmpc - loess(tmpc~year,span=0.1)$fitted,start=1895,frequency=1)
+tmpc_cycles <- tmpc - tmpc_hi - tmpc_low
+plot(ts.union(tmpc, tmpc_low, tmpc_hi, tmpc_cycles),
+  main="Decomposition of temperature as trend + noise + cycles")
+```
+
+We again generate AIC table, this time using the temperature as trend:
+
+```{r, echo=FALSE, warning=FALSE}
+pcpn_tmpcAicTable <- aic_table(pcpn, 4, 0, 5, xreg = tmpc)
+library(knitr)
+kable(pcpn_tmpcAicTable, caption = 'AIC table with tempareture as trend', digits = 2)
+```
+
+We basically find the same pattern as no trend: higher order models have smaller AIC values, but we can again check that they are not invertible(not shown here). And based on the same argument, we choose $AR(1)$ again as our choice of ARMA model. The result is:
+
+```{r, echo=FALSE}
+arima(pcpn, order=c(1,0,0), xreg=tmpc)
+```
+
+## Determine which model to use
+
+We want to know if we can statistically justify the choice of temperature as trend. This is done by a likelihood ratio test on whether the coefficient before temperature is $0$, which gives p-value to be
+```{r, echo=FALSE}
+loglikRatio <- as.numeric(logLik(arima(pcpn, xreg = tmpc, order = c(1, 0, 0))) - logLik(arima(pcpn, order = c(1, 0, 0))))
+p <- 1 - pchisq(2*loglikRatio, df = 1)
+p
+```
+
+Since the p-value is greater than $10\%$, we can't reject the null hypothesis that the precipitation doesn't depend on temperature. Thus we will just use the non-trend $AR(1)$ model.
+
+# Model Diagnostics
+
+## AR coefficent
+
+A likelihood ratio test on the AR coefficent $\phi$ of our $AR(1)$ model gives p-value to be
+```{r, echo=FALSE}
+loglikRatio <- as.numeric(logLik(arima(pcpn, order = c(1, 0, 0))) - logLik(arima(pcpn, order = c(0, 0, 0))))
+p <- 1 - pchisq(2*loglikRatio, df = 1)
+p
+```
+
+which is even below $5\%$ and justifies the $AR(1)$ coefficient being non-zero, supporting our choice of an $AR(1)$ model instead of a white noise process.
+
+## Correlation of residuals
+
+The ACF plot of residuals of our fitted model as shown below supports the IID error assumption in ARMA model.
+```{r, echo=FALSE}
+acf(resid(ar1))
+```
+
+# Conclusion
+
+We find out an $AR(1)$ model fits reasonably well to our data of average January precipitation in Michigan. On the other hand, we don't have enough evidence for its dependence on temperature. We could try to use this model to predict snowfall in Michigan or Ann Arbor in the future.
+
+# References: 
+
+[1]. Precipitation data: ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-pcpnst-v1.0.0-20180205
+
+[2]. Temperature data: ftp://ftp.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-tmpcst-v1.0.0-20180205
+ 

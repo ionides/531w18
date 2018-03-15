@@ -1,0 +1,246 @@
+---
+title: "The Association between Unemployment Rate and CPI"
+author: "Stats 531 Midterm Project"
+date: "March 7, 2018"
+output:
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+\newcommand\loglik{\ell}
+
+
+------
+
+------
+
+#1. Introduction
+
+The unemployment rate represents the number of unemployed as a percentage of the labor force. High unemployment rate may be a symbol of a dysfunctional economy as we have discussed in chapter 8.
+
+The Consumer Price Index (CPI) is as measure that examines the weighted average of prices of a basket of consumer goods and services, such as food, clothing, transportation fares and medical care. The CPI can be used to recognize periods of inflation and deflation.
+
+Based on our intuition, we can expect some inverse relationship between the unemployment rate and CPI. In this project, we seek to find out the association between the unemployment rate and CPI.
+
+-------
+
+-------
+
+#2. Exploratory Data Analysis
+
+In this project, we look at the umemployment rate and CPI for the last 2 decades from January 1, 1998 to January 1, 2018. We use the [Civilian Unemployment Rate](https://fred.stlouisfed.org/series/UNRATE) and [Consumer Price Index for All Urban Consumers (CPIAUCSL)](https://fred.stlouisfed.org/series/CPIAUCSL) published by U.S. Bureau of Larbor Statistics in this project.
+
+* First, Let's read the data into R and start with the time plot for unemployment rate and CPI.
+
+```{r}
+data=read.csv("data.csv",header = TRUE)
+data$DATE<-as.Date(data$DATE,format="%m/%d/%Y")
+data$year<-as.numeric(format(data$DATE,format="%Y"))
+data$month<-as.numeric(format(data$DATE,format="%m"))
+head(data)
+```
+
+```{r}
+unrate<-data$UNRATE
+cpi<-data$CPIAUCSL
+time<-data$year+data$month/12
+par(mar=c(5, 4, 4, 6) + 0.1)
+plot(time,unrate,col="blue",ylab = "Unemployment Rate(%)", col.lab="blue", type="l",main = "Time Plot of Unemployment Rate and CPI")
+par(new=T)
+plot(time,cpi,col="red",ylab = "",axes="F",type="l")
+axis(side = 4,col = "red")
+mtext("CPI",col = "red",side = 4,line=3)
+```
+
+* From the red line in the time plot above we can see an apparent upward trend in the series of CPI. The path of CPI is very smooth and oscillates around its trend. A severe drop in late 2008 was due to the recession of 2007-2009 which had an effect of deflation. 
+
+* Compared with the path of CPI, the path of unemployment rate is more choppy and shows an obvious periodicity. The unemployment rate increased from 5.0 percent to 9.5 percent during the recession and peaked at 10.0 percent in the month after the recession.
+
+* Unemployment rate is an important indicator of dysfunctional economy. CPI is always used as a measurement of inflation or deflation. Since the deflation always occurs during the period of recession, we can expect some association between the unemployment rate and CPI.
+
+------
+
+------
+
+#3. Detailed Analysis
+
+* For the unemployment rate and CPI data, high frequency might be considered as "noise" while low frequency might be considered as trend. Here, we are interested in the business cycle of the data.
+
+##3.1 Extracting business cycles
+* We can extract the trend, noise and business cycles of unemployment rate and CPI by a band pass filter.
+
+```{r}
+unrate_low<-ts(loess(unrate~time,span=0.5)$fitted,start = 1998,frequency = 12)
+unrate_high<-ts(unrate-loess(unrate~time,span = 0.1)$fitted,start = 1998,frequency = 12)
+unrate_cycles<-unrate-unrate_high-unrate_low
+u1<-ts.union(unrate,unrate_low,unrate_high,unrate_cycles)
+colnames(u1)=c("Value","Trend","Noise","Cycles")
+plot(u1,main = "Decomposition of unemployment rate as trend + noise + cycles")
+```
+
+```{r}
+cpi_low<-ts(loess(cpi~time,span = 0.5)$fitted,start = 1998,frequency = 12)
+cpi_high<-ts(cpi-loess(cpi~time,span = 0.1)$fitted,start = 1998,frequency = 12)
+cpi_cycles<-ts(cpi-cpi_low-cpi_high,start = 1998,frequency = 12)
+cpi1<-ts.union(cpi,cpi_low,cpi_high,cpi_cycles)
+colnames(cpi1)<-c("Value","Trend","Noise","Cycles")
+plot(cpi1,main = "Decomposition of CPI as trend + noise + cycles")
+
+```
+
+* We can combined the cycle components of unemployment rate and CPI in the same plot.
+
+```{r}
+par(mar=c(5,4,4,6)+0.1)
+plot(time,unrate_cycles, col="blue",main = "Cycle components of Unemployment Rate and CPI", ylab = "Unemployment Rate cycle", col.lab="blue", xlab="",type = "l")
+par(new=T)
+plot(time,cpi_cycles,col="red",main = "",xlab="Time",ylab = "",axes = F,type = "l")
+axis(side = 4,col = "red")
+mtext("CPI cycle",col = "red",side = 4,line=3)
+```
+
+* From the plot above, we note that the detrended CPI lead the detrended unemployment by about one year in most cases.
+
+##3.2 Regression with lagged variables and ARMA errors
+
+* In order to study the relationship between the unemployment rate and CPI, we can try to do regression with lagged variables and ARMA errors. In particular, we fit the model
+
+$$U_t=\alpha+\beta C_{t-12}+\epsilon_n$$
+where {$\epsilon_n$} is a Gaussian ARMA process.
+
+* In this case, I use the lag h=12 to approximate the one year lag and match the peaks of unemployment rate and CPI. We can then plot the cycle component of unemployment rate and the shifted CPI.
+
+```{r}
+rate=ts.intersect(unrate_cycles,cpiL12=lag(cpi_cycles,-12),dframe = T)
+par(mar=c(5,4,4,6)+0.1)
+plot(time[-(1:12)],rate$unrate_cycles,type = "l",main = "Cycle components of Unemployment Rate and shifted CPI",col="blue",col.lab="blue",ylab = "Unemployment Rate cycle",xlab = "")
+par(new=T)
+plot(time[-(1:12)],rate$cpiL12,type = "l",ylab = "",xlab = "Time",axes = F,col="red")
+axis(side = 4,col = "red")
+mtext("Shifted CPI cycle",col = "red",side = 4,line=3)
+```
+
+* We can tablulate some AIC values for a range of different choices of p nad q to determine a propert ARMA model for {$\epsilon_n$}
+
+```{r}
+aic_table<-function(data,P,Q,xreg=NULL){
+  table<-matrix(NA,(P+1),(Q+1))
+  for (p in 0:P){
+    for (q in 0:Q){
+      table[p+1,q+1]<-arima(data,order = c(p,0,q),xreg = xreg)$aic
+    }
+  }
+  dimnames(table)<-list(paste("<b>AR",0:P,"</b>",sep = ""),paste("MA",0:Q,sep = ""))
+  table
+}
+rate_aic_table<-aic_table(rate$unrate_cycles,3,3,xreg = rate$cpiL12)
+require(knitr)
+kable(rate_aic_table,digits = 2)
+```
+
+* By observing the above table, we notice that the ARMA(2,3) model has the lowest AIC value followed by ARMA(2,2). We also find that this table is inconsistent since adding a parameter can only increase the AIC value by less than 2 units. Compare ARMA(2,3) and ARMA(3,3). This problem may result from imperfect likelihood calculation or maximization.
+
+* We first try to fit the data with ARMA(2,2) since it is a simple model with less parameters and the difference between the AIC values are quite small.
+
+```{r}
+mod<-arima(rate$unrate_cycles,xreg = rate$cpiL12,order = c(2,0,2))
+mod
+```
+
+* We can use the likelihood ratio test for the significance of the coefficients. Suppose we have two nested hypotheses
+
+$$\begin{eqnarray}
+H^{\langle 0\rangle} &:& \theta\in \Theta^{\langle 0\rangle},
+\\
+H^{\langle 1\rangle} &:& \theta\in \Theta^{\langle 1\rangle},
+\end{eqnarray}$$
+
+defined via two nested parameter subspaces, $\Theta^{\langle 0\rangle}\subset \Theta^{\langle 1\rangle}$, with respective dimensions $D^{\langle 0\rangle}< D^{\langle 1\rangle}\le D$.
+
+* We consider the log likelihood maximized over each of the hypotheses,
+
+$$\begin{eqnarray}
+\ell^{\langle 0\rangle} &=& \sup_{\theta\in \Theta^{\langle 0\rangle}} \ell(\theta),
+\\
+\ell^{\langle 1\rangle} &=& \sup_{\theta\in \Theta^{\langle 1\rangle}} \ell(\theta).
+\end{eqnarray}$$
+<br>
+
+* A useful approximation asserts that, under the hypothesis $H^{\langle 0\rangle}$,
+
+$$ 
+\ell^{\langle 1\rangle} - \ell^{\langle 0\rangle} \approx (1/2) \chi^2_{D^{\langle 1\rangle}- D^{\langle 0\rangle}},
+$$
+
+where $D^{\langle 1\rangle}- D^{\langle 0\rangle}=1$ in our case.
+
+```{r}
+log_lik_ratio=as.numeric(logLik(arima(rate$unrate_cycles,xreg = rate$cpiL12,order = c(2,0,2))))
+pval=1-pchisq(2*log_lik_ratio,df=1)
+pval
+```
+
+* Since the p-value is close to 0, we reject the null hypothesis $H_0:\beta=0$.
+
+##3.3 Diagnostic Analysis
+
+* We have already constructed a proper model to investigate the relationship between unemployment rate and CPI. Now we need to check the property of the residuals for the fitted model and look at the sample ACF.
+
+```{r}
+r<-mod$residuals
+plot(time[-(1:12)],r,xlab = "Time",ylab = "Residuals",main = "Residuals of the fitted model",type = "l")
+```
+
+* We can observe heteroskedasticiy in the above plot. The residuals fluctuates severly during 2008 to 2010 which corresponds to the period of recession. We can use the Breusch-Pagan test (`bptest`) as a formal technique to test the null hypothesis that the residuals have constant variance.
+We need to use the package `lmtest` for the test.
+
+```{r}
+require(lmtest)
+m1<-lm(rate$unrate_cycles~rate$cpiL12)
+bptest(m1)$p.value
+```
+
+* The p-value is 0.5111 and is greater than 0.05. Therefore the heteroskedasticiy is not significant.
+
+* We can then check about the ACF of residuals
+```{r}
+acf(r)
+```
+
+* The ACF plot shows that there are significant correlations at some lages.
+
+* We can use the Q-Q plot to test normality of residuals.
+
+```{r}
+qqnorm(r)
+qqline(r)
+```
+
+* The Q-Q plot suggests a long-tailed distribution of the residuals. 
+
+------
+
+------
+
+#4. Conclusions
+
+* We can use the current CPI to predict the future unemployment rate based on our model with ARMA errors.
+
+* The CPI value is more stable than the unemployment rate which may change dramatically according to current economic status.
+
+* We only conducted linear regression analysis in this project while there may be some nonlinear relationship between the unemployment rate and CPI.
+
+* The residuals of the models have some problems of non-normality and some seasonal variation which requires further investigation.
+
+------
+
+------
+
+#5. Refrences
+
+1. [Consumer price index](https://en.wikipedia.org/wiki/Consumer_price_index)
+2. [Unemployment](https://en.wikipedia.org/wiki/Unemployment)
+3. [Breusch-Pagan test](https://en.wikipedia.org/wiki/Breusch%E2%80%93Pagan_test)
+4. [Stats 531 Class Notes](https://ionides.github.io/531w18/#class-notes)
+5. [Stats 531 (Winter 2016) Midterm projects](http://ionides.github.io/531w16/midterm_project/)

@@ -1,0 +1,231 @@
+---
+title: "Time Series Analysis for Live Births in South Korea"
+date: '2018 3 4 '
+output: html_document
+---
+```{r setup, include=FALSE}
+library(data.table)
+library(zoo)
+library(astsa)
+library(forecast)
+require(knitr)
+
+newbaby = read.csv("UNdata_Export_20180223_215528428.csv",
+                   header = T)
+newbaby14_17 = read.csv("Monthly_Live_Births_South_Korea_2014_2017.csv",
+                        header = F)
+newbaby15_17 = newbaby14_17[-c(1:12),]
+newbaby = newbaby[-c(668:670),]
+newbaby = newbaby[-which(newbaby$Month == "Total"),]
+newbaby = newbaby[-which(newbaby$Month == "Unknown"),]
+newbaby$Time = paste(newbaby$Month, newbaby$Year)
+newbaby$Time = as.yearmon(newbaby$Time, "%B %Y")
+newbaby = data.table(newbaby)
+newbaby = newbaby[-which(newbaby$Value.Footnotes == 2),]
+setkey(newbaby, Time)
+newbaby8014 = newbaby[-c(1:60),]
+newbaby8014 = newbaby8014[,-c(1,3,5:7,9)]
+newbaby8014$Month = rep(1:12,35)
+colnames(newbaby15_17) = c("Time","Value")
+newbaby15_17$Month = rep(1:12, 3)
+newbaby15_17$Year = rep(2015:2017, each = 12)
+newbaby15_17$Time = paste(newbaby15_17$Mont, newbaby15_17$Year)
+newbaby15_17$Time = as.yearmon(newbaby15_17$Time, "%m %Y")
+newbaby15_17 = data.table(Year = newbaby15_17$Year, Month = newbaby15_17$Month,
+                          Value = newbaby15_17$Value, Time = newbaby15_17$Time)
+birth = rbind(newbaby8014, newbaby15_17)
+birth$Month = as.factor(birth$Month)
+rm(newbaby8014,newbaby15_17)
+birth = birth[-c(1:36),]
+birthts = ts(birth$Value, 
+            start=c(1983,1), end=c(2017,12), 
+            frequency=12, names=c("Newborn series"))
+```
+
+# 1. Introduction
+
+Live birth is the birth of a living child and has affected lots of fields such as economy and politics. In South Korea as well as most developed and developing countries, the number of live births has decreased and then it has threatened their labor population. Also, in South Korea it is related to the National Pension and other insurance and bank business systems. From the government and National Assembly's position, they have to make policies to prevent declining the tendency. 
+
+The goal of this project is to analyze the number of live births in South Korea in terms of time series analysis. Specifically, we will try to find any patterns from the data and fit a time series model to capture those patterns. In order to do that, we will conduct the SARIMA modeling based on estimated spectrum density and acf plots.
+
+# 2. Data Analysis
+## 2.1 Exploratory and Spectrum Data Analysis
+
+We downloaded data from UNdata and Korean Statistical Information Service. Birth dataset contains the number of live births in South Korea from January 1983 to December 2017. We excluded alien armed forces, civilian aliens employed by armed forces and foreign diplomatic personnel and their dependants. 
+
+```{r echo = F}
+head(birth)
+summary(birth)
+```
+
+```{r echo = F}
+plot(birthts, xlab = "Time", 
+     ylab = "Number of Live Births",
+     main = "Live Births in South Korea", type = "l")
+```
+```{r echo = F}
+plot(birthts, xlab = "Time", 
+     ylab = "Number of Live Births",
+     main = "Live Births in South Korea", type = "l")
+abline(h = mean(birth$Value), col = "red")
+Month = c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")
+points(birthts, pch = Month)
+```
+
+From the time series plot, we see there are two peaks and two trough every year. From 1983 to early 2000, two peaks occurred every February and October while troughs were at summer season and December. After then, the number of live births peaked every January and at spring season whereas it dropped at summer and December. 
+
+```{r}
+spectrum(birthts, spans = c(5,5))
+```
+
+We plot the periodogram to check the seasonality in the data. There are six dominant peaks. These frequencies correspond to 12,6,4,3,2.4,2 month period, respectively.
+
+In the data, we see there is a decreasing trend in live birth over time. Also, variance changes over time. It indicates that to fit a time series model we need to make the data stationary. Thus we will transform the data later. In terms of seasonality of the data, we confirm that there is a dominant annual cycle since ten peaks occur between every ten years in time series plot and the largest peak in the periodogram plot is at frequency 1, which corresponds to one-year period.
+
+```{r}
+acf(birthts,60, main = "ACF of Live Births")
+```
+
+The acf plot also suggests there are strong autocorrelation between observations and seasonality among them.
+
+## 2.2 Data Transformation
+
+For the assumption of stationarity for time series modeling, we need to have a stationary dataset. However, our data don't have a stationary behavior. To remedy it, we take logarithm and difference with several lags. Taking a log scale makes the data less fluctuate, which suggests we use the log scale data,$Y_n = \log(X_n)$. Also, taking difference with lag of 12 makes the data stationary and does not have a sign of seasonality.  
+```{r}
+y = birthts
+ly = log(y)
+dly = diff(ly)
+dly12 = diff(ly, 12)
+
+plot.ts(cbind(y,ly,dly,dly12), main = "")
+```
+
+## 2.3 SARIMA Model Fitting
+
+We seek to fit a Seasonal ARIMA$(p,0,q)\times(P,1,Q)_{12}$ with parameter vector $\theta = (\phi_{1:p},\psi_{1:q},\Phi_{1:P},\Psi_{1:Q},\mu,\sigma^2)$ given by $$\phi(B)\Phi(B^{12})((1-B^{12})Y_n - \mu) = \psi(B)\Psi(B^{12})\epsilon_n,$$
+where 
+\[
+\begin{eqnarray}
+\mu &=&E[Y_n]\\
+\phi(x) &=& 1 -\phi_1x - \cdots - \phi_px^p\\
+\Phi(x) &=& 1 -\Phi_1x - \cdots - \Phi_Px^P\\
+\psi(x) &=& 1 +\psi_1x + \cdots + \psi_qx^q\\
+\Psi(x) &=& 1 +\Psi_1x + \cdots + \Psi_Qx^Q\\
+\epsilon_n &\sim& \text{iid}N[0,\sigma^2]
+\end{eqnarray}
+\]
+
+In order to fit a $SARIMA(p,0,q)\times(P,1,Q)_{12}$ model, we have to decide orders for AR and MA. Therefore, we tabulate AIC values for a range of different choices of $p$ and $q$. Akaike's information criterion AIC is given by $$AIC = -2\times l(\theta^*)+2D$$ where D is the number of parameters to be estimated. We select the model with the lowest AIC score.
+
+```{r echo = F}
+aic_table = function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- Arima(data,order=c(p,0,q), 
+                              seasonal = list(order = c(0,1,0), period = 12))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+new_aic_table = aic_table(ly,5,5)
+kable(new_aic_table,digits=2)
+```
+
+From the AIC table, although $SARIMA(5,0,5)\times(0,1,0)_{12}$and $SARIMA(4,0,4)\times(0,1,0)_{12}$ have smallest values, they are so complex. Therefore, we try to calculate BIC values and see if these candidates will change. Bayesian information criterion BIC is given by $$BIC = -2\times l(\theta^*) + D\log(N)$$ where D is the number of parameters and N is the sample size.
+
+```{r echo = F}
+bic_table = function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- Arima(data,order=c(p,0,q), 
+                              seasonal = list(order = c(0,1,0), period = 12))$bic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+new_bic_table = bic_table(ly,5,5)
+kable(new_bic_table,digits=2)
+```
+
+From the BIC table, we select $SARIMA(2,0,0)\times(0,1,0)_{12}$ since is has a smallest BIC value. This combination also has a local minimum in the AIC table. Thus, we decide to use the $SARIMA(2,0,0)\times(0,1,0)_{12}$ model. To consider orders for SAR and SMA, we will plot the acf of residuals of the model. From the ACF plot, we see the autocorrelation cuts off after lag 3, which indicates the residuals might bahave like SMA(3). Similarly, from the PACF plot, the pacf cuts off after lag 2, which corresponds to SAR(2).  Finally, we will fit a $SARIMA(2,0,0)\times(2,1,3)_{12}$.
+
+```{r echo = F}
+new2000 = Arima(ly, order = c(2,0,0), 
+                seasonal = list(order = c(0,1,0), period = 12))
+par(mfrow = c(2,1))
+acf(resid(new2000),60, main = "ACF and PACF of residuals")
+pacf(resid(new2000),60, main = "")
+par(mfrow = c(1,1))
+```
+
+```{r}
+new2023 = Arima(ly, order = c(2,0,0), seasonal = list(order = c(2,1,3), period = 12))
+new2023
+```
+
+The result of fitting the SARIMA model is given by $$(1 - 0.6087B - 0.2964B^2)(1 + 0.9979B^{12} + 0.8871B^{24})(1 - B^{12})Y_n = (1 +0.6914B^{12} + 0.5229B^{24} - 0.1965B^{36})\epsilon_n$$ where $\epsilon_n \sim \text{iid} N[0,0.001421]$. From the result, we check that the AIC and BIC values are improved.
+
+```{r}
+list(AR_roots = abs(polyroot(c(1,-coef(new2023)[1:2]))),
+     SAR_roots = abs(polyroot(c(1, -coef(new2023)[3:4]))),
+     SMA_roots=abs(polyroot(c(1,coef(new2023)[5:7]))))
+round((1-pnorm(abs(new2023$coef)/sqrt(diag(new2023$var.coef))))*2,3)
+```
+
+All the roots are outside the unit circle, suggesting we have a stationary causal fitted SARIMA. Therefore, the assumptions of causality and invertibility still hold. Also, all the coefficients are significant. 
+
+```{r echo = F}
+plot(ly,type="l", 
+     xlab = 'Year', ylab = 'Live Births',
+     main = 'Fitted Live Births by SARIMA(2,0,0)(2,1,3)', 
+     lwd = 1)
+lines(new2023$fitted, col="red", lty = 2)
+```
+
+The time plot above shows the original live births on log scale and the fitted values from the model we considered above. We see that our model can capture the patterns from the live births but some peaks and troughs are over- or underestimated. 
+
+# 3. Diagnostics
+
+For the diagnostics, we first plot the residuals of the model above. 
+
+```{r}
+plot(resid(new2023), ylab = "Residual", type = "l", main = "Residual Plot")
+```
+
+We see that the residuals behave like a white noise except some points, which might be outliers. Nextly, we look the acf plot of the residuals to check whether autocorrelation exists among the residuals.
+
+```{r}
+par(mfrow = c(2,1))
+acf(resid(new2023),60, main = "ACF and PACF of SARIMA(2,0,0)(2,1,3)")
+pacf(resid(new2023),60, main = "")
+par(mfrow = c(1,1))
+```
+
+Based on the acf plot, the residuals look like a white noise. Lastly, to check the assumption of normality, we plot a QQ-plot of the residuals.
+
+```{r}
+qqnorm(resid(new2023))
+qqline(resid(new2023))
+```
+
+From the plot above, although the residuals have a long tail on the right hand, they can be considered as a normal distribution.
+
+# 4. Conclusion
+
+The live births in South Korea time series has a decreasing trend as well as some seasonalities, especially in a cycle per year. Usually, peaks have occurred between January and March or October while there have been troughs in summer or December. Accoring to these patterns and duration of pregnancy, we can speculate many women in South Korea have gotten pregnant in spring and early in winter rather than in autumn and late in winter. 
+
+We tried to fit the $SARIMA(2,0,0)\times(2,1,3)_{12}$ based on the AIC and BIC tables as well as the acf plots. Although the fit of the model is good, there are some misetimated points to be improved. Thus, further analysis should try to close these gaps.  
+
+# 5. Reference
+
+http://data.un.org/Data.aspx?d=POP&f=tableCode%3A55
+
+http://kosis.kr/statisticsList/statisticsListIndex.do?menuId=M_01_01&vwcd=MT_ZTITLE&parmTabId=M_01_01?menuId=M_01_01&vwcd=MT_ZTITLE&parmTabId=M_01_01&parentId=A#SubCont
+
+https://ionides.github.io/531w18/
+
+R. Shumway and D. Stoffer “Time Series Analysis and its Applications” 4th edition.

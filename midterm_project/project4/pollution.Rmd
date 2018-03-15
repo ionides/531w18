@@ -1,0 +1,326 @@
+---
+title: "Pollution Equipment Time Series"
+author: ""
+date: "3/4/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+library(fma)
+library(dplyr)
+library(TSA)
+library(knitr)
+library(lmtest)
+```
+
+## Background
+
+The data consists of monthly shipments of a company that manufactures pollution equipment (in thousands of French francs) from Jan 1986 to Oct 1996. The data comes from **Makridakis, Wheelwright and Hyndman (1998) Forecasting: methods and applications, John Wiley & Sons: New York. Chapter 7.** We can see that until December 1989, the value of shipments as well as the variablity were low. From then on, shipments increased and so did their variations for each subsequent month.
+
+The goal is to explore the data and fit a decent model to it. This goal is motivated by the increasing fluctuations in the data over time, helping one learn how to work with data with increasing variability and whether certain transformations help in the modeling process.
+
+```{r load}
+polln <- fma::pollution
+month <- 1:length(polln)
+polln <- data.frame(month, polln)
+head(polln)
+```
+
+Here we see a glimpse of the data. There are 130 observations. The `month` variable represents the number of months having passes since January 1986, and the `polln` variable represents that month's shipment in thousands of French francs.
+
+```{r un_log_plot, echo=FALSE}
+par(mfrow = c(1, 2))
+plot(polln$month, polln$polln,ty="l", 
+     main="Shipments of equipment",
+     xlab = "Month",
+     ylab = "thousands of French francs")
+spectrum(polln$polln, spans=c(3,5,3),
+         main = "Spectrum of data",
+         xlab = 'Frequency, Cycles/Year')
+```
+
+Here we see that there is an increasing trend over time as well as an increase in variability. The shipments increase exponentially for a few months then drop down considerably before increasing to potentially an even higher peak. Around the year 1994, there was a huge decrease that has yet to recover by the time the data ends. It is unwise to think the same pattern would continue and that there would be another 'highest' peak in the subsequent years.
+
+The smoothed periodogram is in cycles/year and we see the spectrum values are largest around frequency values of 0 and 4 (period of 1/4 years or every three months). Since the `polln` values increases exponentially and has an increase in variablity, I will try to log the data and replot.
+
+
+```{r log_plot, echo=FALSE}
+polln <- polln %>% mutate(polln_log = log(polln))
+par(mfrow = c(1, 2))
+plot(polln$month, polln$polln_log, ty='l', 
+     main="Log shipments of equipment",
+     xlab = "Month",
+     ylab = "log(thousands of French francs)")
+spectrum(polln$polln_log, spans=c(3,5,3),
+         main='Spectrum of logged data',
+         xlab = 'Frequency, Cycles/Year')
+```
+
+
+Here, we see a linear model looks more appropriate for the data but there is still a slight downward curve towards the end. This could be for a number of reasons including consumers improving their own pollution technology, issues with the economy, etc. The smoothed periodogram yields similar frequencies that correspond to the highest spectrum values.
+
+One might difference the data and then try to model it as an $SARMA(p,q)x(P,Q)_{season}$, but I want to detrend the data using a function of time to further see how the shippings varied throughout the 10 years the data was collected. This can be accomplished thorugh modeling trend with ARMA errors
+
+-----------
+
+## Linear Regression with ARMA(p,q) noise
+.
+One strategy to tackle trend is linear regression and then modeling the residuals as ARMA errors. This means I will model the monthly shipping, denoted $Y_{n}$, and logged monthly shipping, denoted $Z_{n}$, as
+
+$$ Y_{n}(Z_{n}) = \mu_{n} + \eta_{n}$$
+where $\eta_{n}$ is a stationary, causal, invertible ARMA(p,q) process with mean zero and $\mu_{n}$ has the (initial) linear specification
+
+$$\mu_{n}=Intercept+\beta_{1}Month+\beta_{2}Month^{2}$$
+
+
+Let's see what the fit looks like using `lm`.
+```{r fit_model}
+mod <- lm(polln ~ month + I(month^2), data=polln)
+mod_log <- lm(polln_log ~ month + I(month^2), data=polln)
+Z <- cbind(1, polln$month, polln$month^2)
+pred <- Z %*% mod$coefficients
+pred_log <- Z %*% mod_log$coefficients
+
+par(mfrow = c(1, 2))
+
+plot(polln$month, polln$polln, ty='l',
+     main = 'Shipments regressed on time',
+     xlab='Month',
+     ylab="thousands of French francs")
+lines(polln$month, pred, col='red')
+
+plot(polln$month, polln$polln_log, ty='l',
+     main = 'Log shipments regressed on time',
+     xlab='Month',
+     ylab="log(thousands of French francs)")
+lines(polln$month, pred_log, col='red')
+```
+
+The un-logged data is a bit too variable towards the end. It seem much easier to model the logged data. Thus, from now on, I will only look at the logged data.
+
+We can also look at the results of fitting the model
+```{r model_summary}
+summary(mod_log)
+```
+
+We see the polynomial coefficient being evaluated as significant but is also very small. However, it adds a nice curve to the fitted plots which shows that it fits the data well. Is it worth keeping?
+
+To check this, I will first try to model the errors as ARMA noise. This will help me find one signal plus ARMA noise model that includes `Month^2` and one that does not include it. Then I can do hypothesis testing to see if it is worth keeping.
+
+Now, to look at the residuals of of the model before trying to model the errors as ARMA noise
+
+```{r periodogram_residuals}
+TSA::acf(mod_log$residuals, lag.max = 70,
+         main='ACF of residuals')
+spectrum(mod_log$residuals, spans=c(3,5,3),
+         main = 'Periodogram of residuals')
+
+```
+
+From looking at the ACF plot, we see that the largest value is at lag 3.
+
+Frequency values with corresponding high spectrum are approx `0.015` and `.33` which in terms of cycles per year would be `.2` and `4` which correspond to periods of 5 years and .25 years (3 months) respectively. However, our data only covers 10 years, so I don't feel confident trying to look at anything with a period of 5 years with barely enough data to cover 2 period. Thus, I will look at the AIC table with no seasonal component and with a 3 month component. I decided to include seasonality of 3 months instead of 12 months as most $ARMA(p,q)*(P, Q)_{12}$ with nice AIC values had polynomial roots that were not outside the unit circle.
+
+```{r model_residuals}
+
+aic_table <- function(data,P,Q, season, prd, xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      try(table[p+1,q+1] <- arima(data,
+                                  order=c(p,0,q),
+                                  season=list(order = c(season, 0, 0),
+                                              period=prd),
+                                  xreg=xreg)$aic)
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+# month as the only variable
+season_0_h0 <- aic_table(mod_log$residuals,4,4, 0, NA, Z[,2])
+season_3_h0 <- aic_table(mod_log$residuals,4,4, 1, 3, Z[,2])
+
+# month and month^2
+season_0_h1 <- aic_table(mod_log$residuals,4,4, 0, NA, Z[,2:3])
+season_3_h1 <- aic_table(mod_log$residuals,4,4, 1, 3, Z[,2:3])
+kable(season_0_h0, digits=2,
+      caption = "AIC (ARMA(3,0), no Month^{2} variable)")
+kable(season_0_h1, digits=2,
+      caption = "AIC (ARMA(3,0), Month^{2} variable)")
+kable(season_3_h0, digits=2,
+      caption = "AIC (SARMA(3,0)x(1,0)_{3}, no Month^{2} variable)")
+kable(season_3_h1, digits=2,
+      caption = "AIC (SARMA(3,0)x(1,0)_{3}, Month^{2} variable)")
+
+# season_0_aic_table <- aic_table(mod_log$residuals,4,4, 0, NA, Z[,2:3])
+# kable(season_0_aic_table, caption = 'AIC Values of ARIMA models for Model Errors with no Seasonal Component')
+# 
+# season_3months_aic_table <- aic_table(mod_log$residuals, 4, 4, 1, 3, Z[,2:3])
+# kable(season_3months_aic_table, caption = 'AIC Values of ARIMA models for Model Errors with AR(1) Seasonal Component, period=3')
+# 
+# ## compare models with arma(3,0)
+# 
+# h1 <- logLik(arima(polln$polln_log, xreg = Z[,2:3], order = c(3, 0, 0),
+#                    season=list(order = c(1, 0, 0),
+#                                               period=12)))
+# h0 <- logLik(arima(polln$polln_log, xreg = Z[,2], order = c(3, 0, 0),
+#                    season=list(order = c(1, 0, 0),
+#                                               period=12)))
+# log_lik_ratio = as.numeric(h1 - h0)
+# pval = 1 - pchisq(2*log_lik_ratio, df = 1)
+# pval
+```
+
+Generally, we look for pick the model that comes with the lowest AIC value. Looking at the table, the best models would be $ARMA(3,3)$ with no seasonal component and $SARMA(4,3)x(1,0)_{3}$ with a seasonal component of 3 months. However, there are two things to note:
+
+- There are obvious issues with the maximization process. By adding one additional parameter to the model, the AIC value should increase at most by 2. However, the AIC values jump by extremely large values when one parameter is added to the model e.g when comparing ARMA(2,0) to ARMA(3,0) in both tables. 
+
+- There are reasons to not choose overly complex models, as they may suffer from parameter identification, invertiblility and causality issues, and general numerical instability
+
+
+Thus, I will look for a simple model that has a reasonable AIC value. The choice for the both the seasonal and nonseasonal component is `ARMA(3, 0)`. Because the AIC values are lower, I will also move on with the seasonal model. Thus, now the question is whether to include $Month^2$ or not when modeling the errors as $SARMA(3,0)x(1,0)_{12}$
+
+
+### Hypothesis testing
+Let's first re-visit each model
+```{r revisit}
+h1 <- arima(polln$polln_log, xreg = Z[,2:3], order = c(3, 0, 0),
+                   season=list(order = c(1, 0, 0),
+                                              period=3))
+
+h0 <- arima(polln$polln_log, xreg = Z[,2], order = c(3, 0, 0),
+                   season=list(order = c(1, 0, 0),
+                                              period=3))
+h1
+h0
+```
+We see that there are some issues calculating the SE for $Month^{2}$ and the result is $NaN$. This means that a more simple model might be preferred. Also, based on the coefficient, this variable isn't doing much to help model the data. Just to be thorough, we will conduct a likelihood ratio test. This is a way to try and verify the significance of the association between these two datasets. We have two hypotheses:
+
+$$
+\begin{eqnarray}
+H^{\langle 0\rangle} &:& \theta\in \Theta^{\langle 0\rangle}
+\\
+H^{\langle 1\rangle} &:& \theta\in \Theta^{\langle 1\rangle}
+\end{eqnarray}
+$$
+defined via two nested parameter subspaces, $\Theta^{\langle 0\rangle}\subset \Theta^{\langle 1\rangle}$, with respective dimensions $D^{\langle 0\rangle}< D^{\langle 1\rangle}\le D$.
+
+We consider the log likelihood maximized over each of the hypotheses,
+$$
+\begin{eqnarray}
+\ell^{\langle 0\rangle} &=& \sup_{\theta\in \Theta^{\langle 0\rangle}} \ell(\theta),
+\\
+\ell^{\langle 1\rangle} &=& \sup_{\theta\in \Theta^{\langle 1\rangle}} \ell(\theta).
+\end{eqnarray}
+$$
+By Wilks approximation, we have $\ell^{\langle 1\rangle} - \ell^{\langle 0\rangle} \approx (1/2) \chi^2_{D^{\langle 1\rangle}- D^{\langle 0\rangle}}$ under the null hypothesis. The difference in the dimension is 1 as the full model contains $Month^{2}$ and the null model does not.
+
+```{r lrt, echo=TRUE}
+log_lik_ratio = as.numeric(logLik(h1) - logLik(h0))
+pval = 1 - pchisq(2*log_lik_ratio, df = 1)
+pval
+```
+We see that the p-value is `0.00477`. This is well below the threshold of `0.05` indicating that the null hypothesis $H^{\langle 0\rangle}$ should be rejected and hence the association is indeed significant. However, there is still the identifiability issue. So this is a case where something has a p-value that is below the threshold but one might still follow the model under the null hypothesis for other reasons that the p-value doesn't cover. Thus, due to the lack of a standard error, the extremely small coefficient, and the fact that $Month^{2}$ is useful mainly in the last 10 observations of the data, the final model will be
+
+$$ Z_{n} = Intercept+\beta_{1}Month+ \eta_{n} $$
+where $\eta_{n}$ are modeled as $SARMA(3,0)x(1,0)_{3}$
+### Diagnostics
+
+Now we’ll look at diagnostics for the ARMA model fitted to our residuals:
+```{r fit_residuals}
+# resids <- mod_log$residuals
+# arma_no_season <- resid(arima(polln$polln_log, xreg = Z[,2:3], order = c(3, 0, 0)))
+arma_season <- resid(h0) 
+
+# plot(arma_no_season)
+plot(arma_season, main = 'Residuals of fitted model',
+     ylab = 'Residuals')
+
+```
+
+With the residuals plotted, our first impression of its behavior is that there seems to exist slight heteroskedasticity.
+
+Now we check the ACF plots
+```{r acf}
+TSA::acf(arma_season, lag.max = 50,
+         main='ACF: residuals from ARMA(3,0)*(1, 0)_3')
+```
+
+There are 4/50 lags only one that are outside the dashed line in the non seasonal and seasonal model. Also, there is still a slight pattern in the ACF plot. Thus, there are a couple of things that prevent one from exclaiming "the residuals follow the null hypothesis of Gaussian white noise!". I didn't take into account the possibility of a better, slightly more complex model, which is why there might be violations at certain lags and/or patterns in the plot. However, this suffices for me (and I hope for the reader), and makes me more confident of the SARMA than the ARMA(3,0) model.
+
+```{r spectrum}
+spectrum(arma_season, spans = c(3,5),
+         main='Periodogram: residuals of ARMA(3,0)*(1,0)_3')
+```
+
+
+A good thing is that there are no dominant cycles in the periodogram in the residuals of the seasonal model. This gives evidence of IID errors for both models. All things considered, the $SARMA(3,0)x(1,0)_{3}$ model seems to be nicer, meaning its residuals moreso follow what we'd see if we had Gaussian white noise. I will stick with this model!
+
+We should also check the roots of the coefficients.
+```{r roots}
+
+AR_roots <- polyroot(c(1,-coef(h0)[c("ar1","ar2", 'ar3', 'sar1')]))
+# AR_roots
+(Re(AR_roots)^2 + Im(AR_roots)^2)^.5
+```
+
+Our roots all lie outside the unit circle, suggesting we have a stationary causal fitted ARMA.
+
+
+The ar2 coefficient, however, leaves much to be desired. Its standard error has a higher in magnitude than the coefficient. I will see if the approximate confidence interval constructed using profile likelihood is in agreement with the approximate confidence interval constructed using the observed Fisher information.
+```{r sim}
+K <- 250
+ar2 <- seq(from=-.5,to=.05,length=K)
+profile_loglik <- rep(NA,K)
+for(k in 1:K){
+
+   profile_loglik[k] <- logLik(arima(polln$polln_log,
+                                     xreg = Z[,2],
+                                     order = c(3, 0, 0),
+                                     season=list(order = c(1, 0, 0),
+                                                 period=3),
+                               fixed=c(NA, ar2[k], NA, NA, NA, NA)))
+}
+plot(profile_loglik~ar2,ty="l",
+     main = 'Profile likelihood of ar2',
+     xlab = 'possible ar2 values',
+     ylab = 'Profile log-likelihood')
+
+# ar2[which.max(profile_loglik)]
+possible_vals <- na.omit(ar2[(abs(as.numeric(logLik(h0)) - profile_loglik)) < 1.92])
+paste('the profile CI is the interval (', 
+      round(min(possible_vals), 3),',',round(max(possible_vals), 3),')')
+
+ar2_mle <- coef(h0)[2]
+sigma_mle <- sqrt(h0$var.coef[2,2])
+paste('the Fisher CI is the interval (',
+      round(ar2_mle - 1.96*sigma_mle, 3), ',', round(ar2_mle + 1.96*sigma_mle, 3), ')')
+```
+There are several errors that occur from the optim function, showing that there might be some numerical issues. However, the CI's both contain 0 and have a similar left endpoint, with the right endpoint smaller for the profile CI. To double check using another's software, you can also use the `lmtest::coefci`, which is a generic function that computes Wald confidence intervals. 
+
+```{r ci}
+coefci(h0)
+```
+
+
+### Discussion and Conclusion
+
+When we saw the raw data, the trend and fluctuations in the monthly shipments of pollution equipment increased over time. There seemed to be a slight decrease in the last several months. There isn't any historical context I could find that might help explain the pattern in the data.
+
+Taking the log of the data helped deal with the fluctations. To deal with the trend, multiple trend functions were specified and the errors were treated as ARMA noise. After finding how to model the ARMA noise for different mean functions, the mean functions were compared and a simple model was selected. 
+
+$$(1 - .2779B - 0B^{2} + .2975B^{3})(1-.7697B^{3})(log(Y_{n}) + 5.1275 + .025Month)  = \epsilon_{n}$$
+
+Thus, we’ve found that a reasonable model for monthly shipments of pollution equipment is a linear model with ARMA errors after performing a log transform on the monthly shipments.
+
+-----------------
+# References
+
+- Ionides, E. (n.d.). Stats 531 (Winter 2018) ‘Analysis of Time Series’ Retrieved March 05, 2018, from http://ionides.github.io/531w18/
+
+- Description of data (sourced from Makridakis, Wheelwright and Hyndman (1998) Forecasting: methods and applications, John Wiley & Sons: New York. Chapter 7). Retrieved March 05, 2018 from http://pkg.robjhyndman.com/fma/reference/pollution.html 

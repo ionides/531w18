@@ -1,0 +1,340 @@
+---
+title: "A study in temporal behavior of influenza mortality"
+author: "Stats 531 Midterm Project"
+date: "March 7, 2018"
+output:
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+------
+
+------
+
+#1. Introduction
+
+This year has vitnessed a much more severe influenza outbreak than previous years. Influenza has always been the most common and most deadly disease of all times. It caused considerable economic burdens of medical visits and absence from school and work. Moreover, influenza is also a great threat to human lives, especially for the old and children. It is reported that pneumonia and influenza altogether ranked as the sixth leading cause of death in the United States. [1] Besides seasonal outbreak, there are also 3 influenza pandemics (marked by excess mortality) in the 20th century (Spanish influenza in 1918, Asian influenza in 1957, and Hong Kong influenza in 1968)[2]. The 1918 Spanish influenza alone caused about 50 million death, much greater than the total death of 18 million in World War I. [3] Therefore it is of extreme interest to study the temporal behavior of influenza mortality, so that we could get prepared for the next influenza epidemic / pandemic. 
+
+Except for the sporadic pandemic, the outbreak of influenza epidemic is highly periodic. Influenza attack rate is especially high during the cold winter months, which typically lasts around 9 weeks, the so-called "flu season". [4] The reason of the highly seasonal behavior of influenza epidemics is still not quite clear but it was speculated that the cold weather provides a beneficial environment for influenza virus survival, including appropraite temperature, humudity, ultraviolet radiation, etc. [5] 
+
+In this project, we want to describe the temporal behavior of influenza mortality (find the typical peak time, flu season duration etc) and explore the suitable statistical models to describe this time series. Understanding the evolvement of influenza mortality might help with the possible reasons and maybe even better predictions for influenza outbreak.
+
+------
+
+------
+
+#2. Data Overview
+
+The dataset for influenza mortality is acquired from National Center for Health Statistics Pneumonia and Influenza (P&I) Mortality Surveillance[6].
+
+This dataset contains a continuous 436 weeks of influenza deaths in the US from the 40th week in 2009 to the 6th week in 2018, covering more than 8 years.
+
+Prior to use any analysis method, let's take a look at the visualization of the time series of influenza deaths.
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+data <- read.csv("NCHSData08.csv")
+flu <- data[,-c(3:7)]
+names(flu)[3] <- "deaths"
+uniq_year <- unique(flu$Year)
+year_idx <- match(uniq_year, flu$Year)
+plot(flu$deaths, type = "l", main = "Time course of Influenza Deaths in 436 weeks", xlab = "week", ylab = "deaths")
+text(year_idx[-1], rep(1, length(uniq_year)-1), uniq_year[-1], col = "blue", cex = 0.6)
+```
+
+From the figure, we could see that influenza deaths are fairly low and smooth in non-epidemic seasons, and that influenza epidemic seasons appear with high evidence of periodicity. But the peak deaths differ year from year. It is especially low in year 2012, and we are indeed experiencing a bad year now in 2018. But good news is that we seem to be getting out of the influenza season soon. 
+
+Another figure we want to check before analysis the the kernal density of the death rate.
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+plot(density(flu$deaths), xlab = "influenza deaths", main = "Density of weekly influenza deaths")
+```
+
+We can see from the above figure that it has most part below 100 (non-epidemic deaths) and a long tail corresponding to the highly varied epidemic deaths. This density plot is also consistent with the observations in time series figure above.
+
+------
+
+------
+
+#3. Data Analysis
+
+This analysis require the following packages: "lomb", "depmixS4", "corrplot", "astsa".
+
+## 3.1 Identify the influenza seasonality
+We will utilize the sample autocorrelation and the periodogram to explore the seasonality of the data.
+
+### 3.1.1 Explore seasonality with ACF
+The sample autocorrelation is shown below:
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+acf(flu$deaths, main='Autocorrelation of week influenza deaths', lag.max = 60)
+```
+From the autocorrelation, we can see that there are a series of peaks around 50, which is almost one year and this fits our expectation.
+
+### 3.1.2 Explore seasonality in frequency domain
+The smoothed periodogram is plotted below:
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+spectrum(flu$deaths, spans = c(5,7))
+spec1 <- spectrum(flu$deaths, spans = c(5,7))
+abline(v= spec1$freq[which.max(spec1$spec)],lty=2)
+```
+The dashed verticle line in the plot corresponds to 1/50, which is the maximum in all tested frequencies. It means that this data has a period of 50 weeks. It is not exactly 52 weeks in a year is because the default frequencies here are differed by 1/450 and 1/50 is the nearest frequency to 1/52.
+
+From the theory of time series data analysis, the high frenquency could be regarded as noise, while the low frequency can approximate the trend. The middle frenquency could be examined for seasonality. 
+
+Therefore a local polynomial regression fitting with different choice of degree of smoothing could be used to estimate the noise, trend and cycles.
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+time <- 1:length(flu$deaths)
+death_low <- ts(loess(flu$deaths ~ time, span = 1)$fitted, frequency = 52)
+Trend <- death_low
+death_hi <- ts(flu$deaths - loess(flu$deaths ~ time,  span = 0.03)$fitted, frequency = 52)
+Noise <- death_hi
+death_cycles <- flu$deaths - death_hi - death_low
+Cycles <- death_cycles
+plot(ts.union(flu$deaths, Trend, Noise, Cycles), type = "l", xlab = "Year", main = "Decomposition of flu deaths as Trend + Noise + Cycles")
+```
+This analysis shows an up-going trend with some cycles we want to examine and compre with original signal in the next part.
+
+### 3.1.3 Test of seasonality with Lomb-Scargle algorithm
+Lomb-Scargle periodogram is a efficient and widely used algorithm to detect seasonality and examine the significance. This algorithm can tolerate the uneven sampling with least-squares fitting of sinusoids.
+
+The two figures below show the Lomb-Scargle Periodogram, the distribution of spectrual power and p-value of peak power for raw influenza deaths data and cycles after removal of trend and noise, respectively.
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+library(lomb)
+lsp_p <- randlsp(repeats=1000, flu$deaths)
+```
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+lsp_c <- randlsp(repeats=1000, as.vector(Cycles))
+```
+
+The peak frequency for raw data is `r lsp_p$scanned[which.max(lsp_p$power)]`, and the corresponding period is `r 1/lsp_p$scanned[which.max(lsp_p$power)]`.
+
+The peak frequency for cycle data after removal of trend and noise from raw data is `r lsp_c$scanned[which.max(lsp_c$power)]`, and the corresponding period is `r 1/lsp_c$scanned[which.max(lsp_c$power)]`.
+
+The two results agree with each other, and both are very significant (empirical p-value = 0 with 1000 randomization). The purified cycle data has a larger statistic, which could lead to a more significant p-value if sufficient permutation were performed.
+
+## 3.2 Identify influenza seasons with Hidden Markov Model
+Here we assume there is an underlying unobserved state varible corresponding to the flu season for each time point, which takes the value of "non-epidemic" and "epidemic". The unobserved variables formed a Markov chain over time, and the observed weekly death is conditionally independent of other variables given the state of its corresponding hidden variable. In this case, a hidden markov model is appropraite to identify the underlying state. We use the implementation of HMM in R package depmixS4 to carry out this analysis.
+
+The red points in the figure denotes that corresponding time points belong to a epidemic season. The blue short verticle line above each peak denotes the position of the peak. A table containing the length, start time, end time, peak time, and peak deaths of each epidemic is also listed below.
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+library(depmixS4)
+mod <- depmix(deaths ~ 1, family = gaussian(), nstates = 2, data = flu)
+fm2 <- fit(mod, verbose = FALSE)
+state <- posterior(fm2)[,1]
+# make sure the state 2 is assigned to epidemic
+if(sum(state == 1) < sum(state == 2)){
+	state <- 3 - state
+}
+
+plot(flu$deaths, type = "l", main = "Identify epidemic season with HMM", xlab = "week", ylab = "deaths")
+points((1:length(flu$deaths))[state == 2], rep(1, sum(state == 2)), col = "red", pch = 20)
+abline(v = year_idx[-1], col = "grey", lty = 2)
+text(year_idx[-1], rep(max(flu$deaths), length(year_idx[-1])), uniq_year[-1], col = "blue", pos = 4, cex = 0.6)
+
+# find the length of each epidemic, epidemic peak time and peak value
+epi_idx <- which(state == 2)
+sep_idx <- which(diff(epi_idx) != 1)
+sep_idx <- c(0,sep_idx,length(epi_idx))
+epidemic_list <- list()
+for(i in 1:(length(sep_idx)-1)){
+	epidemic_list[[i]] <- epi_idx[(sep_idx[i]+1):(sep_idx[i+1])]
+}
+Nepi <- length(epidemic_list)
+epi_length <- unlist(lapply(epidemic_list, length))
+epi_peak_idx_idx <- unlist(lapply(epidemic_list, function(x){return(
+which.max(flu$deaths[x]))}))
+epi_peak_idx <- unlist(lapply(1:Nepi, function(x){return(epidemic_list[[x]][epi_peak_idx_idx[x]])}))
+epi_peak_value <- flu$deaths[epi_peak_idx]
+epi_peak_time <- paste(flu$Year[epi_peak_idx], flu$Week[epi_peak_idx], sep = "-")
+epi_start_idx <- unlist(lapply(1:Nepi, function(x){return(epidemic_list[[x]][1])}))
+epi_end_idx <- unlist(lapply(1:Nepi, function(x){return(tail(epidemic_list[[x]],1))}))
+epi_start_time <- paste(flu$Year[epi_start_idx], flu$Week[epi_start_idx], sep = "-")
+epi_end_time <- paste(flu$Year[epi_end_idx], flu$Week[epi_end_idx], sep = "-")
+
+text(epi_peak_idx, epi_peak_value, "|", pos = 3, col = "blue")
+```
+
+Visual inspection shows that the identification of influenza seasons by HMM agrees well with our observation and intuition.
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+hist(flu$deaths[state == 1], col=rgb(0,0,1,0.5), border=rgb(0,0,1,0.5), xlim = c(0,max(flu$deaths)), main="Density of influenza deaths during\n non-epidemic and epidemic season", xlab="Weekly influenza deaths", breaks = seq(from = 0, to = ceiling(max(flu$deaths[state == 1])/10), by = 1)*10, prob=TRUE)
+lines(density(flu$deaths[state == 1]), col="blue", lwd = 2)
+
+hist(flu$deaths[state == 2], col=rgb(1,0,0,0.5), border = rgb(1,0,0,0.5), add=T, breaks = seq(from = 0, to = ceiling(max(flu$deaths[state == 2])/10), by = 1)*10, prob=TRUE)
+lines(density(flu$deaths[state == 2]), col="red", lwd = 2)
+legend("topright", c("non-epidemic", "epidemic"), col = c("blue", "red"), lty = rep(1,2), lwd = rep(2,2), cex = 0.6)
+box()
+```
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE}
+peak_info <- matrix(NA, 5, length(uniq_year)-1)
+dimnames(peak_info) = list(paste("<b> ", c("span (Weeks)", "start time (Year-Week)", "end time (Year-Week)", "peak time (Year-Week)", "peak deaths (Counts)"), "</b>", sep = ""), paste("Year", uniq_year[-1], sep = " "))
+
+peak_info[1,] <- epi_length
+peak_info[2,] <- epi_start_time
+peak_info[3,] <- epi_end_time
+peak_info[4,] <- epi_peak_time
+peak_info[5,] <- epi_peak_value
+require(knitr)
+kable(peak_info)
+```
+
+The density plot of weekly deaths during non-epidemic and epidemic season shows that the distribution of weekly deaths is highly contrated, in the range of [`r range(flu$deaths[state == 1])`]. On the contrary, the weekly deaths during epidemic season is extremely spread, ranging from `r range(flu$deaths[state == 2])[1]` to `r range(flu$deaths[state == 2])[2]`. This also agrees with our intuition that the epidemic season include the onset, peak and offset sections, whose difference in weekly deaths contributes to the variance of weekly deaths during epidemic season. The fact that non-epidemic season and epidemic season can be almost perfectly seperated based on their values also indicates that HMM identification of epidemic season is satisfactory.
+
+The time series contained 7 complete epidemics, and we will focus on these full epidemics to discuss their properties. Mostly an influenza season lasts about 20 weeks, with one exception of 6 weeks in year 2012. Epidemics typically start around New Year's time and end around the 17th week of the year. There is also a positive correlation between the epidemic span and peak death, where the Spearman correlation for the 7 complete epidemics is `r {round(cor(epi_length[2:8], epi_peak_value[2:8], method = "spearman"),3)}`.
+
+## 3.3 Correlation analysis of features of epidemic seasons
+After the identification of epidemic seasons, we are interested in the correlation of the seasons.
+
+The features we extracted from the 7 complete influenza epidemics are: 
+
+feature name  | feature explanation
+------------- | -------------
+start         | start time (yearly)
+end           | end time (yearly)
+max_time      | peak weekly deaths time (yearly)
+duration      | span
+deaths        | total deaths
+max           | peak weekly deaths
+mean_epi      | mean weekly deaths
+mean_nonepi   | mean weekly deaths of the lastest non-epidemic season
+mean_3        | mean weekly deaths of the first three weeks during the epidemic season
+
+The features marked with yearly in the table is the week of the year. Because epidemic seasons are in winter, I take the remainder of 30 to make the weeks to the end of each year comparable to the beginning weeks of the next year.(e.g. 30 -> 52, 35 -> 5, 52 -> 22, 1 -> 23) Without further explanation, the features in the above table refers to those of each epidemic season.
+
+The features are designed this way: start, end, and max_time are attributes about the epidemic season; deaths, duration, max and mean are features measuring the severity of the epidemic; mean_nonepi and mean_3 are features that could have potential predictive power to suggest some information about the severity features of the epidemic.
+These features are not indepent in that:
+
+* duration = end - start + 1
+* deaths = duration * mean_epi
+
+
+Spearman correlation was used to capture the non-linear relationship between variables. The correlation plot of the above features is shown below:
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+roundup_week <- function(x, start = 30, period = 52){
+	x_roundup <- (x - start) %% period
+	x_roundup[x_roundup == 0] <- period
+	return(x_roundup)
+}
+
+start <- roundup_week(flu$Week[epi_start_idx])
+end <- roundup_week(flu$Week[epi_end_idx])
+duration <- epi_length
+deaths <- unlist(lapply(1:Nepi, function(x){return(sum(flu$deaths[epi_start_idx[x]:epi_end_idx[x]]))}))
+max <- flu$deaths[epi_peak_idx]
+max_time <- roundup_week(flu$Week[epi_peak_idx])
+mean_epi <- deaths / duration
+mean_nonepi <- c(NA, unlist(lapply(2:Nepi, function(x){return(sum(flu$deaths[epi_end_idx[x-1]:epi_start_idx[x]]))})) / (epi_start_idx[2:Nepi] - epi_end_idx[1:(Nepi-1)] -1))
+mean_3 <- unlist(lapply(1:Nepi, function(x){return(mean(flu$deaths[0:2 + epi_start_idx[x]]))}))
+
+epi_features <- cbind(start, end, max_time, duration, deaths, max, mean_epi, mean_nonepi, mean_3)
+
+epi_features <- as.data.frame(epi_features[2:8,])
+
+library(corrplot)
+col <- colorRampPalette(rev(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA")))
+corrplot(round(cor(epi_features, method = "spearman"),2), method="shade", shade.col=NA, tl.col="black", tl.srt=45, col=col(200), addCoef.col="black", order="original", number.cex = 0.6, number.font = 1)
+```
+
+From the figure, we can see that the four features (duration, deaths, max, mean_epi) to describe the severity of each epidemic are positively related with each other. (the middle $4 \times 4$ red squares). Maximum time is highly related to epidemic start time, but not end time. Epidemic start time and mean_3 (mean weekly deadths in the first three weeks) are respectively positively and negatively related to all four features related to severity, indicating that earlier onset of epidemic and more deaths during the first three weeks of epidemic suggest a more exacerbated epidemic season.
+
+To be more specific, spearman correlation of start time and epidemic season total death is `r round(cor(epi_features$start, epi_features$deaths, method = "spearman"), 3)` with p-value `r cor.test(epi_features$start, epi_features$deaths, method = "spearman")$p.value`.
+
+The scatter plot of aformentioned features are shown below:
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+pairs(epi_features[,c(1,9,4:7)])
+```
+
+## 3.4 SARIMA model fitting
+SARIMA (seasonal autoregressive integrated moving average) model is a very flexible statistical model for explore the different dependency structure in time series data.
+
+A SARIMA $(p,d,q) \times (P,D,Q)_{S}$ for a time series model $Y_{1:N}$ is formulated as follows:
+
+${\phi}(B){\Phi}(B^{S}) \big( (1-B)^d(1-B^{S})^D Y_n-\mu \big) = {\psi}(B){\Psi}(B^{12}) \epsilon_n$,
+
+where
+
+* $B$: the backshift operator
+* $p$: order of the autoregressive model
+* $d$: degree of differencing
+* $q$: order of the moving-average model
+* $S$: period of seasonality
+* $P,D,Q$: corresponding paramters of $p,d,q$ for the seasonal part in this model
+* $\mu$: mean of the differenced process
+* $\{\epsilon_n\}$: white noise process
+* ${\psi}(x) = 1+{\psi}_1 x+\dots +{\psi}_qx^q$
+* ${\Phi}(x) = 1-{\Phi}_1 x-\dots -{\Phi}_Px^P$
+* ${\phi}(x) = 1-{\phi}_1 x-\dots -{\phi}_px^p$
+* ${\Psi}(x) = 1+{\Psi}_1 x+\dots +{\Psi}_Qx^Q$
+
+Data were log-transformed prior to SARIMA fitting. The function sarima in R package astsa were used as the implementation of SARIMA. Combinations of parameters are tested for $p,d,q,P,D,Q \in \{0,1,2\}$ and $S = 52$ and the model with best AIC is the paramter set $p = 1, d = 1, q = 0, P = 1, D = 1, Q = 1$, corresponding to a SARIMA model $(1,1,0) \times (1,1,1)_{52}$.
+
+The estimated values and statistical tests of SARIMA model coefficients with above parameter set are shown below:
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE}
+library(astsa)
+
+log_flu <- log(flu$deaths)
+log_flu[log_flu == -Inf] <- 0
+
+model <- sarima(log_flu, 1, 1, 0, 1 , 1 , 1 , S = 52, details = FALSE)
+print(model$ttable)
+```
+
+All the coefficients are significant. Insterestingly, the seasonal MA coefficient is almost $-1$.
+
+The model residuals and the corresponding ACF are exhibited below.
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+res <- model$fit$residuals
+par(mfrow = c(2,1))
+plot(res, ylab = "Residuals", main = "Residuals of the Fitted Model", type = "l")
+acf(res, lag = 60, main = "Residual autocorrelation")
+```
+
+Although the autocorrelation of residuals exceeds the dashed line (presumed 95% CI) at some lags, in general there is no strong autocorrelation in the residuals.
+
+A comparison of fitted value and original value of weekly influenza deaths can be found below.
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+plot(log_flu, type = "l", main = "Fitted Value and Original Value for log Influenza Weekly Deaths", xlab = "week", ylab = "log deaths", col = "blue")
+lines(log_flu - res, col = "red")
+legend("topleft", c("Fitted Value", "Original Value"), lty = c(1, 1), col = c("red", "blue"), cex = 0.8)
+```
+From the figure, we can see that the fitted value is quite close to the original value. The fitting of non-epidemic season is worse compared to fitting of epidemic seasons. It could be because of the randomness of non-epidemic influenza infections.
+
+------
+
+------
+
+#4. Conclusion
+
+Influenza is a great threat to human health and understanding its temporal mortality is crutial. In this project I explored the behavior of time course of weekly influenza deaths over 8 years, revealing the following interesting conclusions:
+
+* The periodicity in influenza temporal mortality is very significant, with a period of about 52 weeks.
+* HMM is very effective in finding epidemic seasons. The distribution of epidemic weekly deaths and non-epidemic weekly is quite different. On average, epidemic seasons would last about 20 weeks, typically starting from the beginning of the year to the 17th week. However, peak deaths highly varies from year to year, ranging from 62 to 1419.
+* The duration, total deaths, maximum deaths, average deaths are used to describe the severity of an influenza epidemic season, and these measurements are highly correlated. The start time of epidemic time is significantly negatively correlated with total deaths in epidemic time, indicating early start of epidemic season might be a sign for more deaths in the coming epidemic.
+* A SARIMA model $(1,1,0) \times (1,1,1)_{52}$ fits the time series well, with the seasonal MA coefficient to be almost $-1$.
+
+Possible future works include comparing the shapes of epidemic seasons and test the predictive power of risk factors and statistical models with more data and cross validation.
+
+------
+
+------
+
+#5. Reference
+[1] Centers for Disease Control and Prevention (CDC. "Pneumonia and influenza death rates--United States, 1979-1994." MMWR. Morbidity and mortality weekly report 44.28 (1995): 535.
+https://jamanetwork-com.proxy.lib.umich.edu/journals/jama/fullarticle/389423
+
+[2] Wikipedia: Influenza. https://en.wikipedia.org/wiki/Influenza
+
+[3] Wikipedia: World War I casualties. https://en.wikipedia.org/wiki/World_War_I_casualties
+
+[4] Paget, John, et al. "Influenza activity in Europe during eight seasons (1999–2007): an evaluation of the indicators used to measure activity and an assessment of the timing, length and course of peak activity (spread) across Europe." BMC infectious diseases 7.1 (2007): 141.
+
+[5] Schaffer, F. L., M. E. Soergel, and D. C. Straube. "Survival of airborne influenza virus: effects of propagating host, relative humidity, and composition of spray fluids." Archives of virology 51.4 (1976): 263-273.
+
+[6] Data source: https://www.cdc.gov/flu/weekly/weeklyarchives2017-2018/data/NCHSData08.csv

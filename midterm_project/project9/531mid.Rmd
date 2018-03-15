@@ -1,0 +1,160 @@
+---
+title: "Time series analysis for the sunpots amount from 1900 to 1983"
+date: "03/06/2018"
+output: html_document
+---
+
+<big><big><big>1 Introduction</big></big></big>
+
+Sunspots are temporary phenomena on the Sun's photosphere that appear as spots darker than the surrounding areas. They are regions of reduced surface temperature caused by concentrations of magnetic field flux that inhibit convection. Sunspots usually appear in pairs of opposite magnetic polarity. Their number varies according to the approximately 11-year solar cycle.[1]
+
+The amount of sunspots is related to temperature, sun's activititis, the affect of other planet and etc. However, it has strong relationship to time. In this way, the analysis for the amout of sunspots and time is a good topic for time series analysis. Also we can infer the activities of sun, the temperature and a lot of solar system events from the analysis result. On the one hand, we can use the result to prove some phenomenon that have already been detected or observed; On the other hand, we can predict activities of sun, the temperature variance and a lot of solar system events using the fitted model. As a result, time series analysis for sunspots amount is a meaningful study.
+
+
+<big><big><big>2 Data analyse</big></big></big>
+
+<big><big>2.1 Load Data</big></big>
+
+The data[2] include the historical monthly sunspots amout from 1749 to 1983.It is a little bit large for our anaylyse, so I choose to set a subset of monthly sunspots amout from 1900 to 1983 (about 1000 months) to analyse. 
+
+```{r}
+data <- read.csv(file='sunspots.csv',header=TRUE)
+num <-data$number
+head(data)
+```
+
+And we could summary six important statistics index of the price as follows.
+```{r}
+summary(num)
+```
+
+Then plot the daily price and the acf plot.
+```{r}
+year <- seq(from=1900,length=length(num),by=1/12)
+plot(num~year,type="l",main="monthly amout of sunspots for 83 years")
+```
+```{r}
+acf(num)
+```
+
+The plot above shows the amount of sunspots has periodical performance in general during these years. Also the data seems to have trend. So firstly we focus on the freqency domain to find the dominant frequency and trend for these data.
+
+<big><big>2.2 Freqency domain analysis</big></big>
+
+Find the frequency
+```{r}
+spec=spectrum(num,spans=c(5,5))
+```
+```{r}
+spec$freq[which.max(spec$spec)]
+```
+
+From the spectrum plot, we can tell the dominant frequency is 0.0078125. Also the error bar of the maximum peak excludes the basis of the peak, indicating that we can reject the null hypothesis that the variance with the frequency of 0.0078125 is a random fluctuation.
+
+Frequency of 0.0078125 means the circle of sunspots amount is 128 months(about 10.7 years). This result is consistent with observation result 11 years.
+
+Investigate the trend
+```{r}
+length(num)
+index=seq(from=1, to=length(num))
+length(index)
+lo=loess(num~index,span=0.5)
+num.low <- ts(loess(num~index,span=0.5)$fitted,frequency=128)
+num.hi <- ts(num-loess(num~index,span=0.05)$fitted,frequency=128)
+num.cycles <- num - num.hi - num.low
+plot(ts.union(num, num.low,num.hi,num.cycles),
+     main="Decomposition of sunspots amount as trend + noise + cycles")
+```
+
+The plot above shows that, we have an increasing linear long term trend during these 83 years. And there are a significant fluctuation on around 1970s, which is reasonable due to the fact that 1970s is a cooling period when the solar temperature went down and the amount of solar activities decreased  [3]. In the high-range domain, we can find out that we extract the seasonal pattern successfully.
+
+<big><big>2.3 Fit models</big></big>
+
+From the trend freqency analysis above, I planed to use $SARIMA(p,1,q)*(P,I,Q)_{128}$ model
+
+To find the proper model, I start with choose the best $p$ and $q$ value with the AIC result. Since the circle is 128 and our dataset is large, it would take a extrmely long time to run if we include the seasonal part $(P,I,Q)_{128}$.
+
+For stationary Gaussian ARMA(p,q) model with parameter vector $\theta=(\phi_{1:p},\varphi_{1:q},\mu,\sigma^2)$ given by
+$$ \phi(B)(Y_n-\mu) = \varphi(B) \epsilon_n,$$
+where 
+$$\begin{eqnarray}
+\mu &=& E[Y_n]
+\\
+\phi(x)&=&1-\phi_1 x-\dots -\phi_px^p,
+\\ 
+\varphi(x)&=&1+\varphi_1 x+\dots +\varphi_qx^q, 
+\\
+\epsilon_n&\sim&\mathrm{ iid }\, N[0,\sigma^2].
+\end{eqnarray}$$
+
+For  Gaussian ARMA(p,1,q) model with trend, the parameter choosing process is not much different but add the trend parameter.Also it can be thought as linear regression with ARMA errors.
+```{r}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data, xreg = index,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+price_aic_table <- aic_table(num,4,4)
+require(knitr)
+kable(price_aic_table,digits=2)
+```
+
+The best model is ARIMA(3,0,4). However, we do not expect to choose the AIC value at edge. So we turn to the second best model ARIMA(1,0,2)
+```{r}
+arma21 <- arima(num, , xreg = index,order = c(1,0,2));arma21
+```
+```{r}
+ma_roots <- polyroot(c(1,-coef(arma21)[c("ma1","ma2")]))
+ma_roots
+```
+
+All the AR and MA parameters are out of the unit circle, indicating the model is invertibal and casaul.
+
+Then we take seasonal part into consideration. Fit $SARIMA(p,1,q)*(1,0,0)_{128}$ ,$SARIMA(p,1,q)*(0,0,1)_{128}$ ,$SARIMA(0,1,0)*(0,1,0)_{128}$ and $SARIMA(p,1,q)*(1,0,1)_{128}$ , choose the best model from their AIC value.(More parameter may cause overfitting and large devariation)
+```{r}
+arma1211 <- arima(num,  xreg = index,order = c(1,0,2),seasonal=list(order=c(1,0,0),period=128))
+arma1212 <- arima(num,xreg = index,order = c(1,0,2),seasonal=list(order=c(0,1,0),period=128))
+arma1213 <- arima(num,  xreg = index,order = c(1,0,2),seasonal=list(order=c(0,0,1),period=128))
+arma1222 <- arima(num, ,xreg = index,order = c(1,0,2),seasonal=list(order=c(1,0,1),period=128))
+arma1211$aic
+arma1212$aic
+arma1213$aic
+arma1222$aic
+```
+
+From the 4 AIC value above,arma12 is the lowest. So we finally choose $SARIMA(1,0,2)*(0,1,0)_{128}$ with gaussion noise as fitted model.
+
+<big><big>2.4 Diagnostic Analysis </big></big>
+In order for the rigorousness of the modeling, we should check the residuals for the fitted model, and look at their sample autocorrelation.
+
+We start with the residual of the fitted model.
+```{r}
+par(mfrow=c(1,3))
+plot(arma1212$residual)
+acf(arma1212$residual)
+qqnorm(arma1212$residual)
+qqline(arma1212$residual)
+```
+
+The qqplot has a little bit long tail and there are 5 acf values(out of 21) of time lag out of the dashed line. These all indicates that the model can be optimized with more parameters (especially the seasonal parameter). Also the residual values are large corresponding to the amount of the sunspots. Maybe seasonal ARIMA model with linear trend is not a good model for fitting the amount of sunspots or AIC in this case is not a proper criteria . Or we should consider more parameters(like temperature) to fit the model and predit the future amout.
+
+<big><big><big>3 Conclusion</big></big></big>
+
+From the frequency analysis, we proved that the circle of the amout of sunspots is 10.7 years, which accords to the circle of suns activitys.
+
+From the trend analysis, we not only ensure the result of the frequency analysis is correct by the plots of high frequency performance  and circle performance of the data, but also we saw an increasing linear trend of data, which may leads to the temperature increasing on the earth. Besides, the 1970s cooling stage is perfectly showed in the low frequency perfermance as a decreacing  variation of the increasing trend.
+
+From the ARMA model fitting process, we choose the model based on the analysis of trend and frequency above and the fitted result of all the parameter candidates. Also the Diagnostic analysis tells us that this model can be modified and optimized in the future.
+
+<big><big><big>4 reference</big></big></big>
+
+[1]https://en.wikipedia.org/wiki/Sunspot
+
+[2]https://datamarket.com/data/set/22ti/zuerich-monthly-sunspot-numbers-1749-1983#!ds=22ti&display=line
+
+[3]https://wattsupwiththat.com/2013/01/04/solar-neutrons-and-the-1970s-cooling-period/

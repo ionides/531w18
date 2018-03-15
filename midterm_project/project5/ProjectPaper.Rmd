@@ -1,0 +1,362 @@
+---
+title: "Currency Exchange Rate between USD and JPY"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+# Introduction
+
+Currency is an important aspect of our daily life. It is used as a medium for purchasing various kinds of goods and essentials, from food and clothes to entertainment products. Currency is also used for traveling to other countries. However, different countries use different kinds of currency, so people may not be able to use currency from their own country in a foreign country during travel. They will have to use the country's own currency in order to purchase goods abroad. For example, the U.S. dollar is used in the United States while the yen is used in Japan. Even though nations may use different currency, currency plays the same role as a medium of exchange in all nations. Because of this, it is possible for travelers to exchange the currency they use in their own country for the one that is used in the foreign country. Thus, it is necessary to find out how much of one currency is equivalent to another type of currency. This is known as the exchange rate between two currencies.
+
+The exchange rate between two currencies is not set in stone. Over time, one currency may lose value compared to the other. For example, 1 US dollar may be worth 120 Japanese yen a few years ago, while the same 1 US dollar can be exchanged for only 110 Japanese yen at a later time. As a result, an American will not be able to purchase as much for the same amount of money in Japan when the exchange rate is lower. These fluctuations in the exchange rate result from a variety of reasons, such as economic booms and recessions. There are also some investors who invest in foreign currency in order to profit from the fluctuations of the exchange rate. Thus, it is important to know how often the exchange rate fluctuates and be able to predict the exchange rate in a future time.
+
+In this project, we will analyze the monthly exchange rate of 1 USD to JPY over the past twenty-five years. Our goals are as follows:
+
+1) Despite fluctuations in exchange rate, we usually compare 1 USD with 100 JPY. However, according to the dataset, the exchange rate is not always constant, and was even 1 USD to 80 JPY or 1 USD to 120 JPY at some points in time. We want to explore whether or not the exchange rate tends to move towards the mean value exchange rate in the midst of the fluctuations.
+
+2) We will be using various techniques and models learned throughout the course and explore the fluctuations that occur over time. 
+
+---
+
+# Description of Data
+
+The data used for this project is the monthly dollar to yen exchange rate for the past twenty-five years from https://fred.stlouisfed.org/series/EXJPUS [3]. The exchange rate for the first of each month is recorded and used for the data, starting from February 1, 1993 and ending on February 1, 2018. 
+
+First, we will read in the data. There are 2 parameters of 301 observations each. The parameter "DATE" gives the corresponding date for the exchange rate while the parameter "EXJPUS" gives how much 1 dollar is worth in yen during that date. We will also look at the summary of the EXJPUS parameter.
+
+```{r chunk_without_code, echo=FALSE}
+dat <- read.table(file="USDtoJPY.csv",sep=",",header=TRUE)
+head(dat)
+summary(dat$EXJPUS)
+```
+
+From the summary of the data, we see that the mean exchange rate is 107.73.
+
+Now, we plot a time plot for the data. The blue line represents the mean of the exchange rate.
+
+```{r echo=FALSE}
+dat$DATE <- as.Date(dat$DATE)
+plot(EXJPUS~DATE,data=dat,type="l",xlab="Year", ylab="JPY",main="Monthly Exchange Rate of 1 USD to JPY")
+abline(h=mean(dat$EXJPUS),col="blue")
+```
+
+From the plot, we can see that the exchange rate oscillates throughout the months, but eventually tends to move back towards the mean. We do see that there are some years where the exchange rate is high (1 USD to 140JPY) and where the exchange rate is low (1 USD to 80JPY), but these occur in a short term before moving back towards the mean exchange rate. 
+
+There also seems to be a cycle of about 14 years, since the exchange rate was decreasing at the beginning of 1993, before rising upwards a few years later. At around the year 2007, we start to see the exchange rate decreasing once more before rising again shortly after. Even though we may see a cycle of 14 years by eye, there are many components that affect the exchange rate between USD and JPY. 
+
+---
+
+# Data Smoothing
+
+In this section, we will use Loess smoothing to take a look at the general trend of the exchange rate dataset. Below is a time plot of the dollar to yen exchange rate, in red. The mean value of the exchange rate is in blue and the low frequency component of the dataset is plotted in black.
+
+```{r echo=FALSE}
+mdat <- t(as.matrix(dat[2]))
+dim(mdat) <- NULL
+date <- seq(from=1993+1/12,length=length(mdat),by=1/12)
+loess1 <- loess(mdat~date,span=0.5)
+plot(date,mdat,type="l",col="red", xlab="Year",ylab="JPY",main="Trend of USD to JPY Exchange Rate")
+lines(loess1$x,loess1$fitted,type="l")
+abline(h=mean(mdat),col="blue")
+```
+
+We can see from the time plot that the exchange rate generally increases above the mean, and then decreases to below the mean at around 2008 before increasing again at around 2012.
+
+We now look at the dataset in terms of the low frequency component, which acts as the trend, the high frequency component, which acts as noise, and the cycles component. 
+
+```{r echo=FALSE}
+dlow <- ts(loess(mdat~date,span=0.5)$fitted,start=1993+1/12,frequency=12)
+dhi <- ts(mdat - loess(mdat~date,span=0.1)$fitted,start=1993+1/12,frequency=12)
+dcycles <- mdat - dhi - dlow
+plot(ts.union(mdat, dlow, dhi, dcycles), main="Decomposition of exchange rate as trend + noise + cycles")
+```
+
+The first plot is just the time plot of our dataset. The second plot is the low frequency part of the data, which gives us the trend. The high frequency part is plotted in the third graph, which looks like noise. Finally, the last graph shows us the cycles that seem to occur in our dataset. 
+
+---
+
+# Fitting an ARMA(p,q) model
+
+We will first begin by choosing an appropriate stationary ARMA(p,q) model for our dataset with the null hypothesis stating that there is no trend. The hypothesis states that there is no significant change in the exchange rate throughout the years. Although we see large fluctuations during some periods of time from the time plot, the exchange rate tends to move back towards the mean rate, so the null hypothesis is reasonable to make. There are some problems with using an ARMA model, however, since the dataset is not very stationary. 
+
+An ARMA(p,q) equation is written as
+
+$$\phi(B)(Y_n-\mu)=\psi(B)\epsilon_n$$ 
+
+where $\phi(B)=1-\phi_1B-\ldots-\phi_pB^p$ and $\psi(B)=1+\psi_1B+\ldots+\psi_qB^q$, with $B$ being the backshift operator, $BY_n=Y_{n-1}$. The expected value of $Y_n$ is $\mu$, and $\epsilon_n$ are iid normal random variables with mean 0 and variance $\sigma^2$.
+
+In order to choose an appropriate value for $p$ and $q$, we can use Akaike's information criterion (AIC). The AIC of a model is given by
+
+$$AIC=-2 \times \ell(\theta^*) + 2D$$
+
+where $\ell(\theta^**)$ is the log likelihood function $\mathscr{L}=f_{Y_{1:N}}(y^*_{1:N};\theta)$ and $D$ is the number of parameters. The second term $2D$ serves as a penalty for models with more parameters, in order to deal with the problem of overfitting. 
+
+We will construct a table that displays the AIC values for the different ARMA(p,q) models
+
+```{r echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "<b>", sep=" "), paste("MA", 0:Q, sep=" "))
+  table
+}
+jpus <- dat$EXJPUS
+date1 <- dat$DATE
+jpus_aic_table <- aic_table(jpus,4,4)
+require(knitr)
+kable(jpus_aic_table,digits=2)
+```
+
+We see that the model with the lowest AIC value is ARMA(3,3) at 1455.91, and the model with the second lowest is ARMA(4,2), at 1457.89. Thus, we will choose the ARMA(3,3) model as a start of our analysis. Using simpler models is preferred, but since the AIC value is lower for the ARMA(3,3) compared to those with less parameters, we will proceed with ARMA(3,3).
+
+We now fit an ARMA(3,3) model for our dataset. 
+
+
+```{r echo=FALSE}
+arma33 <- arima(jpus, order=c(3,0,3))
+arma33
+```
+
+The equation is written as
+
+$$ (X_n-\mu)-\phi_1(X_{n-1}-\mu)-\phi_2(X_{n-2}-\mu)-\phi_2(X_{n-2}-\mu)=\epsilon_n+\theta_1\epsilon_{n-1}+\theta_2\epsilon_{n-2}+\theta_3\epsilon_{n-3} $$
+
+Looking at the output from R, we see that the mean $\mu=108.7463$, $\phi_1=2.3478$, $\phi_2=-2.2026$, $\phi_3=0.8382$, $\theta_1=-1.1181$, $\theta_2=0.6423$, and $\theta_3=0.1131$. In addition, the estimated variance for the error is 6.916.
+
+## Significance of the model
+
+We will now analyze the ARMA(3,3) model and see whether or not it is an appropriate model to use for this dataset. First, we will check the causality and invertibility of our model. 
+
+In order for the model to be causal, we will need to check the roots of the AR polynomial $1-\phi_1z-\phi_2z^2-\phi_3z^2$. If the roots are outside of the complex unit circle, then the ARMA(3,3) model is causal. We find the roots and their absolute values using R.
+
+```{r}
+abs(polyroot(c(1,-2.3478,2.2026,-0.8382)))
+```
+
+The three roots have absolution values that are greater than 1, so the model is therefore causal.
+
+We now check to see if the model is also invertible. Being invertible makes the model more stable. In order for the model to be invertible we need to check to see if the MA polynomial $1+\theta_1z+\theta_2z^2+\theta_3z^3$ has roots that are outside of the complex unit circle.  
+
+```{r}
+abs(polyroot(c(1,-1.1181,0.6423,0.1131)))
+```
+
+The roots for the MA polynomial also have absolute value greater than 1, so the ARMA(3,3) model is also invertible. 
+
+Next, we shall see if the coefficients of the parameters are significant. We do this using the Fisher's information that is used to give the standard error of each coefficient in the model's summary. We test for significance by constructing a 95% confidence interval for each coefficient. The confidence intervals for the coefficients are calculated as shown below:
+
+$$[2.3478-1.96\times 0.0784, 2.3478+1.96\times 0.0784]=[2.1941,2.5015]$$
+
+$$[-2.2026-1.96\times 0.1658, -2.2026+1.96\times 0.1658]=[-2.5276,-1.877632]$$
+
+$$[0.8382-1.96\times 0.0992, 0.8382+1.96\times 0.0992]=[0.6438, 1.0326]$$
+
+$$[-1.1181-1.96\times 0.0995, -1.1181+1.96\times 0.0995]=[-1.3131,-0.9231]$$
+
+$$[0.6423-1.96\times 0.0961, 0.6423+1.96\times 0.0961]=[0.4539,0.8307]$$
+
+$$[0.1131-1.96\times 0.0909, 0.1131+1.96\times 0.0909]=[-0.0651,0.2913]$$
+$$[108.7463-1.96\times 5.3511, 108.7463+1.96\times 5.3511]=[98.2581,119.2345]$$
+
+From the confidence intervals, we see that $\phi_1$, $\phi_2$, $\phi_3$, $\theta_1$, $\theta_2$, and $\mu$ are significant coefficients for the model. However, since 0 is in the range of the confidence interval for $\theta_3$, there is not enough evidence to conclude that $\theta_3$ is significant in our model. Although this ARMA(3,3) model is good, there are some problems the come up, such as the coefficient $\theta_3$. 
+
+## Diagnostics
+
+We will now do diagnostics for the assumptions to see if the ARMA model is appropriate. First, we should check the residuals of the model. Let's plot the residuals. We assumed that the residuals are iid normal random variables, so the residuals should behave like white noise.
+
+```{r echo=FALSE}
+plot(arma33$residuals, ylab="residuals", main="Residuals of ARMA(3,3) model")
+```
+
+We see that the plot of the residuals looks like a plot of white noise, which is what we would like. We can also look at the autocorrelation plot.
+
+```{r echo=FALSE}
+acf(arma33$resid,main="ACF of residuals")
+```
+
+We do not see significant signs of autocorrelation between residuals, except we do see a larger absolute value at lags 11 and 14. Still, more than 95% of the lags are within the dotted line range, so the residuals mostly behave like white noise. Thus, our assumption is satisfied.
+
+We also assumed that $\epsilon_{1:N}$ are iid normal random variables with mean 0 and variance 6.916. We shall check if the residuals are normally distributed, using a qqplot.
+
+```{r echo=FALSE}
+qqnorm(arma33$residuals)
+qqline(arma33$residuals)
+```
+
+From the plot, we see that the residuals have tails near the ends, but the majority of the residuals lie on the qqline. We can also use the Shapiro-Wilks test to test for normality of the residuals, with a null hypothesis that the residuals are normal.
+
+```{r echo=FALSE}
+shapiro.test(arma33$residuals)
+```
+
+The pvalue is 0.07768, which is barely larger than the critical value of $\alpha=0.05$. So, we fail to reject the null hypothesis and conclude that the residuals are normally distributed. Even if the residuals are normally distributed by the shapiro-wilks test, the pvalue is very small. Although our assumptions were satisfied, we should be careful and perhaps find a better model for our dataset.
+
+---
+
+# Spectrum Analysis
+
+In this section, we will look at the spectrum density of the dataset. First, we will take a look at the unsmoothed periodogram.
+
+```{r echo=FALSE}
+unsmoothed <- spectrum(dat$EXJPUS, main="Unsmoothed Periodogram")
+```
+
+We see that the frequency with the highest spectrum value is near 0. This is reasonable since the dollar to yen time plot does not appear to have an obvious cycle shown. We want to smooth the periodogram in order to see a reasonable density function for the spectrum.
+
+```{r echo=FALSE}
+smoothed <- spectrum(dat$EXJPUS, spans=c(2,2), main="Smoothed Periodogram")
+```
+
+Now, we will find the frequency with the highest spectrum value on the smoothed periodogram.
+
+```{r}
+smoothed$freq[which.max(smoothed$spec)]
+```
+
+The R output comes up with a frequency of 0.00625 cycles per month, or a period of 160 months per cycle. In terms of years per cycle, we get a period of 13.333 years per cycle. Looking at the time plot of the dollar to yen exchange rate, we do see that this is a reasonable value for a period. We see that there are two instances when the dollar to yen exchange rate was significantly below the mean rate, at the years 1995 and 2012. Afterwards, the exchange rate would start to increase past the mean value, as we can see after 1995 through 2000. There are more fluctuations between 2000 and 2010, before the exchange rate started to decrease below the mean again. Since there are 25 years plotted, we can see that about 2 cycles are plotted on the time plot. 
+
+---
+
+# Fitting an ARIMA(p,1,q) model
+
+An ARMA(p,q) assumes that the dataset is stationary. If we look at the dollar to yen exchange rate time plot, we see that it is not exactly mean stationary. In order to make it more reasonable to use an ARMA model for our data, we will need to make the dataset more stationary with a transformation [4]. We can try to use the difference operator and use an ARMA model for the difference of adjacent data values. So, instead of the original time series $x_{1:N}$, we use $z_{2:N}$, where $z_n=\delta x=x_n-x_{n-1}. The model is called an ARIMA(p,1,q) model, and is represented by the equation
+
+$$ \phi(B)((1-B)X_n-\mu)=\psi(B)\epsilon_n $$
+
+The variables and equations that also appear in the ARMA(p,q) model are still the same in this model, and $B$ is the backward operator, $BX_n=X_{n-1}$.
+
+To get a feeling of the new dataset $z_{1:N}$, we will look at the time plot and the autocorrelation.
+
+```{r echo=FALSE}
+z <- diff(dat$EXJPUS)
+plot(z, type="l", xlab="Time")
+acf(z)
+```
+
+We can see from the time plot that the new dataset looks more stationary, except with the large negative value near the beginning. Despite the small problem, we see that it is more appropriate to use an ARMA model for our transformed dataset.
+
+The autocorrelation plot shows that there is some autocorrelation at lags 1, 5, and 11, but most lags do not have autocorrelation. Despite some autocorrelation, the transformed dataset does look more like white noise than our original dataset.
+
+## Choosing a model using AIC
+
+Like for the ARMA(p,q) model, we will construct a table of the AIC values for different ARIMA(p,1,q) models. The table is shown below.
+
+```{r echo=FALSE}
+aic_table2 <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,1,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "<b>", sep=" "), paste("MA", 0:Q, sep=" "))
+  table
+}
+jpus2_aic_table <- aic_table2(jpus,4,4)
+kable(jpus2_aic_table,digits=2)
+```
+
+From the table, we see that the model with the lowest AIC value is ARIMA(2,1,2), with an AIC value of 1448.13. The ARIMA(3,1,2) model has the second lowest value at 1449.44, but since we prefer simpler models with fewer parameters, we will choose the ARIMA(2,1,2) model for our dataset. We now construct the model below:
+
+```{r echo=FALSE}
+arma212 <- arima(jpus, order=c(2,1,2))
+arma212
+```
+
+The general ARIMA(p,1,q) model is in the form $$ \phi(B)((1-B)X_n-\mu)=\psi(B)\epsilon_n $$. When $p=2$ and $q=2$, the equation for our model is thus
+
+$$ (X_n-X_{n-1}-\mu)-\phi_1(X_{n-1}-X_{n-2}-\mu)-\phi_2(X_{n-2}-X_{n-3}-\mu)=\epsilon_n+\theta_1\epsilon_{n-1}+\theta_2\epsilon_{n-2}$$
+
+The output of the ARIMA(2,1,2) model for the dataset gives values of $\phi_1=1.3914$, $\phi_2=-0.8$, $\theta_1=-1.1713$, $\theta_2=0.6516$, $\mu=0$, and $\sigma^2=0.0919$. 
+
+## Significance of the model
+
+We will now look at the significance of the ARMA(2,1,2) model, using the standard error found by the Fisher's Information. We will construct 95% confidence intervals for each coefficient, just like what we did for the ARMA(3,3) model.
+
+$$ [1.3914-1.96\times 0.0919, 1.3914+1.96\times 0.0919]=[1.2113,1.5715]$$
+$$ [-0.8-1.96\times 0.0802,-0.8+1.96\times 0.0802]=[-0.9572,-0.6428]$$
+
+$$ [-1.1713-1.96\times 0.1054,-1.1713+1.96\times 0.1054]=[-1.3779,-0.9647]$$
+
+$$ [0.6516-1.96\times 0.1133, 0.6516+1.96\times 0.1133]=[0.4295,0.0.8737]$$
+
+Looking at the confidence intervals, we can conclude that all of the coefficients are significant in the ARIMA(2,1,2) model. Thus, the ARIMA(2,1,2) model is a reasonable model for the dollar to yen exchange rate time series.
+
+## Diagnostics
+
+Like for the ARMA(3,3) model, we will look to see if the residuals satisfy the assumption of normality and white noise. We first plot the residuals and look at the autocorrelation function plot.
+
+```{r echo=FALSE}
+plot(arma212$residuals, main="Plot of residuals of ARIMA(2,1,2)")
+acf(arma212$residuals, main="ACF of Residuals")
+```
+
+The plot of the residuals looks like white noise, and the autocorrelation function shows no significant signs of autocorrelation between lags. The autocorrleation for lags 11 and 21 are a little outside of the blue dotted line, but it is not as significant as that from the ARMA(3,3) model. We can see that it is appropriate to model the residuals as white noise. Now, we will look at the normality assumption for the residuals. We plot the qq plot and use the Shapiro-Wilks test.
+
+```{r echo=FALSE}
+qqnorm(arma212$residuals)
+qqline(arma212$residuals)
+shapiro.test(arma212$residuals)
+```
+
+The qq plot shows tails at the ends of the dataset, making the residuals not really normally distributed. From the Shapiro-Wilks test, we see that the pvalue is 0.00478, which is less than the critical value of 0.05. So, there is not enough evidence to conclude that the residuals of the dataset are normally distributed. Despite the normality assumption not being satisfied, the ARIMA(2,1,2) can still be an appropriate model to start with.
+
+---
+
+# Forecasting future exchange rate using both models
+
+We will now use our ARMA(3,3) and ARIMA(2,1,2) models to predict the dollar to yen exchange rate in the near future. To do this, we will use the forecast function that is found in the forecast package of R [6]. 
+
+```{r echo=FALSE}
+library(forecast)
+forecast1 <- forecast(arma33, h=40)
+forecast2 <- forecast(arma212, h=40)
+plot(forecast1, xlab="Time", ylab="JPY")
+plot(forecast2, xlab="Time", ylab="JPY")
+```
+
+We see from both forecast plots that the predicted exchange rate in the future years remains near the mean value rate, with some fluctuations. This is reasonable since the past data shows the rate mostly moving towards the mean value, despite fluctations. However, the predicted fluctuations are not that large, while past fluctuations were more significant. 
+
+---
+
+# Conclusion
+
+In this project, we took a look at the monthly U.S. dollar to Japanese yen in the past 25 years. Our goal was to analyze the dataset and find an appropriate model. We also wanted to see that despite the oscillations, the exchange rate tends towards the mean value over time. 
+
+First, we constructed a time plot of the dataset, and plotted the mean exchange rate value on the same graph. By looking at the graph, we noticed that the exchange rate oscillates below above the mean line a few times. We saw that the exchange rate dips below the mean line near the beginning of the time series, before going above the mean. The rate then fluctuates around the mean value for about 10 years before dipping below the mean again. This suggests that while the exchange rate may fluctuate far away from the mean, it does not stay that way in the long term. We see that the exchange rate tends to move towards the mean value over time. 
+
+When we use spectrum analysis on the data set, we end up with a period of 13.333 years per cycle. This seems reasonable when we look at the time plot. The exchange rate seems to repeat a similar fluctuation after 13 years into the time series. 
+
+In order to find an appropriate model for the dataset, we first fitted an ARMA(3,3) model. The model is reasonable to use, although there were some issues to it, such as the dataset not being stationary. So, we also fitted an ARIMA(2,1,2) model since the difference between consecutive monthly exchange rates forms a time series that is modelled well with a white noise model. The ARIMA(2,1,2) model for our dataset is more reasonable to use due to having all the variables being significant and also because the transformed time series is more stationary than the original time series. 
+
+In the final section of the project, we used the forecast function on both the ARMA and ARIMA models in order to predict the future exchange rate of dollar to yen using previous data. It is predicted that the exchange rate will oscillate around the mean value. This supports the prediction of the exchange rate tending towards the mean value of the time series, although the intensity and frequency of the fluctuations may be different from the forecast due to outside elements.  
+
+
+## Exploration
+
+There are a lot of aspects of the dataset that can be explored and expanded upon. Even though the long term exchange rate may be stable, the short term is less predictable and is affected by many elements such as the economy. We can compare the dollar to yen time series with other time series of interest that may be correlated to the exchange rate. 
+
+In addition, we can also explore the volatility of the exchange rate, or how much the exchange rate would increase or decrease over a short period of time. This is useful to predict the best time to invest in Japanese yen or travel to Japan.
+
+---
+
+# Reference
+
+[1] https://www.investopedia.com/terms/c/currency.asp
+
+[2] https://www.investopedia.com/terms/e/exchangerate.asp
+
+[3] https://fred.stlouisfed.org/series/EXJPUS
+
+[4] https://ionides.github.io/531w18/
+
+[5] http://ionides.github.io/531w16/midterm_project/ as reference
+
+[6] https://www.datascience.com/blog/introduction-to-forecasting-with-arima-in-r-learn-data-science-tutorials
+

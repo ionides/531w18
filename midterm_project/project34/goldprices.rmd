@@ -1,0 +1,308 @@
+---
+title: "Modeling and Predicting Gold Prices"
+date: "03/03/2018"
+output: html_document
+---
+
+```{r ,results="asis",tidy=FALSE,eval=TRUE, echo=FALSE}
+cat("1. [Introduction](#introduction)\n")
+cat("2. [Explore the Data](#explore)\n")
+cat("3. [Model Selection](#selection)\n")
+cat("4. [Model Diagnostic](#diag)\n")
+cat("5. [Model Evaluation](#eval)\n")
+cat("6. [Conclusion](#conclu)\n")
+cat("7. [References](#ref)\n")
+```
+
+
+
+
+## 1. Introduction {#introduction}
+
+Transaction of gold is always one of the most popular investments. According to the Wikipedia, "gold has been used throughout history as money and has been a relative standard for currency equivalents specific to economic regions or countries, until recent times."[1] As an investment, gold shows great advantages in diversifying risk and avoiding inflation. Especially, after the US suspended the direct convertibility of the U.S. dollar to gold in 1971, the gold market eventually became a free market driven by supply and demand. Thus, modeling and predicting gold stock are significantly useful for investors who consider investing in gold. Here, we are going to discover whether an appropriate time series model can be fitted to generally predict the gold prices for future investment. 
+
+## 2. Explore the data {#explore}
+
+The historical gold prices dataset are downloaded from the Macrotrends (http://www.macrotrends.net/1333/historical-gold-prices-100-year-chart).The original data starts from 1915. However, since the gold market was influenced by other political factors related to government and policies before 1917, we only select the latest 45-year gold prices data form 1973-01-01 to 2018-02-01.  
+
+### (1) Overview of the Dataset 
+
+From a quick view of the dataset, we can see that the unit of gold prices is U.S. dollar per ounce. The "nominal" column stands for the nomimal number of the gold price at that single day. However, the "real" column represents the gold value after inflation adjustion. In this case, we select the inflation-adjusted gold prices for further analysis. 
+
+```{r read_data}
+gold <- read.csv("gold.csv", header = T)
+gold$date <- format(as.Date(gold$date, format = "%m/%d/%Y"), "%Y-%m-%d")
+head(gold)
+summary(gold$real)
+```
+
+
+Then we plot the inflation-adjusted gold prices over time to see if there is any obvious trend.
+
+```{r}
+date <- as.Date(gold$date)
+value <- as.numeric(gold$real)
+plot(date,value,main = "Inflation-Ajusted Gold Prices vs Time", xlab = "", ylab = "Gold Prices",type="l")
+```
+
+* From the plot, we can see that there are two main peaks around 1980 and 2011. Both of the peaks reach around 2000, while the mean price is only 870 according to the above summary information. 
+
+* Moreover, there is not any sign showing that the prices are in an increasing or decreasing trend, since the interval of two main peaks is about 31 years. 
+
+* Therefore, the plot does not show adequate evidence for stationarity.
+
+
+### (2) Log-transformed Data 
+
+As we observe the great difference between the minimum and the maximum, we try to plot the log-transformed data over time to increase the possibility of mean stationarity.
+
+```{r}
+logvalue <- log(value)
+plot(date,logvalue,main = "Log-Transformed Gold Prices vs Time", xlab = "", ylab = "Log of Gold Prices",type="l")
+```
+
+* From the plot, we can observe that the result from log-transformed data is a lot better than that from untransformed data, noticing that the range of data values is much smaller. 
+
+* Although the log-transformed plot looks denser and better-shaped than before, it is still not enough for us to ensure the mean stationarity.  
+
+
+
+### (3) Spectrum Analysis of the Log-transformed Data 
+
+Apart from stationarity, we also need to check the seasonality using the smoothed periodogram. 
+
+```{r, echo=FALSE}
+spectrum(logvalue,spans=c(3,5,3), main="Smoothed Periodogram of Log of Gold Prices")
+```
+
+* The smoothed periodogram plot above does not show any significant peak. Therefore, in this case, we do not include any seasonality consideration in our model.
+
+
+### (4) Differenced Data 
+
+In order to eliminate the trend appearing in the log-transformed plot shown in (2), we decide to apply a difference operation to the data.[2]
+
+Set the log-transformed gold prices data as $x^*_{1:542}$
+
+When $differences=1$, the original data is transformed as $y^*_{2:542}$:
+$$y^*_n=\Delta x^*_n=(1-B)x^*_n=x^*_n-x^*_{n-1}$$
+
+
+When $differences=2$, the original data is transformed as $z^*_{2:542}$:
+$$z^*_n=\Delta^2 x^*_n=(1-B)^2x^*_n=x^*_2-2x^*_{n-1}+x^*_{n-2}$$
+
+```{r}
+par(mfrow=c(2,1))
+plot(diff(logvalue,differences = 1),type='l',xlab="",ylab='1-Difference')
+plot(diff(logvalue,differences = 2),type='l',xlab="",ylab='2-Difference')
+
+
+```
+
+
+* "Applying a difference operation to the data can make it look more stationary and therefore more appropriate for ARMA modeling."[2] 
+
+* In this case, we compare the plot after taking one difference and the plot after taking two differences. The plot with one difference clearly shows mean stationarity. 
+
+* For the plot with two differences, it actually does increase the stationarity but not to a large extent. 
+
+* On the consideration of model simplicity, we select the model with one difference ($d=1$) for further ARIMA model analysis.
+
+
+## 3. Model Selection {#selection}
+
+Based on the log-transformed model with one difference ($d=1$) which we select in Part 2,  we start to fit a stationary ARIMA(p,1,q) model under the null hypothesis that there is no trend.
+
+### (1) Fitting the ARIMA Model 
+
+Fit this stationary Gaussian ARIMA(p,1,q) model with parameter vector $\theta=(\phi_{1:p},\psi_{1:q},\mu,\sigma^2)$ :
+
+$$\phi(B)((1-B)X_n-\mu)=\psi(B)\epsilon_n$$
+
+in this equation:
+
+$$\mu=E[(1-B)X_n]=E[X_n]-E[X_{n-1}]$$
+
+$$\phi(x)=1-\phi_1x-...-\phi_px^p$$
+
+$$\psi(x)=1+\psi_1x+...+\psi_qx^q$$
+
+$$\epsilon_n\sim iidN(0,\sigma^2)$$
+
+
+#### Model Selection by Comparing AIC 
+
+With the purpose of finding the proper values of p and q, we calculate the Akaike's information criterion (AIC) for a range of different choices of p and q.
+
+$$AIC=-2\times \ell(\theta^*)+2D$$
+
+```{r}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,1,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+gold_aic_table <- aic_table(logvalue,4,3)
+require(knitr)
+kable(gold_aic_table,digits=2)
+
+```
+
+* From the table above, we can see that ARIMA(2,1,3) has the smallest AIC values, followed by ARIMA(1,1,1) and ARIMA(0,1,2). Actually, the differences among these three is very small. 
+
+* Considering that " increasing the number of parameters leads to additional overfitting which can decrease predictive skill of the fitted model" [3], we will not fit the ARIMA(2,1,3) model to the data. Instead, we select ARIMA(1,1,1) and ARIMA(0,1,2) for comparison in the next step.
+
+
+### (2) Try Fitting ARIMA(1,1,1) 
+
+The ARIMA(1,1,1) model is fitted as:
+
+$$\phi(B)((1-B)X_n-\mu)=\psi(B)\epsilon_n$$
+$$X_n-X_{n-1}=\phi (X_{n-1} - X_{n-2})+\mu+\epsilon_n+\psi\epsilon_{n-1}$$
+
+
+```{r , echo=FALSE}
+log_arma11 <- arima(logvalue,order=c(1,1,1))
+log_arma11
+```
+
+```{r}
+AR_roots <- polyroot(c(1,-coef(log_arma11)[c("ar1")]))
+AR_roots
+```
+
+```{r}
+MA_roots <- polyroot(c(1,coef(log_arma11)[c("ma1")]))
+MA_roots
+```
+
+* According to the results above, we can see that both of the AR roots and MA roots of ARIMA(1,1,1) are outside the unit circle. Moreover, the estimated $\sigma^2 (=0.002656)$ is pretty small which may indicate that this is a proper model to analyze the dataset.
+
+### (3) Try Fitting ARIMA(0,1,2) 
+
+The ARIMA(0,1,2) model is fitted as:
+
+$$\phi(B)((1-B)X_n-\mu)=\psi(B)\epsilon_n$$
+$$X_n-X_{n-1}=\mu+\epsilon_n+\psi\epsilon_{n-1}+\psi^2\epsilon_{n-2}$$
+By summing up, we obtain that:
+$$X_n=X_2+\epsilon_n+(\psi +1)\epsilon_{n-1}+(\psi^2+\psi+1)(\epsilon_{n-2}+...+\epsilon_3)+(\psi^2+\psi)\epsilon_2+\psi^2\epsilon_1, (n>5)$$
+
+```{r}
+log_arma02 <- arima(logvalue,order=c(0,1,2))
+log_arma02
+```
+
+
+```{r}
+MA_roots <- polyroot(c(1,coef(log_arma02)[c("ma1","ma2")]))
+MA_roots
+```
+
+* From the sum-up formula above, we can see that the data in this model is only related to the historical residuals and the initial value. 
+
+* However, from the plot of the log-transformed model with two differences, we can see that it does a little improvement when increasing differences. This might be an evidence that the data $X_n$ is influenced by both $X_{n-1}$ and $X_{n-2}$, which matches the ARIMA(1,1,1) model.  
+
+* Although the MA roots of ARIMA(0,1,2) are outside the unit circle and the $\sigma^2 (=0.002657)$ is almost the same as ARIMA(1,1,1), we prefer ARIMA(1,1,1) for the further diagnostic.
+
+
+## 4. Model Diagnostic {#diag}
+
+For model diagnostic, we need to check the residuals of the model first. The ideal plot is similar as the plot generated by Gaussian white noise, which means that the residuals are independently and identically distributed from a normal distribution. Moreover, the residuals should be fitted in a mean stationary model with mean 0.
+
+### (1) Overview of the Residuals from ARIMA(1,1,1) 
+
+First, we plot the residuals to check whether they fit a mean stationary model with mean 0.
+
+```{r , echo=FALSE}
+plot(log_arma11$resid,ylab = "residuals",main = "Residuals of ARIMA(1,1,1) Model")
+```
+
+* This plot probably shows a sign of mean stationary with mean around 0. However, some of the points apparently deviate from the mean value, such as the point at around 90 and the point at around 430. 
+
+
+### (2) Sample ACF 
+
+Then, we take a look at the ACF results through a range of lags to check whether the residuals are correlated.
+
+The sample autocorrelation function (sample ACF) of the time series ${x_n^*}$ at each lag $h$ is:
+
+$$ACF^*(h)=\frac{\frac{1}{N}\sum_{n=1}^{N-h} x_n^* x_{n+h}^*}{\frac{1}{N}\sum_{n=1}^{N-h} x_n^{*2}}$$
+
+
+```{r}
+acf(log_arma11$resid,main = "ACF of residuals")
+```
+
+* From the ACF plot, we can see that there are slight deviations at $lag 8$ and $lag 11$. However, there is actually not much signs of autocorrelation among the residuals.
+
+
+### (3) Normality Test 
+
+Next we try to test the normality of the residuals by conducting Q-Q plot.
+
+```{r}
+qqnorm(log_arma11$resid)
+qqline(log_arma11$resid,probs = c(0.25,0.75))
+```
+
+* There are unexpected tails at both ends, which indicates that the residuals may not follow the normal distribution.
+
+
+After the model diagnostic, we find that the residuals almost satisfy the requirement of independence and are probably able to be fitted in a mean stationary model apart from some small cases, but they apparently violate the normality assumption.
+
+
+## 5. Model Evaluation {#eval}
+
+To generally evaluate the prediction ability of the ARIMA(1,1,1) model, we compare it with the original log-transformed data in the same plot.[4][5]
+
+```{r}
+library(forecast)
+plot(logvalue,type = "l",col="blue")
+par(new=TRUE)
+arima111 <- Arima(logvalue,model=log_arma11)
+plot(forecast(arima111)$fitted,type = "l", col="red", axes=FALSE,xlab='',ylab='')
+```
+
+* In this plot, the blue line stands for the true log-transformed data while the red line represents the fitted ARIMA(1,1,1) model. 
+
+* This plot shows pretty high consistency between the true dataset and the fitted model, especially for the data points before 440. 
+
+* However, the predictive results from the fitted ARIMA(1,1,1) seem to be a little smaller than the true value for the data points after 440. This might imply that we still have problems to be solved in predicting data by using this model.
+
+
+## 6. Conclusion {#conclu}
+
+* Gold market tends to show strong fluctuations in its stock throughout time, especially after it became a free market at 1971. To eliminate the fluctuated trend, we apply log-transformation to the data, and then modify the model with one difference.
+
+* By comparing AIC and taking a close look at the details, we find that the ARIMA(1,1,1) model might be an appropriate model to analyze and predict the log-transformed gold prices. 
+
++ Setting the log-transformed gold prices as $X_n$, then the model is:
+
+$$X_n-X_{n-1}=0.3298 (X_{n-1}-X_{n-2})+\epsilon_n+0.5053\epsilon_{n-1}$$
+
+* However, based on the results from the model diagnostic, we conclude that the residuals of the ARIMA(1,1,1) model satisfy the assumptions of independence and stationarity but violate the normality assumption. To meet all the assuptions, we may have to develop a more complex model rather than the ARIMA(1,1,1) model.
+
+* The plot of the ARIMA(1,1,1) model seems to be almost the same as the plot of true data for the first 440 data points. The predicted value is almost always a little smaller than the true value for the data points after 440, which may imply the underlying problem waiting for us to solve in the future.
+
+* Although the ARIMA(1,1,1) model is not the best model to analyze and predict gold prices, it does capture the main features. Thus, we can use it to generally model and predict gold prices. However, since gold prices may be influenced by many other factors in the real world, we might need a more complex and more accurate model (i.e. introducing new variables into the analysis) in the next step. Morever, since we still observe some deviations in the plot of the 1-differenced log-transformed data, we may like to try new methods to detrend the data in the future.
+ 
+
+## 7. References {#ref}
+
+[1] "Gold as an investment" from Wikipedia,  https://en.wikipedia.org/wiki/Gold_as_an_investment
+
+[2] Edward Ionides, "6.2 ARMA models for differenced data" from class notes, https://ionides.github.io/531w18/06/notes06.html
+
+[3] Edward Ionides, "5.4.3 Akaike’s information criterion (AIC)" from class notes, https://ionides.github.io/531w18/05/notes05.html
+
+[4] Rob Hydnman, "forecast.fracdiff", https://www.rdocumentation.org/packages/forecast/versions/8.1/topics/forecast.fracdiff
+
+[5] "Crude Oil Prices Modeling and Prediction" from old midterm projects, https://ionides.github.io/531w16/midterm_project/project19/crude_oil_price.html
+
+
+

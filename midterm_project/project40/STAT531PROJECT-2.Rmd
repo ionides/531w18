@@ -1,0 +1,338 @@
+---
+title: "A study on US Interest Rate and Inflation"
+date: "03/01/2018"
+output: 
+    html_document:
+       toc: true
+       theme: flatly
+---
+
+# 1 Introduction
+* The purpose of this report is to find the association between US interest rate and the inflation. The report will illustrate the relationships by observing the datasets, adjusting the trends of the data, and analyzing the results with some times series methods. 
+
+* The definition of the inflation is the rate at which the general level of prices for goods and services is rising and, consequently, the purchasing power of currency is falling[1]. Therefore, when the interest rates are lowered, people are likely to borrow more money and therefore, they have more money to spend and have the intention to purchase goods, which causes the prices of the products to increase and inflation to increase. And as the opposite, when the interest rates are higher, people are less likely to spend money and they intend to deposit their money into banks to earn interest. Therefore, they have less money to spend and are less likely to purchase goods, which causes the prices of the products to decrease and inflation to decrease. 
+
+* Therefore, theoretically, the relationship between interest rate and inflation rate is inverse and the increase or decrease of inflation will be slower than the decrease or increase of interest rate. 
+
+* So we know that there is a association between US interest rate and the inflation and I would like to find a model to find out the association. 
+
+# 2 Data Overview
+I am going to use the 10-Year Treasury Constant Maturity Rate data set as the interest rate[2]. It's a collection of monthly interest rate from 2003-01-01 to 2018-01-01. The unit of the interest rate is percent per year. I also use 10-Year Breakeven Inflation Rate data set as the inflation rate[3]. It's a collection of monthly inflation rate from 2003-01-01 to 2008-01-01. The exhibit below are parts of the two data sets. 
+```{r}
+inflation = read.csv("T10YIEM (1).csv", header = T)
+interest = read.csv("DGS10.csv",header = T)
+colnames(interest) = c("date","interest_rate")
+colnames(inflation) = c("date","inflation_rate")
+interest$date = as.Date(interest$date,format="%m/%d/%y")
+inflation$date = as.Date(inflation$date,format="%m/%d/%y")
+head(interest)
+head(inflation)
+```
+
+I start from making a times series to take a general look at the behaviors of two data sets. 
+```{r}
+date1 = as.Date(interest$date)
+date2 = as.Date(inflation$date)
+interest_rate = interest$interest_rate
+inflation_rate = inflation$inflation_rate
+par(mar=c(5,4,4,6)+0.1)
+plot(date1, interest_rate, xlim = c(as.Date("2003-01-01"), as.Date("2018-01-01")), col = "blue", main = "Time Plot of interest_rate and inflation_rate", xlab = "", ylab = "interest_rate", col.lab = "blue", type = 'l')
+par(new = T)
+plot(date2, inflation_rate, xlim = c(as.Date("2003-01-01"), as.Date("2018-01-01")), col = "red", axes = F, xlab="Year", ylab = "", type = 'l')
+axis(side = 4, col = "red")
+mtext("inflation", col = "red", side = 4, line = 3)
+```
+
+* From the plot, it can be found that the trend of the interest rate is firstly increasing and then decreasing. And the first tremendous drop in interest rate is in around 2008. The interest rates reach the lowest points at around middle of 2012 and middle of 2016. 
+
+* From the plot, it can be shown that the inflation rates are fluctuated and inflation rates reach the lowest in around 2008, which matches the fact that the financial crisis happened during the period and the market experienced recession. 
+
+* We can observe some inverse relationships between interest rate and inflation rate from the plot and the changes of inflation rate are usually slower than the move of the interest rates. And we can also obeserve some special cases during 2008 that countered this relationship. 
+
+# 3 Data Analysis
+## 3.1 Extract the trend, noise and cycle components
+I use  Loess Smoothing[4] to extract the trend, noise and cycle components. 
+
+* For the interest rate data, high frequency variation might be considered “noise” and low frequency variation might be considered trend. 
+
+* A band of mid-range frequencies might be considered to correspond to the interest rate cycles.
+
+I apply the same technique to the inflation rate data set. 
+```{r}
+interest$date <- strptime(interest$date,"%Y-%m-%d")
+interest$Year=as.numeric(format(interest$date,format="%Y"))
+interest$Month=as.numeric(format(interest$date,format="%m"))
+interest$time=interest$Year+(interest$Month-1)/12
+interest$interest_rate=(as.numeric(as.character(interest$interest_rate)))
+inflation$date <- strptime(inflation$date,"%Y-%m-%d")
+inflation$Year=as.numeric(format(inflation$date,format="%Y"))
+inflation$Month=as.numeric(format(inflation$date,format="%m"))
+inflation$time=inflation$Year+(inflation$Month-1)/12
+inflation$inflation_rate=(as.numeric(as.character(inflation$inflation_rate)))
+date = intersect(date1,date2)
+t=intersect(interest$time,inflation$time)
+interestrate_low = ts(loess(interest$interest_rate~t,span=0.5)$fitted,start=t[1],frequency=12)
+interestrate_high = ts(interest$interest_rate-loess(interest$interest_rate~t,span=0.1)$fitted,start=t[1],frequency=12)
+interestrate_cycles <-ts(interest$interest_rate-interestrate_low-interestrate_high,start=t[1],frequency=12)
+ts.interestrate=ts.union(interest$interest_rate,interestrate_low,interestrate_high,interestrate_cycles)
+colnames(ts.interestrate)=c("value","trend","noise","cycles")
+plot(ts.interestrate,main="")
+```
+
+* From the plot, the trend of the interest rate is increasing firstly and then decreasing, which matches what I found from the original data plot. Looking at the cycles plot, I would suggest that there isn't any obvious cycle can be observed for interest rate. 
+
+```{r}
+inflationrate_low = ts(loess(inflation$inflation_rate~t,span=0.5)$fitted,start=t[1],frequency=12)
+inflationrate_high = ts(inflation$inflation_rate-loess(inflation$inflation_rate~t,span=0.1)$fitted,start=t[1],frequency=12)
+inflationrate_cycles = ts(inflation$inflation_rate-inflationrate_low-inflationrate_high,start=t[1],frequency=12)
+ts.inflationrate=ts.union(inflation$inflation_rate,inflationrate_low,inflationrate_high,inflationrate_cycles)
+colnames(ts.inflationrate)=c("value","trend","noise","cycles")
+plot(ts.inflationrate,main="")
+```
+
+* The plot above doesn't show obvious cyclic pattern. 
+
+We can plot the cycle components of two time series together.
+```{r}
+par(mfrow=c(1,1))
+plot(t,interestrate_cycles,type="l",col="blue",xlab="Year",ylab="", main="Cycle components of interest_rate (blue) and inflation_rate (red)")
+par(new=TRUE)
+plot(t,inflationrate_cycles,type="l",col="red",xlab="",ylab="",axes=FALSE)
+axis(side=4,col="red")
+```
+
+## 3.2 Detrended Time Series Plot
+Here we use Hodrick-Prescott (HP) filter to achieve this. As suggested by Hodrick and Prescott, I use 14400 as a smoothing parameter for $\lambda$ for the monthly data [5]. Define the HP-detrended inflation to be $g_{1:N}^{HP*}$, and detrended interest rate to be $i_{1:N}^{HP*}$.
+
+```{r}
+require(mFilter)
+inflationrate_hp = hpfilter(inflation$inflation_rate, freq = 14400, type = "lambda", drift = F)$cycle
+interestrate_hp = hpfilter(interest$interest_rate, freq = 14400, type = "lambda", drift = F)$cycle
+par(mar=c(5, 4, 4, 6) + 0.1)
+plot(date1, interestrate_hp, xlim = c(as.Date("2003-01-01"), as.Date("2018-01-01")), col = "blue", main = "Time Plot of Inflation Rate and Interest rate", xlab = "", ylab = "Interest Rate", col.lab = "blue", type = 'l')
+par(new = T)
+plot(date2, inflationrate_hp, xlim = c(as.Date("2003-01-01"), as.Date("2018-01-01")), col = "red", axes = F, xlab="Year", ylab = "", type = 'l')
+axis(side = 4, col = "red")
+mtext("Inflation Rate", col = "red", side = 4, line = 3)
+```
+
+* After I eliminated the trend, these two data sets fluctuate at the similar time although inflation fluctuates slowlier than interest rate and the inverse relationship between interest rate and inflation rate can be more obviously obeserved during some periods in the plot compared with the original data set plot. The observations draw our interest in further analysis between interest rate and inflation rate.
+
+# 4 Time Series Model
+
+In order to study the relationship between these two datasets, I try to use a regression with ARMA errors model. I would like to check this association by fitting a linear regression model with arma errors.
+$$i^{HP}_n = \alpha + \beta K^{HP}_n + \epsilon_n,$$ where $i^{HP}_n$ is the detrended interest rate and $K^{HP}_n$ is detrended inflation rate and $\epsilon_n$ is a Gaussian ARMA process.
+
+## 4.1 Model Selection by AIC
+```{r}
+aic_table = function(combined,P,Q,xreg=NULL){
+  table = matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(combined,order=c(p,0,q),xreg=xreg)$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+e_aic_table = aic_table(interestrate_hp,5,5,xreg=inflationrate_hp)
+require(knitr)
+kable(e_aic_table,digits=2)
+```
+
+* Generally, we tend to select the model with the smallest AIC values and if there are models with AIC values closed to each other, we tend to select the simplier one. I select some candidates ARMA(1,1), ARMA(4,1), ARMA(5,1), ARMA(3,2), ARMA(2,3) and ARMA(5,4). 
+* 1. The four smallest values of all the candidates are ARMA(4,1), ARMA(5,1), ARMA(2,3) and ARMA(5,4) but there are some problems with them. As under the formula between AIC and the number of parameters，which is $AIC = -2× maximized log likelihood + 2× number of parameters$, the value of AIC should not increase by more than 2 when the number of the parameter increase one unit. So if we compare the AIC value for these ARMAs with the one that have one more parameter, the increase is much larger than 2, hence suggesting the use of these ARMAs are not proper here. 
+
+* 2. Although the value of AIC for ARMA(3,2) is smaller than ARMA(1,1), I would choose ARMA(1,1) as the best model. There are two reasons for this choice: 1) the AIC values between these two models are similar and 2) ARMA(1,1) has a smaller model size than ARMA(3,2). 
+
+```{r}
+arma11 = arima(interestrate_hp,xreg=inflationrate_hp,order=c(1,0,1))
+arma11
+```
+* The standard error for $\beta$ computed by the observed Fisher information suggest a significant association between inflation rate and interest rate. 
+
+```{r}
+AR_roots1 <- polyroot(c(1,-coef(arma11)["ar1"]))
+AR_roots1
+```
+```{r}
+AR_roots2 <- polyroot(c(1,-coef(arma11)["ma1"]))
+abs(AR_roots2)
+```
+* The roots of $\phi(x)$ and $\psi(x)$ are all outside the unit circle, so the model is casual and convertible. 
+
+## 4.2 P-Value
+Another way to verify the significance of the association between inflation rate and interest rate is to calculate the p-value from likelihood ratio tests. The above model is:$$ (1-\phi_1 B)(K^{HP}_n - \alpha - \beta i^{HP}_n) = \epsilon_n(1+\psi_1 B),$$ where ${\epsilon_n}$ is Gaussian white noise with variance $\sigma^2$.
+This is to test the nested hypotheses $$ \begin{eqnarray} H^{\langle 0\rangle} &:& \theta\in \Theta^{\langle 0\rangle} \ H^{\langle 1\rangle} &:& \theta\in \Theta^{\langle 1\rangle} \end{eqnarray} $$ defined via two nested parameter subspaces, $\Theta^{\langle 0\rangle}\subset \Theta^{\langle 1\rangle}$, with respective dimensions $D^{\langle 0\rangle}< D^{\langle 1\rangle}\le D$.
+We consider the log likelihood[6] maximized over each of the hypotheses, $$ \begin{eqnarray} \ell^{\langle 0\rangle} &=& \sup_{\theta\in \Theta^{\langle 0\rangle}} \ell(\theta), \ \ell^{\langle 1\rangle} &=& \sup_{\theta\in \Theta^{\langle 1\rangle}} \ell(\theta). \end{eqnarray} $$
+By Wilks approximation[7], under the hypothesis $H^{\langle 0\rangle}$, $$ \ell^{\langle 1\rangle} - \ell^{\langle 0\rangle} \approx (1/2) \chi^2_{D^{\langle 1\rangle}- D^{\langle 0\rangle}} $$ and $\chi_d^2$ is a chi-squared random variable on d degrees of freedom.
+In this model:
+The null hypothesis is $$\begin{eqnarray} H^{\langle 0\rangle} &:& \beta =0 \end{eqnarray}$$ The alternative hypothesis is $$\begin{eqnarray} H^{\langle 1\rangle} &:& \beta\ne 0, \end{eqnarray}$$. So $D^{\langle 1\rangle}- D^{\langle 0\rangle} = 1$
+```{r}
+log_lik_ratio = as.numeric(logLik(arima(interestrate_hp, xreg = inflationrate_hp, order = c(1, 0, 1))) - logLik(arima(interestrate_hp, order = c(1, 0, 1))))
+pval = 1 - pchisq(2*log_lik_ratio, df = 1)
+pval
+```
+
+* The likelihood gives a p-value of 4.873879e-14. So we should reject the null hypothesis, so this result shows that there is a association between inflation rate and interest rate. 
+
+Next test the significance of $\alpha$, 
+```{r}
+loglikratio=as.numeric(logLik(arima(interestrate_hp,xreg=inflationrate_hp,order=c(1,0,1)))
+              -logLik(arima(interestrate_hp,xreg=inflationrate_hp,order=c(1,0,1),include.mean = FALSE)))
+p_value=1-pchisq(2*loglikratio,df=1)
+p_value
+```
+
+* The p-value is 0.8965835 which means that we should reject the null hypothesis: $\alpha$=0.
+
+
+## 4.3 Residual Analysis
+Since I have checked the association, the next steps are to check the residuals for the fitted model and look at the sample autocorrelation.
+
+### 4.3.1 Residual plot
+First, I check the residual of our regression model to see whether the errors exist heteroskedasticity. 
+```{r}
+r = resid(arima(interestrate_hp,xreg=inflationrate_hp,include.mean = FALSE,order=c(1,0,1)))
+plot(date1, r, xlim = c(as.Date("2003-01-01"), as.Date("2018-01-01")), xlab = "Year", ylab = "Residuals", main = "Residuals of the Fitted Model", type = "l")
+```
+
+* There are two extremes of residuals around 2008 due to the special economic environment during that time. But overall, the residuals are all around zero and does not increase or decrease a lot over time. So I would say I don't observe any heteroskedasticity. I would suggest the residuals as homoskedasticity. 
+
+I also use the techniques of Breusch–Pagan test to test for heteroskedasticity in a linear regression model. The null hypothesis is that the error is with homoskedasticity.
+```{r}
+require(lmtest)
+lmodel = lm(interestrate_hp ~ inflationrate_hp)
+bptest(lmodel)$p.value
+```
+* The p-value turns out to be 0.4287796, which is larger than 0.05. The null hypothesis should not reject. Therefore, it is comfortable to conclude that the heteroskedasticity is not significant and hence the above regression model is acceptable for the datasets.
+
+### 4.3.2 ACF Plot
+```{r}
+acf(r,main="acf of residuals")
+```
+
+* The horizontal dashed lines on the graph of the sample autocorrelation function (ACF) give a measure of chance variation under the null hypothesis that the residuals are IID.[8]
+
+* At each lag h, the chance that the estimated ACF falls within this band is approximately 95%, under the null hypothesis.[8]
+
+* Thus, under the null hypothesis, one expects a fraction of 1/20 of the lags of the sample ACF to fall outside this band.[8]
+
+* From the plot, only one out of 23 is narrowly out of the dash line, which is smaller than 1/20. So we do not reject the null hypothsis, which suggests that the residuals are well following the null hypothesis that the residuals are under Gaussian white noise. 
+
+Next I would like to get the autocorrelation of the absolute value of the residuals. 
+```{r}
+acf(abs(r), main="acf of |residuals|")
+```
+
+* From the absolute value plot, only one out of 23 is narrowly out of the dash line, which is smaller than 1/20. So we do not reject the null hypothsis, which suggests that the residuals are well following the null hypothesis that the residuals are under Gaussian white noise. 
+
+* Therefore, I would like to conclude that the regression model works for both data sets and a significant association between interest rate and inflation exists.
+
+### 4.3.3 Normality
+```{r}
+qqnorm(r)
+qqline(r)
+```
+
+* From the plot, I find that the residuals are almost normal distribution with slightly heavy tail, which indicates that Gaussian White Noise assumption should not reject. 
+
+## 4.4 Bootstrap simulation
+Since the standard errors above are calculated by the observed Fisher information approximation, to check whether Fisher information approximation is appropriate, I want to run a bootstrap simulation. 
+
+Suppose we want to know the statistical behavior of the estimator $\hat\theta_{1:N}$ for models in a neighborhood of the MLE,$\theta_{1:N}^\ast$. We want to assess the behavior of the maximum likelihood estimator, $\hat\theta_{1:N}$, and possibly the coverage of an associated confidence interval estimator, $[\theta_{1,lo}(y_{1:N}),\theta_{1,hi}(y_{1:N})]$.[9]
+
+In each simulation, we fit the ARMA(1,1) model to the resample data and get $\hat\theta_n$ for n=1:N, and then we can get standard errors and confident intervals applying to $\hat\theta_{1:N}$.
+
+```{r}
+set.seed(20030101)
+J <- 500
+params <- coef(arma11)
+ar <- params[grep("^ar",names(params))]
+ma <- params[grep("^ma",names(params))]
+xreg.coef <- params["inflationrate_hp"]
+sigma <- sqrt(arma11$sigma2)
+theta <- matrix(NA,nrow=J,ncol=length(params),dimnames=list(NULL,names(params)))
+sgm <-rep(NA,length.out=J)
+for(j in 1:J){
+  X_j <- ts(arima.sim(
+    list(ar=ar,ma=ma),
+    n=length(interestrate_hp),
+    sd=sigma),start=t[1],frequency=12)+xreg.coef*inflationrate_hp
+    mod=arima(X_j,order=c(1,0,2),xreg=inflationrate_hp,include.mean = FALSE)
+    theta[j,] <- coef(mod)
+    sgm[j]=var(mod$residuals)
+}
+sqrt(diag(var(theta)))
+```
+```{r}
+sqrt(diag(arma11$var.coef))
+```
+* Although the standard errors calculated by bootstrap simulation is not similar to the standard errors computed by Fisher Information, their differences are small, which are roughly 0.03 to 0.04. So I would say the standard errors are close to each other.
+
+Next consider the confidence interval:
+```{r}
+Bootstrap.CI=t(apply(theta,2,quantile,c(0.025,0.975)))
+Bootstrap.CI
+```
+```{r}
+FisherInformation.CI= cbind(arma11$coef-1.96*sqrt(diag(arma11$var.coef)),arma11$coef+1.96*sqrt(diag(arma11$var.coef)))
+colnames(FisherInformation.CI)=c("2.5%","97.5%")
+FisherInformation.CI
+```
+* The coefficient values of ar1, ma1 in the the quantile-base 95% confidence interval are close to each other in these two methods. The differences of intercept between two methods are larger, which is 0.1 and quite small. So overall, comparing from the quantile-base 95% confidence interval values between bootstrap simulation and fisher information, their values are similar to each other. 
+
+* From the results above, I would like to conclude that the fisher information approximation is valid.
+
+## 4.5 Fitted Value versus the Original
+After considering the residual, I would like to see how well the model fits the original data set. 
+```{r}
+require(forecast)
+fit = Arima(interestrate_hp, xreg = inflationrate_hp, include.mean = FALSE, order = c(1, 0, 1))
+plot(date1, fit$x, col = "blue", type = "l", xlim = c(as.Date("2003-01-01"), as.Date("2018-01-01")), xlab = "Year", ylab = "Detrended Interest Rate", main = "Fitted Value and Original Value for Detrended Inflation")
+lines(date1, fitted(fit), col = "red")
+legend(as.Date("2003-01-01"), 6, c("Fitted Value", "Original Value"), lty = c(1, 1), col = c("red", "blue"),  bty = "n")
+```
+
+* By comparing the two lines in the plot, it can be observed that the fitted interest rate values are very close to original interest rate values. This can also illustrate that the model is indeed really good. 
+
+## 4.6 Model Statement
+The model is:
+$$ (1-0.7410B)(i^{HP*}_n - 0.8136K^{HP*}_n) = \epsilon_n(1+0.3206B),$$
+where $i^{HP*}_n$ is the detrended interest rate and $K^{HP*}_n$ is detrended inflation rate and $\epsilon_n$ is the Gaussian white noise with variance 0.02679.
+
+# 5 Other Factors
+* From the orginal plot, we could notice that inflation rate and interest rate are not always in a inverse relationship. Special situations might happen when the market is manipulated by the government and the market is having some recessions. For example, during the financial crisis in 2008, the government decreased the interest rate to promote the market but the inflation rate was still super low. 
+
+* The causation of this event is that the rate of unemployment at that time was quite high as well. Inflation rate, interest rate and unemployment rate might influence each other. So the relationship between interest rate and inflation rate might be complicated sometimes because the effect of the rate of the umployment has to be taken into consideration. 
+
+# 6 Conclusion
+In this project, I have done several things:
+
+* Data analysis. I plotted the original data sets to get the general view of both data sets and then extracted both data sets to observe the trends and cycles. I also detrended the data sets to get a better understanding of the relationship between inflation rate and interest rate. 
+
+* Model Selection. I calculted the AIC under different ARs and MAs and selected the best model under the criteria of low AIC values and simple model.
+
+* Test the Model. I computed the p-value to verify the significance of the association and did the residual analysis to test whether error terms are Gaussian white noise. I used the bootstrap simulation to verify whether it's correct to use the Fisher Information to predict the coefficients of the model.Finally, I fitted the values by using the model I selected and compared the plot between the fitted one and the original one. 
+
+From the results that was got when I tested the models, I found out that $\beta$ is significant which proves the significance of the association and the residuals are under homoskedasticity and normality. And also checking from the ACF plot, I concluded that the residuals match the assumption of Gaussian White noise. The outcomes I got from bootstrap simulation are pretty close to the results, which ensures the correctness of using Fisher Information and the ease to use the value of the coeffcients. From the fitted plot, I noticed that the values computed from the selected model are quite close to the data from the original model. In conclusion, ARMA(1,1) is a good model to predict the association between inflation rate and interest rate and the model is $$ (1-0.7410B)(i^{HP*}_n - 0.8136K^{HP*}_n) = \epsilon_n(1+0.3206B),$$ where $i^{HP*}_n$ is the detrended interest rate and $K^{HP*}_n$ is detrended inflation rate and $\epsilon_n$ is the Gaussian white noise with variance 0.02679.
+
+
+# 7 References
+[1]Inflation. (n.d.). Retrieved from https://www.investopedia.com/terms/i/inflation.asp
+
+[2]Economic Research."10-Year Treasury Constant Maturity Rate".https://fred.stlouisfed.org/series/GS10
+
+[3]Economic Research."10-Year Breakeven Inflation Rate". https://fred.stlouisfed.org/series/T10YIE
+
+[4]Loess Smoothing. Class notes of Stats 531 (Winter 2018) ‘Analysis of Time Series’. Edward L. Ionides. https://ionides.github.io/531w18/08/notes08.html
+
+[5]Hodrick-Prescott filter. (2015, August 8). In Wikipedia, The Free Encyclopedia. Retrieved 08:02, March 10, 2016. https://en.wikipedia.org/w/index.php?title=Hodrick%E2%80%93Prescott_filter&oldid=675114572
+
+[6]Log Likelihood. Class notes of Stats 531 (Winter 2018) ‘Analysis of Time Series’. Edward L. Ionides. https://ionides.github.io/531w18/05/notes05.html
+
+[7]Wilks approximation. Class notes of Stats 531 (Winter 2018) ‘Analysis of Time Series’. Edward L. Ionides. https://ionides.github.io/531w18/05/notes05.html
+
+[8]Autocorrelation Function. Class notes of Stats 531 (Winter 2018) ‘Analysis of Time Series’. Edward L. Ionides. https://ionides.github.io/531w18/02/notes02.html
+
+[9]Bootstrap Method. Class notes of Stats 531 (Winter 2018) ‘Analysis of Time Series’. Edward L. Ionides. https://ionides.github.io/531w18/05/notes05.html

@@ -1,0 +1,348 @@
+---
+title: "Midterm Project"
+date: "2018/2/26"
+output:
+  html_document: 
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1 Introduction    
+### 1.1 Background    
+* NASDAQ Composite Index is the market capitalization-weighted index of approximately 3,000 common equities listed on the Nasdaq Stock Exchange. The types of securities in the index include American depositary receipts, common stocks, real estate investment trusts and tracking stocks, as well as limited partnership interests.    
+* Crude Oil has been the crucial resource to various industries. It is an important factor that would have huge impact on the financial markets. Financial participants would have their own expectation to the future, which would be reflected from the Price of Crude Oil.    
+* NASDAQ Index and Crude Oil Price are important indicators of economy. It is reasonable for us the think they may have some certain relationship and associated behavior pattern. During the past 20 years, we have experienced the global financing world with continuous growth and some specific crisis that drove the whole markets falldown sharpely. In the long time scale, the NASDAQ Index and Crude Oil Price rise if the economy grows and both of them fall if the economy shrinks. In a relatively short time period, both of them seem to fluctuate randomly. Hence, we would try to find out the rules that would intepret this "randomness".    
+    
+    
+### 1.2 Objective    
+In this project, we seek to find the relationship between the NASDAQ Index and Crude Oil Price. We would find out the laws that may be suitable to explain the behavior patterns and the association between these two datasets.    
+
+        
+## 2. Data Overview    
+In this project, we are going to look at monthly data of Crude Oil Price for the last 10 years, and NASDAQ for the same period.    
+
+* Since the lastest Crude Oil Price and NASDAQ data available at the time of this project is January, 01, 2018, we would the January, 01, 2008 as the starting point of our dataset for analysis. The historical data of Crude Oil Price are downloaded from (https://fred.stlouisfed.org/series/MCOILWTICO). The historical data of NASDAQ Index are downloaded from (https://fred.stlouisfed.org/series/NASDAQCOM).    
+* NASDAQ Index are collected daily, but the Crude Oil Price only have monthly data. Hence, the NASDAQ Index data are adjusted and aggregated by averaging monthly from the original data.    
+* The two datasets do not include seasonally adjusted, since seasonally adjusted may influence our later analysis and model selection.    
+
+```{r}
+data=read.csv("data.csv", header = TRUE)
+head(data)
+```
+
+We would look at the time plot for both of the two datasets and acquire a general idea of their behaviors and relationships.    
+
+```{r}
+data$date = as.Date(data$date)
+date=data$date
+Nasdaq=data$NASDAQ_Index
+Crudeoil=data$Crude_Oil_Price
+par(mar=c(5, 4, 4, 5))
+plot(date, Nasdaq, col = "red", xlim = c(as.Date("2008-01-01"), as.Date("2018-01-01")),main = "Time Plot of NASDAQ Index and Crude Oil Price", xlab = "", ylab = "NASDAQ Index", col.lab = "red", type = 'l')
+par(new = TRUE)
+plot(date, Crudeoil, col = "blue", xlim = c(as.Date("2008-01-01"), as.Date("2018-01-01")), axes = FALSE, xlab="Time", ylab = "", type = 'l')
+axis(side=4, col ="blue")
+mtext("Crude Oil Price", col = "blue", side = 4, line = 4)
+```
+    
+According to the time plot above, we use red line to represent the behavior of NASDAQ Index versus time during the time window of 2008 to 2018, and use the blue line to represent the behavior of Crude Oil Price. There are some common features shown in the plot that we may be interested.    
+
+* We could find that red line(NASDAQ Index) has an increasing trend with time and blue line has a decreasing trend with time, although both of them oscillate during some specific time interval. It would be reasonable to think that they have trends.    
+* We could find that NASDAQ Index and Crude Oil Price have similar behaviors as they had increasing trend with time during the time period from 2009 to 2014 (NASDAQ have more significant increasing amplitude compared with its historical pattern). However, Crude Oil Price experienced a severe decrease around 2015 while the behavior of NASDAQ Index during that period did not match with Crude Oil Price. Thus, we would further discuss this time window later in the project.    
+
+Therefore, we could know that the two datasets are reasonably associated with each other. We seek to find the common law and rule behind their patten during the selected whole time window. The huge fluctuations during the whole time scale are attributed to many other factors like global financing markets, relevant political reasons, crude oil markets, etc... These factors would have a brief discussion later in the project as they may indicate some methods to improve the model we use in this project.    
+    
+       
+## 3 Building Model    
+### 3.1 Eliminating Trend   
+We seek to find whether the fluctuations are relevant in some certain way. We need to detrend and eliminate the trend first. Here, we would use **Loess Smoothing** to extract the trend, noise and cycle component.    
+
+* Low frequency component can be considered as trend, and high frequency component might be considered as noise. Trend component may be affected by long-term economic and financial situations, and noise could be attributed and sensitive to various reasons and factors. We are not interested in these two components as they do not include the law or rule we seek to find.    
+* The mid-range frequency component can be considered as cycle component which could reflect the cycle and perturbation of two datasets.    
+
+```{r}
+Year=as.numeric(format(date,format="%Y"))
+Month=as.numeric(format(date,format="%m"))
+time=Year+(Month-1)/12
+nas_low=ts(loess(Nasdaq~time,span=0.5)$fitted,start=time[1],frequency=12)
+nas_high=ts(Nasdaq-loess(Nasdaq~time,span=0.1)$fitted,start=time[1],frequency=12)
+nas_cycles=ts(Nasdaq-nas_low-nas_high,start=time[1],frequency=12)
+ts.nas=ts.union(Nasdaq,nas_low,nas_high,nas_cycles)
+colnames(ts.nas)=c("Index","trend","noise","cycles")
+
+cru_low=ts(loess(Crudeoil~time,span=0.5)$fitted,start=time[1],frequency=12)
+cru_high=ts(Crudeoil-loess(Crudeoil~time,span=0.1)$fitted,start=time[1],frequency=12)
+cru_cycles=ts(Crudeoil-cru_low-cru_high,start=time[1],frequency=12)
+ts.cru=ts.union(Crudeoil,cru_low,cru_high,cru_cycles)
+colnames(ts.cru)=c("Index","trend","noise","cycles")
+
+plot(ts.nas,main="")
+plot(ts.cru,main="")
+```
+
+According to the **Loess Smoothing**, we could extract the cycle compomnent of the two datasets. We put the cycle components of two series together in one plot.    
+
+```{r}
+par(mar=c(5, 4, 4, 5))
+plot(time,nas_cycles,type="l",xlab="",ylab="NASDAQ Index",
+     col="red",col.lab="red",main="Cycle components of NASDAQ Index and Crude Oil Price")
+par(new=TRUE)
+plot(time,cru_cycles,type="l",col="blue",xlab="",ylab="",axes=FALSE)
+axis(side=4,col="blue")
+mtext("Crude Oil Price", col = "blue", side = 4, line = 4)
+```
+    
+It seems that there may exist a strong tendency that as two datasets fluctuate in a similar pattern once we eliminated the trend and focus on cycle components.   
+    
+    
+### 3.2 ARMA Model    
+We denote the cycle component of NASDAQ Index at time $t_n$ as $I_n^c$, and $P_n^c$ for the cycle component of Crude Oil Price.    
+A general ARMA(p,q) model is $\phi(B)(Y_n-\mu)=\psi(B)\epsilon_n$    
+where {$\epsilon_n$} is the white noise process and B is the backshift operator,   
+$\mu=E[Y_n]$    
+$\phi(x)=1-\phi_1x-\phi_2x^2-...-\phi_px^p$    
+$\psi(x)=1+\psi_1x+\psi_2x^2+...+\psi_px^p$    
+    
+We would consider the following ARMA errors model    
+$I_n^c=\alpha+\beta P_n^c+w_n$  
+where {$w_n$} is the Gaussian ARMA Process    
+    
+    
+### 3.3 Model Selection    
+We would use AIC Table to choose a suitable ARMA Model for the errors.    
+
+```{r}
+aic_table <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q),xreg=xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+nas_aic_table <- aic_table(nas_cycles,3,3,xreg=cru_cycles)
+require(knitr)
+kable(nas_aic_table,digits=2)
+```
+
+From the AIC Table, we could know that ARMA(2,2), ARMA(3,1), and ARMA(3,2) are worth further discussion. Large models may have some problems like redundancy, causality, and invertibility. Hence, we would not choose ARMA(3,3), although they seem to have small AIC from the AIC Table. In addition, we could not find numerical inconsistency of the AIC Table, indicating that the results could be reasonable.    
+For further analysis, we would check the causality, invertibility and redundancy of the three models mentioned above.    
+
+```{r}
+arma22=arima(nas_cycles,xreg=cru_cycles,order=c(2,0,2))
+abs(polyroot(c(1,-arma22$coef[1:2])))
+abs(polyroot(c(1,arma22$coef[3:4])))
+arma31=arima(nas_cycles,xreg=cru_cycles,order=c(3,0,1))
+abs(polyroot(c(1,-arma31$coef[1:3])))
+abs(polyroot(c(1,arma31$coef[4])))
+arma32=arima(nas_cycles,xreg=cru_cycles,order=c(3,0,2))
+abs(polyroot(c(1,-arma32$coef[1:3])))
+abs(polyroot(c(1,arma32$coef[4:5])))
+```
+
+According to the results above, we could find ARMA(2,2), ARMA(3,1),and ARMA(3,2) are both causality and invertibility. Therefore, we would choose ARMA(2,2) as it has relatively small AIC from the AIC Table and relatively small number of parameters.    
+
+```{r}
+arma22
+```
+
+According to the results above, we could find that all the coefficients of ARMA model are significant. However, the standard error of intercept is quite large, which may lead to insignificant results. 
+    
+    
+## 4 Diagnostic Analysis     
+### 4.1 Significance Test    
+We would use likelihood ratio test for the coefficients of the ARMA errors model,that is we would whether the $\alpha$ and $\beta$ are zero or not.    
+Test 1: $H_0:\alpha=0$ vs.$H_a:\alpha\neq0$    
+
+```{r}
+loglikratio=as.numeric(logLik(arima(nas_cycles,xreg=cru_cycles,order=c(2,0,2)))
+              -logLik(arima(nas_cycles,xreg=cru_cycles,order=c(2,0,2),include.mean = FALSE)))
+p_value=1-pchisq(2*loglikratio,df=1)
+p_value
+```
+    
+Test 2: $H_0:\beta=0$ vs.$H_a:\beta\neq0$    
+
+```{r}
+loglikratio=as.numeric(logLik(arima(nas_cycles,xreg=cru_cycles,order=c(2,0,2)))
+              -logLik(arima(nas_cycles,order=c(2,0,2))))
+p_value=1-pchisq(2*loglikratio,df=1)
+p_value
+```
+    
+        
+According to the Hypothesis above, we would know that under 95% significant level, we should not reject Test 1 and reject Test 2. In other words, based on likelihood ratio test we would know that $\alpha=0$ and $\beta\neq0$ with 95% confidence interval.    
+We would adjust our model into the following,    
+$I_n^c=\beta P_n^c+w_n$    
+where {$w_n$} is the Gaussian ARMA(2,2) Process    
+
+```{r}
+mod2=arima(nas_cycles,xreg=cru_cycles,order=c(2,0,2),include.mean = FALSE)
+mod2
+```
+```{r}
+abs(polyroot(c(1,-mod2$coef[1:2])))
+abs(polyroot(c(1,mod2$coef[3:4])))
+```
+    
+    
+According to the results above, we would know that all the coefficients are significant, and we would not consider the intercept term. Furthermore, the model is causal and invertible since the roots of $\phi(x)$ and $\psi(x)$ are all outside the unit cicle.    
+    
+    
+### 4.2 Residual Analysis    
+We would check the residuals for the fitted model and sample autocorrelation.    
+
+```{r}
+plot(mod2$residuals,ylab="Residuals",main="Residuals for the ARMA(2,2) Errors Model")
+```
+    
+According to the plot of residuals with time, we would not find strong evidence of heteroskedasticity.    
+
+```{r}
+acf(mod2$residuals, main="ACF of Residuals")
+```
+
+According to the ACF plot, we would find that all the points of sample autocorrelation are inside the region between the dashed line, indicating that the Gaussian white noise is accepted under 95% significant level.    
+    
+    
+### 4.3 Normality    
+We would use QQ plot to check the normality of the residuals.    
+
+```{r}
+qqnorm(mod2$resid)
+qqline(mod2$resid,probs = c(0.25,0.75))
+```
+    
+According to the QQ plot above, we would know that the residuals are almost normal distribution with slightly heavy right tail, indicating that Gaussian White Noise assumption should not be rejected.    
+    
+        
+### 4.4 Bootstrap Simulation    
+We would use Bootstrap simultion for further discussion.    
+
+```{r, warning=FALSE}
+J=1000
+params=coef(mod2)
+ar=params[grep("^ar",names(params))]
+ma=params[grep("^ma",names(params))]
+xreg.coef=params["cru_cycles"]
+sigma=sqrt(mod2$sigma2)
+theta=matrix(NA,nrow=J,ncol=length(params),dimnames=list(NULL,names(params)))
+sgm=rep(NA,length.out=J)
+for(j in 1:J){
+  X_j=ts(arima.sim(
+    list(ar=ar,ma=ma),
+    n=length(nas_cycles),
+    sd=sigma),start=time[1],frequency=12)+xreg.coef*cru_cycles
+  mod=arima(X_j,order=c(2,0,2),xreg=cru_cycles,include.mean = FALSE)
+  theta[j,]=coef(mod)
+  sgm[j]=var(mod$residuals)
+}
+sqrt(diag(var(theta)))
+```
+    
+We would use $\hat\theta_{1:N}$ to compute the confidence interval and make comparison with the confidence interval computed from Fisher Information.    
+
+```{r}
+Bootstrap=t(apply(theta,2,quantile,c(0.025,0.975)))
+Bootstrap
+```
+```{r}
+FisherInformation= cbind(mod2$coef-1.96*sqrt(diag(mod2$var.coef)),mod2$coef+1.96*sqrt(diag(mod2$var.coef)))
+colnames(FisherInformation)=c("2.5%","97.5%")
+FisherInformation
+```
+     
+According to the results above, we would know that the 95% confidence interval computed by Bootstrap simulation are consistant with the 95% confidence interval computed by Fisher Information. Therefore, we could conclude that the results from Fisher Information are trustworthy. Our model may capture the rules or patterns of cycle components of NASDAQ Index and Crude Oil Price during the time window from Jan 2008 to Jan 2018.    
+    
+    
+## 5 Further Discussion     
+### 5.1 Fitting the Model with Data from Different Time Window     
+We would use the model discussed above to fit the data from Jan 2001 to Jan 2007.    
+
+```{r}
+data=read.csv("datatest.csv", header = T)
+data$date = as.Date(data$date)
+date=data$date
+Nasdaq.test=data$NASDAQ
+Crudeoil.test=data$CrudeOil
+
+Year=as.numeric(format(date,format="%Y"))
+Month=as.numeric(format(date,format="%m"))
+t=Year+(Month-1)/12
+nas_low=ts(loess(Nasdaq.test~t,span=0.5)$fitted,start=t[1],frequency=12)
+nas_high=ts(Nasdaq.test-loess(Nasdaq.test~t,span=0.1)$fitted,start=t[1],frequency=12)
+nas_cycles.test=ts(Nasdaq.test-nas_low-nas_high,start=t[1],frequency=12)
+ts.nas.test=ts.union(Nasdaq.test,nas_low,nas_high,nas_cycles.test)
+colnames(ts.nas.test)=c("Index","trend","noise","cycles")
+
+cru_low=ts(loess(Crudeoil.test~t,span=0.5)$fitted,start=t[1],frequency=12)
+cru_high=ts(Crudeoil.test-loess(Crudeoil.test~t,span=0.1)$fitted,start=t[1],frequency=12)
+cru_cycles.test=ts(Crudeoil.test-cru_low-cru_high,start=t[1],frequency=12)
+ts.cru.test=ts.union(Crudeoil.test,cru_low,cru_high,cru_cycles.test)
+colnames(ts.cru.test)=c("Index","trend","noise","cycles")
+par(mar=c(8, 7, 7, 8))
+plot(t,nas_cycles.test,type="l",xlab="",ylab="NASDAQ Index",
+     col="red",col.lab="red",main="Cycle components of NASDAQ Index and Crude Oil Price")
+par(new=TRUE)
+plot(t,cru_cycles.test,type="l",col="blue",xlab="",ylab="",axes=FALSE)
+axis(side=4,col="blue")
+mtext("Crude Oil Price", col = "blue", side = 4, line = 4)
+```
+    
+```{r}
+modtest1=arima(nas_cycles.test,xreg=cru_cycles.test,order=c(2,0,2),include.mean = FALSE)
+modtest1
+```
+    
+According to the the results above, we could find that the coefficients of ARMA(2,2) are significant. We would check the roots of $\phi(x)$ and $\psi(x)$ to find whether the model is causal and invertible.    
+    
+```{r}
+abs(polyroot(c(1,-modtest1$coef[1:2])))
+abs(polyroot(c(1,modtest1$coef[3:4])))
+```
+
+According to the the results above, we would find that the model is causal and invertible since the roots of $\phi(x)$ and $\psi(x)$ are outside the unit cicle.    
+We would check the residuals to make sure whether the Gaussian White Noise assumption should be rejected.   
+
+```{r}
+acf(modtest1$residuals, main="ACF of Residuals")
+```
+
+According to the ACF plot, using our model to fit the data from 2001 to 2007 may not be a good choice. The Gaussian White Noise assumption is violated。 We need to use more complicated model other than ARMA(2,2) errors model to analyze this time series from 2001 to 2007.    
+We could find some evidence to explain why our model could not fit the time window 2001 and 2007.    
+
+* During the time period of the beginning of 2007 to the end of 2007, the Crude Oil Price increased sharpely, while the NASDAQ Index severely decreased. This huge gap would need more parameters to fit and represent, which may cause our model fail to have goodness of fit. We all know that during that time, Subprime Mortgage Crisis outbroke in the United States, spread quite fast, and triggerd a Financial Crisis to the Global Financial Market.    
+* Compared the data from 2001 to 2007 and 2008 to 2018, we would find that the fluctuations of the two datasets are more huge in the former period than the later period. The cycle components of the two datasets may not match each every well as we could find in the Plot of Cycle Components. Our mode is based on a relatively less fluctuations time series. Therefore, it is reasonable that our model may not have good fit to the datasets with more uncertainty. We should be aware that any model would be significant in specific time window and could be insignificant or even not be able to interpret anything in other time interval.    
+    
+    
+### 5.2 Other Factors    
+We have mentioned in the data overview part, that the Price of Crude Oil decreased sharpely during the time period from 2014 to 2015. However, the NASDAQ Index still increased with time. This dismatch of the two datasets seems not strongly influence our analysis, we should consider some other factors that may have some impacts when we try to figure out the relationship between some stocks' index and commodity futures.    
+
+* The increasing rate of global economy would influent the investors and participants' expectation of global finance. It could be a long term effect, which would have more impact on trend component than the cycle components. Hence, if we want to focus on cycle components as what we have done in this project, this factor would not have strong influence just as the extreme decreaing of Crude Oil Price happened around 2014. Otherwise, we need to consider this impact, and use some parameters to represnt it.    
+* Some specific events should be considered as well. For instance, the Subprime Mortgage Crisis in early 2008 had huge impacted on the global financial markets. If the time window we analyzed includes this special time spot, it may be hard for us to find a fitted model satisfying our objectives. This is the reason why in our project we using the data after this time period.    
+
+    
+## 6 Conclusion    
+According to all the analysis above, we could have the following conclusions,    
+
+* A model for the cycle component of NASDAQ Index and Crude Oil Price has been founded in the following,
+$(1-1.73B+0.81B^2)(I_n^c-6.95 P_n^c)=(1+0.38B+0.34B^2)\epsilon_n$    
+where $\epsilon_n$ is the Gaussian White Noise    
+* Our model is fitted for cycle components, which does not take low frequency treated as trend and high frequency component treated as noise into consideration. We only focus on the mid-range frequency treated as cycle, and try to intepret the rules of the similirities of the two datasets' patterns. We choose the ARMA(2,2) model to fit the errors, where the Gaussian White Noise assumption could be accepted. Our model would capture the feasures and associations between the two datasets during the time window from 2008 to 2018.     
+* Our model may not be a good choice to fit the data from 2001 to 2007. As we have mentioned before, there were many other factors we need to consider, which would improve the goodness of fit.
+    
+    
+## 7 Reference    
+* Class notes of Stats 531 (Winter 2018) ‘Analysis of Time Series’, instructor: Edward L. Ionides (http://ionides.github.io/531w16/)    
+* Investopedia(https://www.investopedia.com/terms/n/nasdaqcompositeindex.asp.)    
+* Investopedia(https://www.investopedia.com/terms/c/crude-oil.asp)
+
+
+

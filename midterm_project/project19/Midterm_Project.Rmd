@@ -1,0 +1,186 @@
+---
+title: "Time Series Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(plyr)
+library(zoo)
+library(forecast)
+library(stats)
+library(knitr)
+knitr::opts_chunk$set(echo=F,warning=F,message=F)
+```
+  
+
+#Introduction  
+  
+<font size=3>
+This data is obtained from DataMarket, and it is about monthly reported number of chickenpox in New York form 1931 to 1972.  The result below is part of the data set.  
+  
+```{r}
+data=read.csv(file='monthly-reported-number-of-chick.csv',stringsAsFactors = FALSE)
+data=data[-c(499,500),]
+date=as.Date(as.yearmon(data$Month))
+chickenpox=data%>%dplyr::rename(count=Monthly.reported.number.of.chickenpox..New.York.city..1931.1972)%>%dplyr::select(-Month)%>%cbind(date)%>%dplyr::select(date,count)%>%mutate(total=as.numeric(count))%>%dplyr::select(-count)
+head(chickenpox)
+```
+  
+By exploring and analyzing this data, I want to find out if this disease-chickenpox is related to seasonality, which means if in some months it is easier to infect this disease, or instead of monthly related, the cycle is actually yearly related.  
+  
+Besides, I am also interested in finding out a proper time series model for this data to try to do prediction, and the model should follow the assumptions and be not too complicated.  
+  
+#Data Overview  
+  
+From the plot of original data, we could notice that there is no obvious increasing or decreasing trend. Around in 1949, the reported number is the largest, and after that, the number is decreasing. Therefore, I think only after that year, there is relatively obvious decreasing trend.  
+
+However,the variance non-stationarity is very apparent, since the amplitude is smaller and smaller about after 1949.  
+  
+```{r}
+plot(chickenpox,type='l')
+```
+  
+Then I also check the acf, by the result we could notice the seasonarity is obvious. We could notice that at lag12, it starts to repeat the previous circle.  
+  
+```{r}
+acf(chickenpox[,2])
+```
+  
+To demonstrate the assumption of seasonality, I also generate the graphs of original data in 1931, 1940, 1950 and 1960, respectively. By the results below, we could find out the trend is similar in each year. Their reported number all reach their peaks from March to May, and the lowest points are all around on September.In addition, these four plots also suggest that the period for a cycle might be a year. For this part, I still neeed to do more analysis to find out.  
+  
+```{r,echo=F}
+par(mfrow=c(2,2))
+plot(chickenpox[1:12,],type='l')+title(main='Year 1931')
+plot(chickenpox[109:120,],type='l')+title(main='Year 1940')
+plot(chickenpox[229:240,],type='l')+title(main='Year 1950')
+plot(chickenpox[349:360,],type='l')+title(main='Year 1960')
+```  
+  
+To get more details, I use the general mathematical model for the decomposition, which is $X_n=f(S_n,T_n,\epsilon_n)$, where $S_n$ is the seasonal component, $T_n$ is the trend effect and $\epsilon_n$ is the random error component. And I choose additive model for the function f, which is $$X_n=S_n+T_n+\epsilon_n$$.  
+  
+By the trend plot, we could notice that there is an obvious decreasing trend, which is much more apparent than observing the original data plot. By the seasonal plot, we could also notice the repeat of cycles, which suggests the seasonality in this data. By the random plot, we could notice the variance is non-stationary, since the variation between each amplitude is large.  
+  
+```{r}
+chickenpox_ts=ts(chickenpox[,2],frequency=80)
+chickenpox_de=decompose(chickenpox_ts)
+plot(chickenpox_de)
+```
+  
+Therefore, so  for, for this data, I need to solve several probems below:  
+1. variance non-stationarity  
+2. seasonality  
+  
+#Stationality  
+  
+Making the data stationary is important, since this is one of the assumptions of time series model. To make this data stationary, I take the log transformation, and the plots below is the result after transformation.  
+  
+By the first plot, we could find out the variance is more stationary comparing to the result before transformation. And the second plot is thr result of differenced data after log transformation. By comparing two graphs below, we could notice that the second graph is more stationary, since in the first plot, there is a little decreasing trend after index 300.  
+  
+```{r}
+plot(log(chickenpox[,2]),type='l')+title(main='After Log Transformation')
+plot(diff(log(chickenpox[,2])),type='l')+title(main='After Log Transformation and Differencing')
+```
+  
+#Seasonality  
+  
+In this part, I try to find out the period for seasonality.To know the period claerly, I check the spectral density and used the method of ar built in R and find out the dominant frequency is about at 0.08. Then we could know that the period is around 12 months, since $$period=\frac{1}{frequency}$$, which means this data has a cycle of thriving and recession every 12 months.  
+  
+Besides, we could also notice that at around frequency 0.17 and 0.33, there are some bumps, and these frequencies correspond to the period of 6 months and 3 months, respectively. This result suggests that this data not only has a strong annual cycle, but also has half-year cycle and quartly cycle.  
+  
+```{r}
+spec_ar=spectrum(chickenpox[,2],method='ar')
+abline(v=spec_ar$freq[which.max(spec_ar$spec)], lty="dotted")
+1/spec_ar$freq[which.max(spec_ar$spec)]
+```
+  
+So far, I have decided to take log transformation, use the difference operator and add the seasonal term. To combine these together, I take the log transformation first, and use the seasonal difference operator,where D=12. This decision seems reasonable for me, since this data is monthly data, which implies $B^{12}$ is a good choice.  
+
+Therefore my data now is $$Y_n=(1-B^{12})Z_n=(1-B^{12})logX_n$$ 
+ 
+#Fit SARIMA Model   
+  
+In this part, I try to find out the appropriate ARMA(p,q) model by using Akaike's information criterion, AIC, wich is given by $$AIC=-2\times l(\theta^\star)+2D$$ 
+  
+From the AIC table below, we could find out the one has the lowest AIC is ARMA(4,4). However, we could not trust this result completely, since it tends to be overfitting. Besides, by adding a parameter, the AIC value should not increase over 2 units. If we check ARMA(2,3) and ARMA(3,3),, we would find out the value goes from 188.62 to 193.46, which violates the rule mentioned above.  
+  
+Since the ARMA(4,4) model would be too complicated, I decided to fit ARMA(3,2) and ARMA(3,4), which have the fourth and the fifth lowest AIC values, respectively and then compare their results.  
+  
+```{r}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q),seasonal=list(order=c(0,1,0),period=12),method='ML')$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aic_table_result=aic_table(log(chickenpox[,2]),4,5)
+kable(aic_table_result,digits=2)
+```
+  
+By compaing the results below, we could find out all three models fit well. The coefficients of all parameters are all between 1 and -1, therefore there is basically no concern of non-invertibility or non-causality. However, in order to make model less complicated, I think choose the first one, ARMA(3,2), would be better.   
+  
+```{r}
+arma32=arima(log(chickenpox[,2]),order=c(3,0,2),seasonal=list(order=c(0,1,0),period=12))
+arma34=arima(log(chickenpox[,2]),order=c(3,0,4),seasonal=list(order=c(0,1,0),period=12))
+arma32
+arma34
+```
+  
+Then I check the acf, and by the result below, we could find out there is still an obvious spike at lag 12, therfore I fit $SARIMA(3,0,2)\times(1,1,0)_{12}$ and $SARIMA(3,0,2)\times(0,1,1)_{12}$ to see if there is anything different.  
+  
+```{r}
+acf(resid(arma32))
+```
+  
+After fitting $SARIMA(3,0,2)\times(1,1,0)_{12}$, we could find out the apparent spike at lag 12 disappears, however, there is another obvious spike at lag 24. And the result of acf of fitting $SARIMA(3,0,2)\times(0,1,1)_{12}$ is in the right plot. In this plot, we could notice there is no apparent spike anymore. Although there are still some acf values across the 95% confidence interval, such as the acfs at lag 7, lag 12, lag 23 and lag 26, I think since they do not exceed too much, there should be no significant evidence to reject the null hypothesis: $$H_0:\rho_1=\rho_2=......=\rho_k=0$$  
+  
+```{r}
+sarima10=arima(log(chickenpox[,2]),order=c(3,0,2),seasonal=list(order=c(1,1,0),period=12),method='ML')
+sarima01=arima(log(chickenpox[,2]),order=c(3,0,2),seasonal=list(order=c(0,1,1),period=12),method='ML')
+par(mfrow=c(1,2)) 
+acf(resid(sarima10))
+acf(resid(sarima01))
+```
+  
+Then I also check the roots, and the table below is the result. By the table, we could be sure that this model is causal since the roots of $\phi(B)=0$ lie outside of the unite circle, and invertibel since the roots of $\theta(B)=0$ lie outside of the unite circle.  
+  
+```{r}
+AR_roots=polyroot(c(1,-coef(sarima01)[c("ar1","ar2","ar3")]))
+MA_roots=polyroot(c(1,-coef(sarima01)[c("ma1","ma2")]))
+roots=as.matrix(cbind(AR_roots,MA_roots))
+roots[6] <- 0
+kable(roots)
+sarima01
+```
+  
+#Diagnostics  
+  
+Then I also check the residuals by generating residual plot and Q-Q plot. By the residual plot, we could know that the mean and variance are constant and from the second plot, we could tell that the residual is roughly normal distribution, which is also demonstrated by the Q-Q plot. Although the Q-Q plot shows this distribution might have aheavy tail, I think this won't cause serious problems since it seems to be a lightly heavy tail.  
+  
+```{r}
+par(mfrow=c(2,2),oma=c(0,0,0,0))
+plot(sarima01$residuals, ylab="Residuals",type='p')
+abline(h=0)
+hist(sarima01$residuals,xlab='Residual',main='')
+qqnorm(sarima01$residuals)
+qqline(sarima01$residuals)
+```
+  
+#Conclusion  
+  
+From the analysis above, we could now the cycle of this data is 12 months, and the fitted model is $SARIMA(3,0,2)\times(0,1,1)_{12}$. In more detailed form, it is $$(1-0.1B+0.49B^2-0.7B^3)(1-B^{12})Z_n=(1+0.61B+0.99B^2)(1-0.78B^{12})\epsilon_n$$, where $\epsilon_n$ is a white noise process.    
+  
+However, since this data is only collected until 1972, we can not be sure that this fitted model is really good at predicting. Because of the progress of medical knowledge and technology, it is possible that the reported number of chckenpox in recent years is much lower than this data, and it is worth to explore more to find out if this model is still suitable fo the future data.  
+  
+#Sources  
+  
++ Notes 
++ Time Series Analysis (by William W.S. Wei) 
++ Introduction to Time Series and Forecasting (by Douglas C. Montgomery, Cheryl L. Jennings and Murat Kulahci)  
++ https://datamarket.com/data/set/22v7/monthly-reported-number-of-chickenpox-new-york-city-1931-1972#!ds=22v7&display=line  
+<\font>

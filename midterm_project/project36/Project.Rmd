@@ -1,0 +1,140 @@
+**<big>Mid term project: Time Series Analysis of Sunlight in Michigan</big>**
+**<big>1. Introduction</big>**
+The dataset analyzed in this project is the subset from Dataset: North America Land Data Assimilation System (NLDAS) Daily Sunlight (insolation) for years 1979-2011 on CDC WONDER availabe from https://wonder.cdc.gov/nasa-insolar.html. The original data set recorded the daily sunlight (insolation) reported in kilojoules per square meter (KJ/m^2) during the years 1979-2011 in NLDAS. The sunlight may have healty influence on human in many aspects, e.g., vitamin D in human and potential mental disorder [1-2]. The motivation of this project is to study the cycles and trend of the daily sunlight data and fit a model to predict the sunlight in the future. Since the average daily sunlight is affected by the latitude [3], the study was only focused on the data in the state of Michigan.In this study, the time series model (SARMA) was fitted and evaluated based on the data during years 1979-2006.The developped model was able to capture the pattern of the observed sunlight time plot and to be used to predict the sunlight data during years 2007-2011.
+
+**<big>2. Data exploration</big>**
+The dataset contained the daily sunlight numbers during the year 1979-2006. The time series plot of daily sunlight is shown below. Apparently, the plot follows a periodic pattern.
+```{r}
+dat=read.table("sunlight.txt",header=F, sep = '\t')
+dat = subset(dat, select = c(3:4))
+dat=na.omit(dat)
+colnames(dat)=c("date","sunlight")
+dat$date=as.Date(dat$date)
+summary(dat)
+plot(dat$date,dat$sunlight, xlim=c(as.Date("1979-01-01"), as.Date("2006-12-31")),type="l",main = "Time Plot of daily sunlight", xlab = "Year",ylab="Sunlight (KJ/m2)")
+
+```
+
+To reduce the complexity of the data, I converted the daily sunlight data to average monthly sunlight data.The middle day (15th) of each month was used to indicate the time point and used as the X-axis in the figures below. The dataset contained 336 records.
+
+```{r}
+dat1=dat
+dat1$year=as.numeric(format(dat1$date,format="%Y"))
+dat1$month=as.numeric(format(dat1$date,format="%m"))
+dat1=aggregate(dat1[,2],list(dat1[,3],dat1[,4]),mean)
+colnames(dat1)=c("year","month","sun")
+dat1=dat1[order(dat1$year,dat1$month),]
+dat1$t=dat1$year+((dat1$month-1)*30+15)/365
+dat1=na.omit(dat1)
+plot(dat1$sun~dat1$t,type="l", main = "Time Plot of monthly sunlight", xlab = "Year",ylab="Sunlight (KJ/m2)")
+```
+
+As we can see from the plot above, there exists seasonality. Based on the unsmoothed and smoothed periodogram, the period was found to be 12 months, which matches the common sense and visual observation. From the ACF, we can see that there was an oscillatory behavior characteristic of period ~ 11 and the residuals are outside of the dash line indicating the violation of independence.
+```{r}
+s1=spectrum(dat1$sun, method='ar',main="Unsmoothed periodogram")
+fre1=s1$freq[which.max(s1$spec)]
+1/fre1
+
+s2=spectrum(dat1$sun,spans=c(3,5,3), main="Smoothed periodogram")
+fre2=s2$freq[which.max(s2$spec)]
+1/fre2
+
+acf(dat1$sun, main="ACF of sunlight")
+sun1=dat1$sun
+```
+
+
+<p> Decomposition
+The data was then decomposed as trend and cycles by loess. As we can see from the figure below, the seasonality was obvious and it seems that the data is not stationary time series. So the differenced data was obtained with lag 12.
+
+```{r}
+st_low <- ts(loess(dat1$sun~dat1$t,span=0.5)$fitted)
+st_hi <- ts(dat1$sun - loess(dat1$sun~dat1$t,span=0.1)$fitted)
+st_cycles <- dat1$sun - st_hi - st_low
+plot(ts.union(dat1$sun, st_low,st_hi,st_cycles),
+     main="Decomposition of sunlight as trend and cycles")
+```
+```{r}
+sun2=diff(dat1$sun,lag=12)
+plot(sun2, type="l",ylab="Sunlight (KJ/m2)",main="Time plot of differenced sunlight")
+acf(sun2, main="ACF of differenced monthly sunlight")
+```
+From the time plot, we can see the mean of sunlight aross the time points became more constant around zero. However, there were still values outside of the dash line in the ACF plot. Then SARMA model was fitted to capture the seasonality.
+
+**<big>3. Fitting a model </big>**
+<p> Fitting a SARMA model
+First, the ARMA model was fitted for the differenced data and the AIC model selection criteria was used to choose the optimal model. From the AIC model, we can see the AR4MA4 gave us the lowest AIC value. Due to the complexity of that model, I also considered some other models with slightly higher AIC values but fewer parameters, e.g., AR2MA1. However, only the AR4MA4 model gave us the best linearity in the QQ plot. So AR4MA4 was selected.
+
+```{r}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aic_table1 <- aic_table(sun2,4,5)
+
+require(knitr)
+kable(aic_table1,digits=2)
+
+```
+
+Then SARMA (4,1,4)x(1,0,0)_12 was fitted to the data.
+```{r}
+sarma=arima(sun1,order=c(4,1,4),seasonal=list(order=c(1,0,0),period=12))
+sarma
+
+```
+
+
+<p>Diagnostics of the model SARMA (p,d,q)x(P,D,Q)
+The QQ-plot suggests linearity for most of the data points, indicating the residuals followed the assumption. It showed some devations around the tails but this cannot be improved by changing the numbers of (P,D,Q) in the SARMA model.
+```{r}
+qqnorm(sarma$residuals)
+qqline(sarma$residuals)
+```
+<p> Predictions by the model (forecasting)
+The SARMA model was used to fit the original data (1979-2006) and also used to predict the test data (2007-2011). In the figure of fitting, the black curve was the actual data and the blue one was the fitted data by the model. The fitted model captured the major characteristics of the data except for some underestimation close to the later time period. But if we look at the predictions of the test data (blue line) compared to the actual test data (black line), the 95% CI (blue dashed lines) captured the actual data points, indicating good predictions.
+
+```{r}
+fit=predict(sarma,n.ahead=336,xreg=dat1$t)
+plot(dat1$t,dat1$sun,type='l',xlab="year", ylab="Sunlight (KJ/m2)", main="Fitting of sunlight")
+lines(dat1$t,fit$pred,type="l",col='blue')
+
+dat3=read.table("sunlight2.txt",header=F, sep = '\t')
+dat3 = subset(dat3, select = c(3:4))
+dat3=na.omit(dat3)
+colnames(dat3)=c("date","sunlight")
+dat3$date=as.Date(dat3$date)
+
+dat4=dat3
+dat4$year=as.numeric(format(dat3$date,format="%Y"))
+dat4$month=as.numeric(format(dat3$date,format="%m"))
+dat4=aggregate(dat4[,2],list(dat4[,3],dat4[,4]),mean)
+colnames(dat4)=c("year","month","sun")
+dat4=dat4[order(dat4$year,dat4$month),]
+dat4$t=dat4$year+((dat4$month-1)*30+15)/365
+dat4=na.omit(dat4)
+
+predict=predict(sarma,n.ahead=60,xreg=dat4$t)
+plot(dat4$t,dat4$sun,type='l',xlab="year", ylab="Sunlight (KJ/m2)", main="Predictions of sunlight")
+lines(dat4$t,predict$pred,type="l",col='blue')
+lines(dat4$t,predict$pred-1.96*predict$se,col='blue',lty=2)
+lines(dat4$t,predict$pred+1.96*predict$se,col='blue',lty=2)
+
+```
+
+**<big>4. Conclusion</big>**
+Generally, the SARMA model fitted the data well with some deviations in the last several peaks and QQ plot. It also performed well in the predictions of test data and the 95% CI covered almost all of the actual data points. 
+
+**<big>5. References</big>**
+[1] https://press.velux.com/daylight-has-a-healthy-influence-on-humans/
+[2] Vyssoki, Benjamin, et al. "Effects of sunshine on suicide rates." Comprehensive psychiatry 53.5 (2012): 535-539.
+[3] http://wxguys.ssec.wisc.edu/2013/10/28/what-determines-the-amount-of-daylight/
+[4] Data source: North America Land Data Assimilation System (NLDAS) Daily Sunlight (insolation) for years 1979-2011 on CDC WONDER availabe from https://wonder.cdc.gov/nasa-insolar.html
+[5] Reference of R code:https://ionides.github.io/531w18/#class-notes
+[6] Reference of R code (prediction part):https://ionides.github.io/531w16/midterm_project/project18/stats531_midterm_project.html

@@ -1,0 +1,226 @@
+---
+title: "midterm project"
+date: "2018/2/28"
+output:
+  html_document: default
+  pdf_document: default
+---
+#1.Introduction
+We are going to look at monthly data relating to U.S air passenger miles from Jan 1960 – Dec 1977. The data is freely available [here](https://datamarket.com/data/set/22sj/monthly-us-air-passenger-miles-january-1960-through-december-1977-n216#!ds=22sj&display=line). 
+  
+General speaking, there are several goals in this project:
+  
+(1) Try to analyze the dataset on frequency domain. 
+  
+(2) Explore data with the goal of fitting a decent model to it.
+  
+(3) Forecast the future data of U.S air passenger.
+  
+By analyzing data of air passenger miles, the airline company can get useful information about the yearly fluctuation of air passenger miles and the trend of air passenger miles during 1960-1977, which help us manage transportation business and develop tourism in the country. 
+
+  
+#2.Data Exploration
+##2.1 Data review
+```{r chunk_without_code, echo = FALSE }
+dat <- read.table(file="airpa.csv",sep=";",header=TRUE)
+head(dat)
+dat$Month <- strptime(dat$Month,"%Y/%m/%d")
+dat$year <- as.numeric(format(dat$Month, format="%Y"))
+dat$month <- as.numeric(format(dat$Month, format="%m"))
+```
+
+* There are two variables in this dataset (Month and air_passenger) and 216 observations. Since it is a monthly dataset, we need to manipulate the 'Month' variable in order to get a 'time' variable for time series analysis.  
+* In the next step, we'll plot air_passenger vs time and look at our data briefly.
+  
+```{r without_code, echo = FALSE}
+time <- dat$year + dat$month/12
+par(mfrow=c(2,1),mai=c(0.5,0.5,0.5,0.5))
+plot(time,dat$air_passenger,col="Red",type="l",main="U.S air passenger miles time series",ylab="air passenger miles",lwd=1.5)
+spectrum(dat$air_passenger,spans=c(3,5,3),main="smoothed periodogram air passenger miles time series",col="blue",lwd=1.5)
+```
+
+* Looking at these two plots, we can see definite increasing trends in air passenger miles. Also, we see an increase in variance. From the Periodogram, there is a strong evidence for yearly cycle.
+  
+##2.2 A Study on Cycles with Band Pass Filter
+For a times series dataset, high frequency variation is generally considered as “noise” and low frequency variation can be regarded as trend. The mid-range frequency variation is believed to correspond to the business cycle. In order for extracting the business cycle, we can process the raw data by removing the high frequency and low frequency variation.
+```{r}
+miles <-dat$air_passenger
+alow <- ts(loess(miles~time,span=0.5)$fitted)
+ahi <- ts(dat$air_passenger - loess(dat$air_passenger~time,span=0.07)$fitted)
+cycles <- dat$air_passenger - alow - ahi
+plot(ts.union(miles, alow,ahi,cycles),
+     main="Decomposition of monthly air passenger miles as trend + noise + cycles",
+     col="blue",lwd=1.5)
+```
+
+* The plot above also shows that, we have an increasing long term trend. In the high frequency domain, we extract the seasonal pattern successfully, which is consistent with Periodogram plot above. Also, we find out some regular cycles in mid-frequency domain, which may be refered as business cycle.
+* We leave out the business cycle for the moment and focus on remedying the increasing variance, detrending the data and examing the seasonality.
+  
+#3.Detrending the data
+##3.1 remedy increasing variance 
+Before detrending the data, we need to log the variable "air_passenger" in order to remedy increasing variance.
+```{r nocode, echo =FALSE}
+airlog <- log(dat$air_passenger)
+plot(time,airlog,col="Red",type="l",main="Room nights time series",lwd=1.5)
+```
+
+* After log the variable, the plot looks better with regard to increasing variance. Next step is detrending the data. 
+
+##3.2 detrending the data
+From above, we may consider a signal plus ARMA noise model to fit the data with an increasing trend:  
+  
+$X_n = \beta_0 + \beta_1 t_n + \beta_2 (t_n)^2 + \eta_n$ 
+  
+where {$\eta_n$} is a stationary, mean zero stochastic process.
+
+But we need to examine whether this model is necessary and determine the structure of the errors. 
+we may follow next steps:
+1. Fit an ordinary regression and store the residuals
+2. Check the time series structure of the residuals
+3. If the residuals have ARMA structure, estimate the model and examine if it is appropriate.
+
+```{r ncode, echo =FALSE}
+lim_fit <- lm(airlog~time+I(time^2))
+summary(lim_fit)
+residuals1 <-residuals(lim_fit)
+acf(residuals1,main="ACF of residuals of ordinary regression fit")
+```
+
+* When we fit the ordinary regression model, the coefficients of time and squared time are significant which means that there is a trend in air passenger miles. After checking the ACF of residuals, we can see that there is a strong periodic behavior every 12 months. Also, residuals have an ARMA structure since its ACF values seem to taper to 0. Thus, we need to check several models (e.g. AR(1),ARMA(1,0,1)) for residuals later.
+  
+Let's plot residuals vs time and get its periodogram.
+```{r xcode, echo=FALSE}
+par(mfrow=c(3,1),mai=c(0.5,0.8,0.5,0.5))
+plot(time,residuals1,col="Red",type="l",main="residuals time series",lwd=1.5)
+diff1 = diff(residuals1,1)
+plot(diff1,col="blue",type="l",main="adjusted residuals time series",lwd=1.5)
+spectrum(residuals1,spans=c(3,5,3),main="smoothed periodogram residuals time series",lwd=1.5)
+```
+```{r hia ,echo=FALSE}
+spectrum(residuals1,spans=c(3,5,3),main="smoothed periodogram residuals time series",lwd=1.5)
+```
+
+* After differencing of the residuals, the plot of residuals looks more stationary and it seems like that we have already removed the main increasing trend in the original dataset. From the Periodogram, there is a strong evidence for yearly cycle. Thus, we need to fit a model for residuals with seasonality.
+  
+#4.Fitting a SARIMA model
+##4.1 Fitting ARMA parts
+In this step, we want to use AIC to help us choose the number of AR and MA parameters. Since we already know that there is a strong yearly cycle and differencing data is more stationary, we set some parameter values firstly. 
+```{r}
+Table_For_ARMA_AIC <- function(data,P,Q){
+table <- matrix(NA,(P+1),(Q+1))
+for(p in 0:P) {
+for(q in 0:Q) {
+table[p+1,q+1] <- arima(data,order=c(p,1,q),seasonal=list(order=c(1,0,0),period=12))$aic
+}
+}
+dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+table
+}
+Retail_bic_table <- Table_For_ARMA_AIC(residuals1,3,3)
+knitr::kable(Retail_bic_table,digits=2,caption="AIC Values of ARIMA models for Model Errors with
+No Seasonal Component")
+```
+
+* The above table indicates that we would prefer to use (1,0,1) as the ARMA parameters with the lowest AIC value -512.07. Also, it is a small model that we would like to choose.
+
+##4.2 Fitting seasonal components
+In this step, we want to use AIC to help us choose the number of AR and MA parameters of seasonal components. From above, we would prefer to set ARIMA(1,1,1) firstly.
+```{r}
+Table_For_Season_AIC <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(1,1,1),seasonal=list(order=c(p,0,q),period=12))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+Retail_aic_table <- Table_For_Season_AIC(residuals1,3,3)
+knitr::kable(Retail_aic_table,digits=2,caption="AIC Values of SARIMA models for Model Errors with
+Seasonal Component")
+```
+
+* From the AIC table, we would prefer to use (1,0,1) as the ARMA parameters for seasonal component with the lowest AIC value -574.05. Compared with other possible sets of ARIMA parameters for non-seasonal component, the AIC value for seasonal component is quite smaller based on ARIMA(1,1,1) set. 
+   
+#5.Diagnosis of SARIMA(1,1,1)(1,0,1) model
+Combining integration of ARMA models with seasonality, we can write a general
+$SARIMA(1,1,1)×(1,0,1)_{12}$ model for nonstationary monthly data, given by
+  
+$(1-\phi_1 B)(1-\Phi_1B^{12})((1-B)Y_n-\mu)=(1+\psi_1B)(1+\Psi_1B^{12})\epsilon_n$
+  
+where {$\epsilon_n$} is a white noise process, the intercept μ is the mean of the differenced process {$(1-B)Y_n$}.
+    
+##5.1 Residuals analysis of model
+```{r,echo=FALSE}
+Result_1 <- arima(residuals1,order=c(1,1,1),seasonal=list(order=c(1,0,1),period=12))
+acf(residuals(Result_1),main="ACF of residuals of SARIMA model fit",lwd=1.5)
+Result_1
+```
+
+* The residuals seems like white noise which indicates that the model we fit has no big problem.
+* From likelihood ratio test:
+  
+$X= 2\{\mathit{l}(\theta^*)-\mathit{l}_d ^{profile}(\theta_d)\} \sim \chi_1$
+  
+we can know that these parameters are significant, which indicate that our model is a great model.
+  
+```{r}
+result1<-arima(residuals1,order=c(1,1,1),seasonal=list(order=c(1,0,1),period=12))
+par(mfrow=c(2,1),mai=c(0.4,0.4,0.5,0.5))
+qqnorm(result1$residuals)
+qqline(result1$residuals)
+hist(result1$residuals)
+```
+
+*  The Q-Q plot and histogram of residuals of the model shows that the residuals are little bit heavily tailed.
+  
+##5.2 Plot the original data and fitted value visually
+```{r}
+library(forecast)
+plot(ts(fitted(arima(residuals1,order=c(1,1,1),seasonal=list(order=c(1,0,1),period=12), method = "ML")), start=1959, frequency = 18), ylab= "Value", col = "deeppink", lwd=1.5,main = "the fitting value(pink) v.s. the original data (blue)")
+par(new = T)
+plot(residuals1,col="blue",type="l",axes=FALSE,xlab="",ylab="")
+```
+
+* By comparing these two lines, we can say that the model we used fit the data well. 
+  
+##5.3 Predictive skills of model
+Now we may want to evaluate the predictive skills of this model. One of ways to do that is spliting the data into two parts and then applying our model to predict the second part of the data.
+```{r}
+library(forecast)
+testdata <- residuals1[1:190]
+testdata1 = arima(testdata,order=c(1,1,1),seasonal=list(order=c(1,0,1),period=12))
+testdata2 <-forecast(testdata1,h=26,level=c(99.5))
+plot(testdata2, main = "Testing about the prediction of model")
+lines(residuals1, type= "l", col = "red")
+
+```
+
+* From the plot above, we can see that the predictive values(blue line) match the original data well, which means that the predictive skill of our model is not bad. We can use it to predict future data.
+
+#6.Conclusion
+* Air passenger miles are highly fluctuated time series. It is affected by lots of factors(e.g.economy,weather,tourism). In order to get a stationary model, we need to eliminate the long-term trend and seasonality. We try several methods,loess filter, log transformation and difference and get a well-performed model.
+* From above analysis of time series data, we fit a proper model $SARIMA(1,1,1)×(1,0,1)_{12}$ with significant coefficients and good predictive skills.
+* About Q-Q plot, it is still hard to explain why the residual of the model is long-tail. This is an aspect that we can focus on in the future.
+* Regardless of the increasing trend of air passenger miles over years and seanonality, we can see cycles in mid-frequency domain, which may be referred as business cycle. It certainly would be worth investigating this in the future if more data are available and aggregated.
+  
+#7.Reference
+  
+1.[PennState online lessons](https://onlinecourses.science.psu.edu/stat510/node/72)
+  
+2.[Ionides, E. (n.d.).Stats 531 (Winter 2018) ‘Analysis of Time Series’](https://ionides.github.io/531w18/)
+  
+3.[function of forecast package](https://www.cnblogs.com/weibaar/p/3995681.html)
+
+
+
+
+
+
+
+
+
+
+
+

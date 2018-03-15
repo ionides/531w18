@@ -1,0 +1,254 @@
+---
+title: 'STATS531: Midterm project'
+output:
+  html_document:
+    df_print: paged
+    toc: true
+---
+
+```{r library, message=F, error=F, echo = F}
+
+require(ggplot2)
+require(plyr)
+require(dplyr)
+require(lubridate)
+require(stargazer)
+require(knitr)
+require(car)
+
+
+```
+
+#I. Introduction
+
+South Korea went through one of the most dramatic industrialization and economic development in just a few decades after the Korean war. On the other hand, it is also going through one of the most drastic changes in demographic structure in the world, which New York Times refers to as ['South Korea's Most Dangerous Enemy: Demographics'](https://www.nytimes.com/2018/02/20/magazine/south-koreas-most-dangerous-enemy-demographics.html). 
+
+Total fertility rate (TFR), defined as the average number of children that would be born per woman if all women lived to the end of their childbearing years and bore children according to a given fertility rate at each age, in South Korea was 1.05 in 2017, decreasing from 1.17 in 2016. TFR of 2.1 is needed for population replacement, that is, to maintain stable population. South Korea ranked 200 out of 200 countries in total fertility rate (World Bank), and far below OECD average TFR of 1.68. 
+
+It is important to note that low fertility rate has far-reaching consequences. At this rate, the total population would start to decrease starting in the mid 2020s. Median age of the population has more than doubled between 1975 and 2015, from 19.6 to 41.2 years old. Economy is expected to get weaker, and more burden for the young to support the elderly population. 
+
+One of the factors driving the decrease is decrease in the number of marriages. Given that Korea has lowest rate of out-of-wedlock births among 42 OECD countries (1.9%), decrease in marriage could also signal that fewer couples would have kids, contributing to TFR decrease. 
+
+
+In this project, we explore monthly fertility pattern of South Korea and explore the relationship of fertility with monthly marriage rate among the younger generation to understand the relationship and time-series pattern of the fertility data. 
+
+# II. Data
+
+For the proposed analysis, we use data retrieved from [Korean Statistical Information Service](http://kosis.kr/index/index.do). I use three sets of data on 
+
+* Birth rate
+* Marriage rate
+
+from January 2000 to November 2017. All datasets are in monthly format, corresponding to 215 months. We explore the data in the following section.
+
+```{r data setup, echo = F, cache = T}
+
+# birth and marriage
+birthmarriage <- read.csv("monthly_marriage_birth(2000-17).csv") 
+# colnames(birthmarriage) <- c("month", "Birth", "Marriage")
+birthmarriage$year = as.numeric(substr(as.character(birthmarriage$Month), 1, 4))
+birthmarriage$month = as.numeric(substr(as.character(birthmarriage$Month), 7, 8))
+birthmarriage$index = 1:215
+birthmarriage = birthmarriage %>% select(-Month)
+
+bdata = birthmarriage[ , c("index", "Birth", "year", "month")]
+mdata = birthmarriage[ , c("index", "Marriage", "year", "month")]
+
+birth = bdata$Birth
+marriage = mdata$Marriage
+rm(birthmarriage)
+
+```
+
+
+#III. Visual exploration
+We present time plot of the time series. First, we look at the main variable of interest, monthly birth rate over time. 
+
+```{r, echo = F,  fig.align = 'center', cache = T}
+
+plot(birth, type = "l", main = "Birth rate (Jan 2000 - Nov 2017)", 
+     ylab = "Monthly Birth Rate")
+
+```
+
+It is clear from the data that there is a decreasing trend, as mentioned in the introduction, decreasing from more than 60,000 births at the beginning of the observation period to less than 30,000 in the last month. There seems to be some monthly fluctuations. 
+
+```{r, echo = F,  fig.align = 'center', cache = T}
+
+# temp = spec.pgram(birth, plot = F)
+# temp[['bandwidth']] = NA
+# 
+par(mfrow= c(1, 2))
+# plot(temp, main = "Periodogram of birth")
+spectrum(birth, method = 'ar', main = "Periodogram of birth (ar method)")
+acf(birth, main = "Autocorrelation plot of birth")
+
+```
+
+Also, we look at the periodogram and ACF plot of birth series. As can be seen from the periodogram on the left, there are peaks at various frequencies, notably at around .15, .25, .35, and .45, which correspond to periods of 6 months, 4 months, 3 months, and 2 months, respectively. Consistent with peaks in the periodogram, Threre is a peak at 12 months, and somewhat higher autocorrelation at 6 months, as well as at shorter lags, at 2, 3 months. 
+
+Next, we look at the marriage rate. I would like to note that this is not only among population in their 20-30s. 
+
+```{r, echo = F, fig.align = 'center', cache = T}
+
+plot(marriage, type = "l", 
+     main = "Marriage rate (Jan 2000 - Nov 2017)", 
+     ylab = "Marriage rate")
+
+```
+
+There seems to be some decreasing pattern (quadratic shape, starting from around index 50) in the marriage pattern. Distinctively, there are systematic spikes and dips, seemingly every year. Looking at the data yearly, there is a peak usually in May and dip around September. This could be because of Korean people's shared preference over which season they prefer to get married. This suggests some type of seasonal component might be suitable for the analysis. 
+
+```{r, echo = F, fig.align = 'center', cache = T}
+
+# temp = spec.pgram(marriage, plot = F)
+# temp[['bandwidth']] = NA
+# 
+par(mfrow= c(1, 2))
+# plot(temp, main = "Periodogram of marriage")
+spectrum(marriage, method = 'ar', main = "Periodogram of marriage 
+         (ar method)")
+
+acf(marriage, main = "Autocorrelation plot of marriage")
+
+```
+
+Again, there are peaks at various frequencies. Frequency at around .15, which corresponds to 6 months pattern is strongest, followed by another peak at frequency around 0.08, which would correspond to a period of 12 months. As expected, we s e a peak at 12 months, and somewhat higher autocorrelation at 6-month lag. Moreover, there is cyclical pattern in the data, which is consistent with the time plot analysis that there would be a cyclical pattern, possibly driven by shared seasonal preferences. 
+
+
+# IV. Detrending data
+
+Now we go back to focusing on the birth time series. As mentioned and shown in the time plot of the birth series, there is a distinctive decreasing pattern, which shows cubic pattern. Hence, I fit a 3rd order polynomial to detrend the data for detrending purposes. 
+
+```{r, echo = F, results = 'asis', fig.align= 'center', cache = T}
+
+lm_birth = lm(Birth ~ index + I(index^2) + I(index^3), 
+              data = bdata)
+stargazer(lm_birth, type = 'html', title = "Least squares model with cubic trend")
+```
+We see that the coefficients of 3rd order polynomial trend are highly significant. Now, we look at the plot to see how well the model captures the general pattern in the trend. 
+
+```{r, echo = F, results = 'asis', fig.align= 'center', cache = T}
+
+sim.index = 1:215
+z = cbind(rep(1, 215), sim.index, sim.index^2, sim.index^3)
+sim.quad = z %*% coef(lm_birth)
+
+plot(Birth ~ index, data = bdata, type = "l", main = "Time plot of birth data")
+lines(x = sim.index, y = sim.quad, col = "blue", lty = 'dashed')
+legend("topright", c("Birth data", "Model fit"), 
+       col = c("black", "blue"), lty = c('solid', 'dashed'))
+```
+
+Time plot overlaid with regression fit shows that the 3rd order polynomial seems to fit the data well. Down below, I show the residual patterns. 
+
+```{r, echo= F, fig.align='center', cache = T}
+
+
+resid.birth = lm_birth$residuals
+plot(resid.birth, type = "l", main = "Time plot of birth residual")
+par(mfrow = c(1, 2))
+acf(resid.birth, main = "Autocorrelation plot \n of birth series")
+spectrum(resid.birth, method = 'ar', main = "Periodogram of birth series\n (ar method)")
+
+```
+
+Time plot of the residulas look much more mean stationary. However, as can be seen from the ACF plot and periodogram, the yearly (at 12 months, 6 months, 4 months, etc.) patterns are still left, which justifies the application of SARMA models. 
+ 
+
+#V. Model exploration: SARMA model
+
+## V.1 Model exploration
+In this section, I explore SARMA models, and foor expositional simplicity, I explore SARMA $(p, q) \times (1, 1)$. First, we compute and compare the AIC values of models without marriage as a covariate.
+
+```{r, echo = F, cache = T}
+
+aic_table_withoutx = function(data, P, Q){
+  table = matrix(NA, (P+1), (Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+     table[p+1, q+1] =  arima(data, order = c(p, 0, q), 
+                              seasonal = list(order = c(1, 0, 1), 
+                                              period = 12))$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR", 0:P, "</b>", sep = ""), 
+                         paste("MA", 0:Q, sep = ""))
+  table
+}
+
+kable(aic_table_withoutx(resid.birth, 3, 4))
+
+```
+
+Now, we compare these values with AIC values with models with marriage as covariate. 
+
+
+```{r, echo = F, cache = T}
+
+aic_table_withx = function(data, P, Q){
+  table = matrix(NA, (P+1), (Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+     table[p+1, q+1] =  arima(data, order = c(p, 0, q), 
+          seasonal = list(order = c(1, 0, 1), 
+          period = 12), xreg = marriage)$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR", 0:P, "</b>", sep = ""), 
+                         paste("MA", 0:Q, sep = ""))
+  table
+}
+
+kable(aic_table_withx(resid.birth, 3, 4))
+
+```
+
+Comparing the two tables, we can see that model that includes marriage as a covariate has smaller AIC values compared to models without. Among the models in the models with marriage as a covariate, SARMA $(3, 1) \times (1, 1)$, followed by SARMA $(2, 2) \times (1, 1)$, have the lowest AIC values. Because the model is similar in complexity, we do not necessarily prefer one over another. Moreover, the results are not significantly different, so I focus on SARMA $(3, 1) \times (1, 1)$. 
+
+
+```{r, echo = F, fig.align='center', results='asis', cache = T}
+
+
+stargazer(arima(birth, order = c(3, 0, 1), 
+      seasonal = list(order = c(1, 0, 1), period = 12), xreg = marriage), 
+      type = 'html', title = "SARMA (3, 1) x (1, 1) model")
+```
+
+We see that marriage is significant, confirming the hypothesis that there is some relationship between the monthly number of marriages and the birth rate. 
+
+## V.2 Model diagnostics
+In this section, we do model diagnostics: 1) time plot of residuals to check mean stationarity, 2) Q-Q plot to check the normality assumption of the Gaussian white noise process, and lastly 3) autocorrelation plot of residuals to check independence assumption in the Gaussian white noise process assumed in the above model. 
+
+```{r, echo = F, fig.align='center', results='asis', cache = T}
+
+y = arima(resid.birth, order = c(3, 0, 1), 
+      seasonal = list(order = c(1, 0, 1), period = 12), xreg = marriage)$residuals
+
+plot(y, ylab = "resid",
+     type = 'l', main = "Time plot of residuals") 
+
+par(mfrow = c(1, 2))
+qqPlot(y, main = "Q-Q plot of residuals", ylab = 'resid')
+acf(y,main = "Autocorrelation plot of residulas")
+
+```
+We can see from the time plot of the residual of SARMA $(3, 1)\times(1,1)$ model that the mean seems to be quite stationary around 0. Moreover, from the normal Q-Q plot, while we can see that the tails are somewhat long on both left and right, it does not seem to deviate significantly from the 45 degree line. Lastly, we can see that the residuals are not autocorrelated, which is evidence in favor of the validity of the assumption. 
+
+#IV. Conclusion
+
+We find that there is a clear decreasing trend in the raw birth rates in Korea, and that there are clear seasonal components in the birth rates. We use SARMA model and compare models with and without monthly number of marriages as a covariate. Models with marriage as a covariate performs better, and among the explored models, SARMA $(3, 1) \times (1, 1)$ performs best based on AIC criterion. Marriage was positively correlated with the detrended birth rates. Give the importance of the topic, it would be interesting to explore other factors, such as unemployment, and their role in explaining the numer of birth time series data. 
+ 
+-----------
+Sources
+
+* Ionides, 2018, Lecture notes
+* Previous projects from http://ionides.github.io/531w16/midterm_project/
+* Data on birth rate and marriage rate [KOSIS](http://kosis.kr/index/index.do)
+* New York Times, 2018, [South Korea’s Most Dangerous Enemy: Demographics](https://www.nytimes.com/2018/02/20/magazine/south-koreas-most-dangerous-enemy-demographics.html) 
+* Wikipedia, accessed March 4, 2018, [List of countries by TFR](https://en.wikipedia.org/wiki/List_of_sovereign_states_and_dependencies_by_total_fertility_rate)
+* OECD, accessed March 4, 2018, [Fertility rates, OECD family database](https://www.oecd.org/els/family/SF_2_1_Fertility_rates.pdf)
+* Edaily (Korean), accessed March 4, 2018, [edaily](http://www.edaily.co.kr/news/news_detail.asp?newsId=03968806619115112&mediaCodeNo=257&OutLnkChk=Y)
+* JTBC (Korean), accessed March 4, 2018,[JTBC](https://news.jtbc.joins.com/article/ArticlePrint.aspx?news_id=NB11340105),[Hankookilbo]
+* Hankook Ilbo (Korean),  (Korean) [Hankook Ilbo](http://www.hankookilbo.com/v/7476de62bd494121af3634d0c3412d7c)
+* Q-Q plots: http://www.sthda.com/english/wiki/qq-plots-quantile-quantile-plots-r-base-graphs#create-qq-plots

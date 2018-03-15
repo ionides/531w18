@@ -1,0 +1,131 @@
+---
+title: "midterm project"
+output: html_document
+---
+
+### 1. Introduction
+In this project, I study the suicide time series in Austrilia. Suicide is such a huge issue around the world. Surprisingly, most of deaths are caused by suicides rather than homicides. Many people are under high pressure due to different reasons. Even people who know them may not aware the potential suicides of their beloved. Looking at historial data would be a great way for professions to take actions. By predicting based on the past, it is efficient for them to help more people suffering from potential suicides.
+
+The data I used is from [here](https://datamarket.com/data/set/238x/deaths-from-homicides-and-suicides-in-australia#!ds=238x!2jzl=1:2jzm&display=line). It records yearly suicide deaths in Austrilia from 1915 to 2004 in the unit of 100000 people.
+
+### 2. Explore the data
+We first take a look at the data:
+```{r}
+suicide=read.csv(file="deaths.csv",header=TRUE)
+death=suicide$Suicide
+summary(death)
+```
+```{r}
+
+Suicide=ts(death,start=1915)
+plot(Suicide)
+```
+
+We can see from the plot there is obviously a trend, so we will detrending it later.
+
+Then let us look at the spectrum:
+```{r}
+spectrum(death,spans=c(2,2))
+```
+
+From the periodogram, there seems to no typical cycles. 
+
+### 3. Detrending
+We first need to detrend the data. Here I use the polynomial model
+$$X=Intercept+\beta_1 n+\beta_2 n^2+\beta_3 n^3$$
+The model is as follows:
+```{r}
+t=seq(1:90)
+dreg=lm(death~t+I(t^2)+I(t^3))
+summary(dreg)
+plot(death,type='l')
+lines(dreg$fitted.values,col='red')
+```
+
+All of the coefficients are all sigificant, and the R_squared value is around 62%. Hence, this is a good estimation of the trend.
+
+### 4. Fitting the error
+
+Next, we could remove the trend from data, and look at the error.
+
+```{r echo=FALSE}
+r=dreg$residuals
+
+plot(r,type='l',ylab='residual')
+```
+
+A good start is to look at the ACF and spectrum of the residuals:
+```{r echo=FALSE}
+acf(r,main='ACF of errors',lag.max = 80)
+spectrum(r, spans=c(3,5),main='Smoothed Periodogram')
+```
+
+From the periodogram, there is a high peak at frequency = 0.33, which suggests a period of 30 years. The ACF plot also supports this. Every about 30 years, there is a period. 
+
+However, since our data is about only 90 years, it may not be a good idea to consider seanality in this situation. More data is needed to study the periodic behaivor. 
+
+We then choose a ARMA model to fit the errors based on AIC values:
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+aic_table = function(data,P,Q){
+  table = matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] = arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table)=list(paste("AR",0:P,sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+d_aic_table = aic_table(r,5,5)
+require(knitr)
+kable(d_aic_table,digits=2)
+
+```
+
+We see ARIMA(2,0,3) has a low AIC = 46.48, we choose to fit this model. The summary is below:
+```{r}
+md=arima(r,order=c(2,0,3))
+md
+```
+
+Next we look at the residuals of this model:
+```{r}
+res=md$residuals
+acf(res, main='ACF of residuals')
+Box.test(res)
+qqnorm(res)
+qqline(res)
+shapiro.test(res)
+```
+
+The ACF plot shows that the residuals are uncorrelated as they all lie in the confidence interval. The Box test indicates the residuals are independent.
+
+The Normal QQ-plot shows overall a good behavior of normality, although there are tails at both end. The Shapiro-Wilk normality test supports this assumption. 
+
+Hence, it is appropriate to consider the residuals as Gaussian white noise.
+
+### 5. Summary of model and Prediction
+After detrending, then fit an ARIMA(2,0,3) model to the errors, we have found a good model for suicide data in Austrilia from 1915 to 2004.
+
+The model is:
+$$X_n=4.03-0.13n+3.85*10^{-3}n^2-3.05*10^{-5}n^3+\epsilon_n$$
+where 
+$$\epsilon_n=1.93\epsilon_{n-1}-0.98\epsilon_{n-2}+\omega_n-1.47\omega_{n-1}+0.26\omega_{n-2}+0.29\omega_{n-3}$$,
+and $\{\omega_n\}:\omega_n \sim N(0,\sigma^2)$ is Gaussian white noise
+
+Based on this model, we can make predictions. Here is the predictions for the next 50 years:
+```{r echo=FALSE}
+p=predict(md,n.ahead=50)
+pdts=ts(p$pred,start=2005)
+plot(pdts,xlab='prediction',main='Prediction of next 50 years')
+```
+
+### Further Discussion
+Based on the 90-year data, we've come up with a ARIMA(2,0,3) model. As discussed before, the data is too small for the study of seasonality. The potiential next step could be to get more data, and see if periodic behavior is worth awareness.
+
+### Reference
+[1] Data from: https://datamarket.com/data/set/238x/deaths-from-homicides-and-suicides-in-australia#!ds=238x!2jzl=1:2jzm&display=line
+
+[2] https://ionides.github.io/531w18/
+
+[3] R. Shumway and D. Stoffer ¡°Time Series Analysis and its Applications¡± 4th edition

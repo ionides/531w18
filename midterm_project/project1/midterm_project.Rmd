@@ -1,0 +1,368 @@
+---
+title: "Monthly Traffic Fatalities in Ontario (1960-1974)"
+date: "2018/3/6"
+output: 
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+
+
+```{r,warning=FALSE,message=FALSE,echo=FALSE,fig.align='center',fig.width=10}
+library(ggplot2)
+library(knitr)
+dat <- read.table("/Users/mayumeng/Downloads/STATS 531/midterm project/monthly-traffic-fatalities-in-on.csv",sep = ",",header = TRUE)
+```
+
+------
+
+------
+
+# 1 Introdection
+This report will analyse the trend and changing pattern of the number of traffic fatalities happening in Ontario. With the analysis of traffic fatality time series, we may get some information about people's driving habits and purposes in Ontario. Then it can give the drivers and pedestrians more alert under the high probability traffic fatality happening cases. The data used in the report is provided by "datamarket.com", which is available [here](https://datamarket.com/data/set/22ty/monthly-traffic-fatalities-in-ontario-1960-1974#!ds=22ty&display=line). In this dataset, there are 180 numbers recording monthly traffic fatalities in Ontario from 1960 to 1974. 
+
+Section 2 gives a brief understanding of the data. Section 3 fits two models to explain the behavior of fatality numbers. Section 4 introduces some guess from the life experience aspect. Section 5 summarizes all the analysis and restates the most important conclusions obtained in section 3 & 4.
+
+------
+
+------
+
+# 2 Exploratory Data Analysis
+
+First, let's look at the format of the data. 
+
+```{r,echo=FALSE}
+head(dat)
+```
+
+The first column is the time stamp, and the second column is the number of traffic fatalities happening in this month. There is no missing in the data.
+
+```{r,echo=FALSE}
+dat <- cbind(as.numeric(rownames(dat)),1959+rep(1:15,each = 12),rep(1:12,15),dat[,2])
+colnames(dat) <- c("time","year","month","fatality")
+dat <- data.frame(dat)
+```
+
+I remap the first column into three column, "time", "year" and "month". "time" is the number of month from January 1960 to now.
+
+```{r,echo=FALSE}
+head(dat)
+```
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+p <- ggplot(data = dat) + xlab("Year") + ylab("Traffic Fatalities") + 
+  geom_line(aes(x = time, y = fatality),color = 'dark blue') + 
+  scale_x_continuous(breaks=12*c(1:16)-11, labels = c(1960:1975)) + 
+  theme(axis.text.x = element_text(vjust = 0.7, angle = 45))
+plot(p)
+```
+
+<center><h4><b>Local Variance of Original Fatality Time Series</b></h4></center>
+```{r,echo=FALSE}
+Var = matrix(NA,1,5)
+rownames(Var) <- c("Local variance")
+colnames(Var) <- c("Point 1 to 36","Point 37 to 72","Point 73 to 108","Point 109 to 144","Point 145 to 180")
+for (i in 1:5) {
+  Var[i] = var(dat$fatality[(36*i-35):(36*i)])
+}
+kable(Var)
+```
+
+From the time plot we can see the smallest number and the largest number in a year deviate from each other with the time pass by. In other words, the local variance of the time series is increasing which conflicts to stationary definition. So I make a $f(x) = x^{0.2}$ switch to the original data. Then the variance of the time series fits stationary terms.
+
+<center><h4><b>Local Variance of Switched Fatality Time Series</b></h4></center>
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+dat$fatality = dat$fatality^0.2
+Var = matrix(NA,1,5)
+rownames(Var) <- c("Local variance")
+colnames(Var) <- c("Point 1 to 36","Point 37 to 72","Point 73 to 108","Point 109 to 144","Point 145 to 180")
+for (i in 1:5) {
+  Var[i] = var(dat$fatality[(36*i-35):(36*i)])
+}
+kable(Var)
+p <- ggplot(data = dat) + xlab("Year") + ylab("Traffic Fatalities") + 
+  geom_line(aes(x = time, y = fatality),color = 'dark blue') + 
+  scale_x_continuous(breaks=12*c(1:16)-11, labels = c(1960:1975)) + 
+  theme(axis.text.x = element_text(vjust = 0.7, angle = 45))
+plot(p)
+```
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+spectrum(dat$fatality, spans = c(3,5,3), main="Smoothed Periodogram")
+```
+
+ Also, the data shows strong seasonality. It seems like on a 12-month cycle. The spectral density plot confirms that.
+
+```{r,echo=FALSE,warning=FALSE,fig.align='center',fig.width=10}
+trend <- ts(loess(dat$fatality~dat$time,span=0.5)$fitted,frequency=12)
+noise <- ts(dat$fatality - loess(dat$fatality~dat$time,span=0.05)$fitted,frequency=12)
+cycle <- dat$fatality - trend - noise
+fatality = dat$fatality
+plot(ts.union(fatality, trend, noise, cycle), main="Decomposition of fatalities: trend + noise + cycles", lwd = 1.5)
+```
+
+To get a better view of the data, I decomposite the time series by different frequency. The part with the lowest frequency is the trend. The part with the highest frequency is the noise. And the part with the middle frequency and main power is the main cycle. From the decomposition plot, we can also clearly see the cycles of 12 month.
+
+------
+
+------
+
+# 3 Time Series Analysis
+
+Because of the strong seasonality found in section 2, I only choose models which contain the information of cyclicity.
+
+
+## 3.1 ARMA Errors Model
+
+The first model I fit is ARMA error model with seasonality. 
+
+
+### 3.1.1 Detrending Data
+
+I fit two regression model to detrend data.
+
+\[
+X_n = Intercept + \beta*time + ARMA\ errors
+\]
+\[
+X_n = Intercept + \beta_1*time + \beta_2*time^2 + ARMA\ errors
+\]
+
+```{r,echo=FALSE}
+lmfatality <- lm(fatality ~ time + I(time^2), data = dat)
+summary(lmfatality)
+lmfatality <- lm(fatality ~ time, data = dat)
+summary(lmfatality)
+```
+
+The summary results show that $time^2$ is not significant, so $X_n = Intercept + \beta*time$ is the model used below.
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+p2 <- ggplot(data = cbind(dat,predict(lmfatality))) + xlab("Year") + ylab("Traffic Fatalities") + 
+  geom_line(aes(x = time, y = fatality),color = 'dark blue') + 
+  scale_x_continuous(breaks=12*c(1:16)-11, labels = c(1960:1975)) + 
+  theme(axis.text.x = element_text(vjust = 0.7, angle = 45)) + 
+  geom_line(aes(x = time, y = predict(lmfatality)),color = 'red')
+plot(p2)
+```
+
+
+
+### 3.1.2 ARMA Model for Residuals
+Next, we can fit stationary Gaussian $ARMA(p,0,q)*(1,0,0)_{12}$ to the residuals under the no trend null hypothesis. It is natural to choose (p,q) by AIC scores. The lower AIC score reflects the higher log-likelihood and fewer parameters.
+
+<center><h4><b>AIC Values of ARMA models for Residuals</b></h4></center>
+```{r,echo=FALSE,warning=FALSE}
+dat$fatality = lmfatality$residuals
+SARMA_aic <- function(data,P,Q){
+  aic <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      aic[p+1,q+1] <- arima(data,order=c(p,0,q),seasonal=list(order=c(1,0,0),period=12),method="ML")$aic
+    }
+  }
+  dimnames(aic) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  return(aic)
+}
+SARMA_table <- SARMA_aic(dat$fatality,4,5)
+kable(SARMA_table)
+```
+
+The result shows that $ARMA(1,0,3)*(1,0,0)_{12}$ should be the model we choose. Although there are some values (such as $ARMA(3,0,3)*(1,0,0)_{12}$) in the table smaller than -378.5928, those values' neighbors show the difficulties of numeric computation. So the simpler model $ARMA(1,0,3)*(1,0,0)_{12}$ becomes the best choice.
+
+```{r,echo=FALSE}
+SARMA = arima(dat$fatality,order=c(1,0,3),seasonal=list(order=c(1,0,0),period=12),method="ML")
+SARMA
+```
+
+Each parameter $\phi_i$ has the 95% confidence interval [$\hat{\phi}_i-1.96\hat{\sigma}^2_i$,$\hat{\phi}_i+1.96\hat{\sigma}_i$]. All $|\hat{\phi}_i|$ is more than four times larger than $\hat{\sigma}_i$ in this model, so there is no parameter having confidence interval containing 0, which means all parameters are significant. 
+
+The model is
+\[
+X_n^{0.2} = Y_n+0.00143*time + 2.507
+\]
+\[
+(1-0.7107B^{12})(1+0.6900B)Y_n = \epsilon_n+1.0479\epsilon_{n-1}+0.5213\epsilon_{n-2}+0.3406\epsilon_{n-3}
+\]
+\[
+\epsilon_i \sim iid N(0,0.006305),i = 0,1,-1,2,-2......
+\]
+
+
+With this model, we can simulate the time series on the computer. In the simulation plot, the red line is the time series generating by SARMA model and the blue line is the detrended original ARMA errors.
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+newdata = cbind(dat,as.numeric(dat$fatality-SARMA$residuals))
+colnames(newdata)[5] = "fit"
+p3 <- ggplot(data = newdata) + xlab("Year") + ylab("Traffic Fatalities") + 
+  geom_line(aes(x = time, y = fatality),color = 'dark blue') + 
+  scale_x_continuous(breaks=12*c(1:16)-11, labels = c(1960:1975)) + 
+  theme(axis.text.x = element_text(vjust = 0.7, angle = 45)) +
+  geom_line(aes(x = time, y = fit), color = 'red', linetype = 1) + 
+  ggtitle("Simulation")
+plot(p3)
+```
+
+
+
+### 3.1.3 Diagnostic Analysis
+
+Then we do some diagnostic analysis to the residuals.
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+SARMA = arima(dat$fatality,order=c(1,0,3),seasonal=list(order=c(1,0,0),period=12),method="ML")
+par(mfrow = c(1,2))
+acf(SARMA$residuals, main="ACF of Residuals")
+spectrum(SARMA$residuals, span=c(3,5,3), main="Periodogram of Residuals")
+```
+
+From the acf plot we can see three violations (lag = 12, 19, 20) of the hypothesis testing lines. It reflects the residuals are not fitting the null hypothesis: independent and identically distributed. The spectral density plot also contain some peaks, but we cannot find the domain frequency. This phenomenon indicates that there are still some local pattern cannot be captured well by my model. Since the data I get can't support for more complex models, this problem should be considered carefully when we get much larger dataset.
+
+
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+qqnorm(SARMA$residuals)
+qqline(SARMA$residuals)
+```
+
+The QQ plot tells us that the residuals fit gaussian very well. Then I use [Shapiro-Wilk test](https://en.wikipedia.org/wiki/Shapiro???Wilk_test) to judge whether residuals are approximate Gaussian.
+
+```{r,echo=FALSE}
+shapiro.test(SARMA$residuals)
+```
+
+The p-value of Shapiro-Wilk test is 0.8156 much larger than 0.05. We should definitely accept the null hypothesis of gaussian. The residuals of ARMA errors are likely to be white noise. In conclusion, although this model misses some patterns shown in the time series, it performs very well overall.
+
+
+------
+
+------
+
+## 3.2 SARIMA Model
+
+From section 2 we know this time series have trend. Maybe the simplest way to detrend is by differencing. In section 3.2, I will use SARIMA model with first order differencing to analyze the fatality numbers.
+
+
+
+### 3.2.1 Fitting SARIMA Model
+
+The format of models is $ARIMA(p,1,q)*(1,0,0)_{12}$, choosing (p,q) by AIC scores. Because of first order differencing, I can use the original data without detrending. The lower AIC score reflects the higher log-likelihood and fewer parameters.
+
+<center><h4><b>AIC Values of SARIMA models for Residuals</b></h4></center>
+```{r,echo=FALSE,warning=FALSE}
+dat <- read.table("/Users/mayumeng/Downloads/STATS 531/midterm project/monthly-traffic-fatalities-in-on.csv",sep = ",",header = TRUE)
+dat <- cbind(as.numeric(rownames(dat)),1959+rep(1:15,each = 12),rep(1:12,15),dat[,2])
+colnames(dat) <- c("time","year","month","fatality")
+dat <- data.frame(dat)
+dat$fatality = dat$fatality^0.2
+SARIMA_aic <- function(data,P,Q){
+  aic <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      aic[p+1,q+1] <- arima(data,order=c(p,1,q),seasonal=list(order=c(1,0,0),period=12),method="ML")$aic
+    }
+  }
+  dimnames(aic) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  return(aic)
+}
+SARIMA_table <- SARIMA_aic(dat$fatality,4,5)
+kable(SARIMA_table)
+```
+
+The result shows that $ARIMA(1,1,4)*(1,0,0)_{12}$ should be the model we choose. Although there are some values (such as $ARIMA(3,1,3)*(1,0,0)_{12}$) in the table smaller than -369.8664, those values' neighbors show the difficulties of numeric computation. So the simpler model $ARIMA(1,1,4)*(1,0,0)_{12}$ becomes the best choice.
+
+```{r,echo=FALSE}
+SARIMA = arima(dat$fatality,order=c(1,1,4),seasonal=list(order=c(1,0,0),period=12),method="ML")
+SARIMA
+```
+
+Each parameter $\phi_i$ has the 95% confidence interval [$\hat{\phi}_i-1.96\hat{\sigma}^2_i$,$\hat{\phi}_i+1.96\hat{\sigma}_i$]. $|\hat{\phi}_i|$ is more than 1.96 times larger than $\hat{\sigma}_i$ for "ar1", "ma2", "ma3", "ma4", "sar1" in this model, so there is no parameter having confidence interval containing 0, which means those parameters are significant. Only "ma1" has a confidence interval having overlap with zero.
+
+The model is
+\[
+Y_{n-1} = X_n-X_{n-1}
+\]
+\[
+(1-0.7303B^{12})(1+0.6968B)Y_n = \epsilon_n+0.0796\epsilon_{n-1}-0.5050\epsilon_{n-2}-0.1625\epsilon_{n-3}-0.3286\epsilon_{n-4}
+\]
+\[
+\epsilon_i \sim\ iid\ N(0,0.006499),i = 0,1,-1,2,-2......
+\]
+
+With this model, we can simulate the time series on the computer. In the simulation plot, the red line is the time series generating by SARIMA model and the blue line is the original fatality numbers.
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+newdata = cbind(dat,as.numeric(dat$fatality-SARIMA$residuals))
+colnames(newdata)[5] = "fit"
+p3 <- ggplot(data = newdata) + xlab("Year") + ylab("Traffic Fatalities") + 
+  geom_line(aes(x = time, y = fatality),color = 'dark blue') + 
+  scale_x_continuous(breaks=12*c(1:16)-11, labels = c(1960:1975)) + 
+  theme(axis.text.x = element_text(vjust = 0.7, angle = 45)) +
+  geom_line(aes(x = time, y = fit), color = 'red', linetype = 1) + 
+  ggtitle("Simulation")
+plot(p3)
+```
+
+
+### 3.2.2 Diagnostic Analysis
+
+Then we do some diagnostic analysis to the residuals.
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+SARIMA = arima(dat$fatality,order=c(1,1,4),seasonal=list(order=c(1,0,0),period=12),method="ML")
+acf(SARIMA$residuals, main="ACF of residuals")
+spectrum(SARIMA$residuals, span=c(3,5,3), main="Periodogram of residuals of ARMA Errors")
+```
+
+From the acf plot we can see three violations (lag = 10, 19, 20) of the hypothesis testing lines. The model is also not complex enough to capture all the local influence. The spectral density plot contain some peaks with large confidence interval. The domain frequency cannot be recognized, because peaks have similar power. I can reach the conclusion again that we need larger dataset to fit more complex models.
+
+
+```{r,echo=FALSE,fig.align='center',fig.width=10}
+qqnorm(SARIMA$residuals)
+qqline(SARIMA$residuals)
+```
+
+The QQ plot tells us that the residuals have a little tail. Then I use [Shapiro-Wilk test](https://en.wikipedia.org/wiki/Shapiro???Wilk_test) to judge whether residuals are approximate Gaussian.
+
+```{r,echo=FALSE}
+shapiro.test(SARIMA$residuals)
+```
+
+The p-value of Shapiro-Wilk test is 0.7306 much larger than 0.05. We should accept the null hypothesis of gaussian. The residuals of ARMA errors are likely to be white noise. We can say the ARMA errors model performs better than the SARIMA model from the QQ plot, while the SARIMA model also works well for this task. 
+
+------
+
+------
+
+# 4 Conclusion
+
+In the report, we analyze the traffic fatality time series. After the overall exploratory data analysis, fitting models and diagnostic analysis, we can get five main conclusions:
+
+* This times series have nearly linear trend growing variance respect to time. Regression with time and the first order differencing can successfully detrend the data. Transforming data with $f(x) = x^{0.2}$ can effectively solve the variance increasing problem. Then the time series fit the weak stationary terms.
+
+* Both the minimum number of traffic fatality in one year and the maximum number of traffic fatality in one year increase. It may caused by the development of economy. There are more cars on the road in 1974 than in 1960, then the number of fatalities increases accordingly.
+
+* The fatality numbers have the cycle of 12 month. 
+
+* Both ARMA errors model ( $ARMA(1,0,3)*(1,0,0)_{12}$ ) and SARIMA model ( $ARIMA(1,1,4)*(1,0,0)_{12}$ ) fit the time series very well, which capture the trend, the main reliance between near time stamp and leave the white noise residuals. However, there are some test evidence shows the model can be better if we have larger dataset.
+
+* There are more traffic fatalities in summer and much fewer traffic fatalities in winter. I think it may be caused by two reasons. Firstly, weather is always extremely cold in Ontario in winter, so people tend to stay at home. The amount of traffic reduces and make it less likely to happen serious traffic accident. Secondly, winter always brings snow and ice. People will be more careful when they are on the road, both drivers and pedestrians, then the number of fatalities reduces. 
+
+------
+
+------
+
+# 5 Reference
+
+[1] Data resource https://datamarket.com/data/set/22ty/monthly-traffic-fatalities-in-ontario-1960-1974#!ds=22ty&display=line
+\
+[2] Shapiro-Wilk test https://en.wikipedia.org/wiki/Shapiro-Wilk_test
+\
+[3] Class notes https://ionides.github.io/531w18/04/notes04.html
+\
+[4] Class notes https://ionides.github.io/531w18/05/notes05.html
+\
+[5] Class notes https://ionides.github.io/531w18/06/notes06.html
+
+

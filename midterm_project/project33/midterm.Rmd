@@ -1,0 +1,362 @@
+---
+# title: "Rising Sea Levels in the Venice Canals"
+title: "Venice: Rising Sea Levels and a Sinking City?"
+subtitle: "STATS 531 Midterm Project"
+date: "3/7/2018"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen=999)
+library(plyr)
+library(ggplot2)
+library(knitr)
+library(gridExtra)
+```
+
+```{r, echo = FALSE, warning = FALSE}
+tmp <- c("http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/0%252Fe%252Fe%252FD.ea7349102653f760ed97/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/9%252F7%252F9%252FD.e6f0937a22bdadc32daf/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/c%252F8%252Fb%252FD.377edc65c34bf4451a5d/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/a%252F7%252Ff%252FD.aebb8f4d441df3230a29/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/1%252Fe%252F5%252FD.e7cde35e726e3ca88c29/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/0%252F4%252F3%252FD.8ea4b10ba20795fff8d3/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/7%252Fc%252F0%252FD.49aa063fd35bcf4db1a7/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/3%252F4%252F1%252FD.38b91b3bb530eab2ba0f/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/2%252Fa%252F0%252FD.ffbb89461d5eebfff455/P/BLOB%3AID%3D25419/E/csv",
+         "http://archive.comune.venezia.it/flex/cm/pages/ServeAttachment.php/L/IT/D/c%252Fa%252F7%252FD.5779d0c964f6418138ab/P/BLOB%3AID%3D25419/E/csv")
+
+tide.dat <- lapply(tmp, read.csv2, sep = ";", as.is = TRUE, strip.white = TRUE)
+
+for(i in 1:10){
+  if(dim(tide.dat[[i]])[2] == 1){
+    colnames(tide.dat[[i]]) <- "FOO"
+    tide.dat[[i]] <- data.frame(do.call('rbind', strsplit(as.character(tide.dat[[i]]$FOO),';',fixed=TRUE)),
+                                stringsAsFactors = FALSE)
+  }
+  tide.dat[[i]] <- tide.dat[[i]][,1:4]
+  colnames(tide.dat[[i]]) <- c("date", "time", "water", "type")
+  
+  if(is.element(i, c(6,8,9,10))){
+    tide.dat[[i]]$date <- strptime(tide.dat[[i]]$date, format = "%d/%m/%Y", tz = "GMT")
+  }
+  else{
+    tide.dat[[i]]$date <- strptime(tide.dat[[i]]$date, format = "%Y-%m-%d", tz = "GMT")
+  }
+  tide.dat[[i]]$year <- as.numeric(format(tide.dat[[i]]$date, format = "%Y"))
+  tide.dat[[i]]$month <- as.numeric(format(tide.dat[[i]]$date, format = "%m"))
+  tide.dat[[i]]$day <- as.numeric(format(tide.dat[[i]]$date, format = "%d"))
+  
+  tide.dat[[i]]$water <- as.numeric(tide.dat[[i]]$water)
+  if(is.element(i, c(8,9,10))){
+    tide.dat[[i]]$water <- tide.dat[[i]]$water*100
+  }
+}
+tide.dat <- rbind.fill(tide.dat)
+tide.dat$type <- as.factor(tide.dat$type)
+tide.dat <- tide.dat[complete.cases(tide.dat),]
+
+```
+
+# **Introduction**
+
+**Background**
+
+Built on an archipelago of over 100 islands, Venice is an old city on the eastern coast of Italy. It's known for its history, art, and unique design -- the islands are separted by canals and connected by bridges. Water is central to Venice, a city that relies upon its canals as an integral part of transportation and tourism [5].
+
+However, as climate change causes global temperatures to rise, sea levels are also rising. Due to the warming of oceans and the melting of the polar ice caps, there is evidence that sea levels have risen about 10 to 20 centimeters over the past 100 years [3]. Even more serious, this rate has increased to about 0.32 cm per year over the last two decades [3]. These higher waters are concerning for communities located along coasts, including cities like Venice that are literally built on the water.
+
+In addition to the rising sea levels, there is also evidence that the city of Venice is slowly sinking into the lagoon upon which it was built. A recent study has shown that the city is sinking at a rate of about 0.2 to 0.4 cm per year [6]. This combination of rising sea levels and a sinking city seems like a recipe for disaster for Venice, for its history, and for the people who call it home.
+
+**Motivating Question**
+
+Although there is global proof that sea levels are rising and local evidence of Venice slowly sinking into the water, I want to investigate if these alarming and large-scale changes can be seen in the water level of the Venetian canals. I am interested in looking for an increase (or any change) in the canal levels over time. Additionally, I am interested in fluctuations in canal levels. Since the water in the canals comes directly from the ocean, it seems like the pattern of the tides should influence canal depth -- water levels should increase at high tide and decrease at low tide. Therefore, instead of looking at mean depth per day, I will consider the maximum canal level corresponding to the maximum high tide for each day. I will look for any periodicity in the data. The analysis in this report is exploratory as I have no strong beliefs or hypotheses about what I might find.
+
+# **Data Exploration**
+
+**The Data**
+
+The data I will be using for this analysis are publicly available and reported by the City of Venice which has measured the water level of the canals every hour since the beginning of 1983 (current measurements come from Canal Grande) [1,2]. Since hourly measurements result in a rather large amount of data, the city also reports the height of each high and low tide every day. Due to the rotation of the earth and the moon, there is either one or two cycles of  high and low tides per 24 hour period [4]. To simplify the data further, I will look only at the maximum height of the canals each day. Though this eliminates some of the tidal structure, I feel that the simplicity gained outweighs any information lost.
+
+Though the data exist for 1983 through 2015, I have chosen to look only at the data from 2006 through 2015 to make the analysis more manageable -- this will give an idea of what has been happening with canal water levels over the past ten years. By looking at maximum water level per day I can look for local indications that the behavior of water in the Venetian canals has been changing over time. I will also be able to look for seasonal patterns and perhaps a long-term increase in maximum water levels.
+
+```{r echo = FALSE}
+
+max.dat <- subset(tide.dat, tide.dat$type == "max")
+maxmax <- data.frame(unique(max.dat$date))
+colnames(maxmax) <- "date"
+for(i in 1:length(maxmax$date)){
+  maxmax[i, "water"] <- max(subset(max.dat, max.dat$date == maxmax$date[i])$water)
+}
+
+# plot(y = max.dat$water, x = max.dat$date, type = "l")
+# plot(y = maxmax$water, x = maxmax$date, type = "l")
+
+ggplot(data = maxmax, aes(x = date, y = water)) + geom_path() + labs(title = "Water Level of Canal Grande", x = "Date", y = "Water Level (cm)")
+
+info <- summary(maxmax)
+
+```
+
+The water levels are measured in centimeters as deviations from some reference point, though no information was provided on how the reference point was determined. For the ten year period from January 1, 2006 through December 31, 2015, there are 3652 measurements of the maximum water level per day ranging from 18 cm to 156 cm with a median of 69 cm and a mean of 69.93 cm. This indicates that there is a longer right tail, with some days having extremely high maximum water levels.
+
+From the time series plot above, it looks like the variation in maximum water levels has remained relatively constant over time. This indicates that an autocovariance stationary model would be appropriate for these data. It also appears that the mean water level is pretty constant over time. However, since I am interested in investigating whether water levels have been rising, I will also look into fitting a model with non-constant trend.
+
+**Seasonality**
+
+In the time series plot above, it is difficult to tell if there is any seasonal variation present. However, since the water level in the canals is affected by tides, it seems likely that there would be some periodicity or seasonality in the data. To investigate this, I can consider the sample autocorrelation function (ACF) plot. Based on the oscillatory behavior and the peaks in the ACF at about 14 and 29 days, it appears that there are approximately biweekly fluctuations in the water levels.
+
+```{r echo = FALSE}
+acf(maxmax$water, main = "Sample Autocorrelation Function of Water Levels")
+
+```
+
+I can further look at periodicity in the data by considering the periodogram, or the estimated spectral density of the data. This indicates the dominant frequency components in the data. On the left is the raw periodogram which is a very busy plot, but clearly has at least one peak of interest. Smoothing the periodogram allows that peak to be visualized more clearly.
+
+```{r echo = FALSE, fig.width = 13, fig.height = 6}
+par(mfrow = c(1,2))
+raw <- spectrum(maxmax$water, main = "Raw Periodogram", sub = "", xlab = "frequency (cycles per day)")
+smoo <- spectrum(maxmax$water, spans = c(3,5,3), main = "Smoothed Periodogram", sub = "", xlab = "frequency (cycles per day)")
+
+fr <- smoo$freq[which.max(smoo$spec)]
+per <- 1/fr
+
+abline(v = fr, lty = "dotted", col = "red")
+
+```
+
+The dominant frequency is marked by the dotted red line and corresponds to a frequency of 0.0678 cycles per day, or about 14.75 days per cycle. This matches the conclusion from the ACF plot that the data contain approximately biweekly cycles. This makes sense as tide levels vary with the phases of the moon with an approximate two week period [4]. Both the scientific and statistical evidence indicate that a seasonal model could be appropriate for these data.
+
+**Looking for Trend**
+
+A simple way to preliminarily determine if a model with trend could be appropriate is to use a smoother to look for long-term patterns in the data. The time series plot above is very noisy and also shows the rapid flucturations of the approximately biweekly periodicity discovered above. A method like the loess smoother eliminates the lowest frequencies from the data (from the noise and the fluctuations caused by the phases of the moon) and retains what can be interpreted as an estimate of the trend. I used the loess smoother to look for a long-term pattern in the canal water levels -- the black line represents the smoothed data.
+
+```{r, echo = FALSE, fig.width = 13, fig.height = 6}
+t.n <- 1:3652
+par(mfrow = c(1,2))
+loess.sm <- loess(maxmax$water ~ t.n, span = 0.75)
+plot(x = maxmax$date, y = maxmax$water, type = "l", col = "red", xlab = "Date", ylab = "Water Levels (cm)", main = "Water Level of Canal Grande")
+lines(x = maxmax$date, y = loess.sm$fitted, type = "l", lwd = 2)
+
+plot(x = maxmax$date, y = loess.sm$fitted, type = "l", lwd = 2, xlab = "Date", ylab = "Water Levels (cm)", main = "Smoothed Water Level of Canal Grande")
+
+```
+
+These smoothed plots provide some evidence of an increase in the maximum canal water level over this ten year period. Although not sufficient proof to make any concrete conclusions, this analysis provides motivation for trying to fit a linear regression model with SARIMA errors. I will attempt to do this in the next few sections.
+
+# **Model Fitting**
+
+The next step to understanding the behavior of canal water levels over time is to do some exploration to determine an appropriate model for the data. Although I found evidence of seasonality above, I think it's worthwhile to start by looking at non-seasonal models. This will help me to narrow down the number of plausible seasonal models that I will look at next. I will also begin by looking at models with no trend, though this will also be relaxed later in the analysis. The next few sections will provide the motivation for the final models chosen.
+
+**ARMA Without Trend**
+
+I will begin by looking at various ARMA(p,q) models of the form:
+
+$$ Y_n = \mu + \phi_1(Y_{n-1} - \mu) + \dots + \phi_p(Y_{n-p} - \mu) + \varepsilon_n + \psi_1\varepsilon_{n-1} + \dots + \psi_q\varepsilon_{n-q}$$
+or
+$$\phi(B)(Y_n - \mu) = \psi(B)\varepsilon_n$$
+
+where $Y_n$ is the water level from measurement $n$ and ${\{\varepsilon_n}\}$ is a white noise process with distribution $\mathcal{N}(0,\sigma^2)$. The parameters for this model are $\theta = (\phi_1, \dots, \phi_p, \psi_1, \dots, \psi_q, \mu, \sigma^2)$, representing the coefficients for the autoregressive part of the model, the coefficients for the moving average part of the model, the population mean, and the error variance. In this model, $\mu$ does not depend on time because we are assuming a model without trend. The second version of the model is written in terms of the AR and MA polynomials, $\phi(x)$ and $\psi(x)$, respectively, and the backshift operator $B$.
+
+To determine the best ARMA(p,q) model for these data, I will consider the Akaike information criteria (AIC) for various values of p and q. As an initial method to compare models, AIC can be useful. Models with low values of the AIC have higher prediction precision and are therefore better models in terms of predictive power. This is an informal method of model selection, but can be effective at eliminating models with very bad fits. The models with the lowest AIC values are the ARMA(2,0), the ARMA(1,1), and the ARMA(3,0). These seem like good base models to use when I start including seasonal terms in the next step. 
+
+```{r echo = FALSE, warnings = FALSE}
+
+aic.table <- function(data, P, Q){
+  table <- matrix(NA, (P+1), (Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1, q+1] <- arima(data, order = c(p, 0, q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "</b>", sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+temp.aic <- aic.table(maxmax$water, 3, 3)
+kable(temp.aic, digits = 2)
+
+
+```
+
+I only included models up to the ARMA(3,3) in this table because larger models had some problems with parameter estimation, the causality and invertibility of the model, and numerical stability. Even so, we can still see evidence of numerical problems in this AIC table. The AIC is calculated as follows:
+
+$$ AIC = -2\textrm{ loglik} + 2D $$
+where loglik is the maximum log-likelihood value and $D$ is the number of parameters in the model. For nested models, the log-likelihood for the larger model cannot be smaller than the log-likelihood for the smaller model. This means that the AIC for a model with one more parameter cannot be more than 2 larger than the AIC for the smaller model. We see this criteria is broken in the above AIC table, for example, with the ARMA(1,3) and ARMA(2,3) models. Because of these numerical problems,we need to be careful when making conclusions based on this table.
+
+```{r echo = FALSE}
+arma20 <- arima(maxmax$water, order = c(2,0,0))
+ar.root <- polyroot(c(1,-coef(arma20)[c("ar1", "ar2")]))
+
+arma30 <- arima(maxmax$water, order = c(3,0,0))
+ar.root3 <- polyroot(c(1,-coef(arma30)[c("ar1", "ar2", "ar3")]))
+
+arma11 <- arima(maxmax$water, order = c(1,0,1))
+ar.root1 <- polyroot(c(1,-coef(arma11)[c("ar1")]))
+ma.root1 <- polyroot(c(1,-coef(arma11)[c("ma1")]))
+
+```
+
+When looking at the sample ACF plots for the three ARMA models identified above (ARMA(2,0), ARMA(1,1), and ARMA(3,0)), there are clear oscillations in the autocorrelation that indicate the dependence in the data is not being modeled sufficiently well. Additionally, the residual plots and the QQ-plots of the residuals show problematic patterns, as well. This is not surprising since we have not taken into account any seasonality in the data -- this motivates the SARIMA models used in the next section.
+
+**Linear Regression With SARIMA Errors**
+
+Now that I have identified some potentially useful base models for the data, I will extend these models to include terms for both seasonality and non-constant trend. From exploring the seasonality of the data above, I found that there is an approximate biweekly periodicity in the data. The dominant period actually appears to be between 14 and 15 days per cycle, and from further exploration, it appears that a 15 day cycle is more appropriate. In my analysis, I also tried using each of a 7 day, a 14 day, a 28 day, and a 29 day period, all of which seemed to do a worse job of capturing the periodicity in the data than a 15 day cycle. In my data exploration, I also found potential evidence that the maximum canal water level has been increasing over time. To account for this, I will use a time variable ($t_n$) that indicates the measurement date corresponding to the observed water level.
+
+The model I will use for this analysis is a linear regression with SARIMA errors where the errors are modeled with a 15 day period. I will try models both with and without seasonal differencing. The linear regression model with SARIMA errors looks like this:
+
+$$ Y_n = \beta t_n + \eta_n $$
+where $Y_n$ is the water level from measurement $n$, $t_n$ is the day measurement $n$ was taken, and $\eta_n$ is the error modeled as SARIMA$(p,0,q) \times (P,D,Q)_{15}$. The SARIMA model is of this form:
+
+$$\phi(B)\Phi(B^{15})((1-B^{15})^D\eta_n - \mu) = \psi(B)\Psi(B^{15})\varepsilon_n$$
+where $(1-B^{15})^D$ is the approximately biweekly differencing term and the AR and MA polynomials are factored into daily polynomials ($\phi(B)$ and $\psi(B)$) and approximately biweekly polynomials ($\Phi(B^{15})$ and $\Psi(B^{15})$). To get a SARMA model with no seasonal differencing, set the difference parameter $D$ to be zero. Everything else remains the same from the general ARMA model outlined above.
+
+When fitting a SARIMA model there are a huge number of models that can be considered. These come from the  many combinations of lengths for the four AR and MA polynomials, as well as for the amount of differencing used. Additionally, when comparing models, there are many factors to consider, including the AIC, the log-likelihood, whether the models are causal and invertible, and how model diagnostic plots look. In my analysis I have looked at many models, but will only mention the best few (according to some criteria) here.
+
+```{r echo = FALSE}
+
+# two best SARMA models:
+m8 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(2,0,1), period = 15), SSinit = "R", xreg = t.n)
+
+m10 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(1,0,1), period = 15), SSinit = "R", xreg = t.n)
+
+```
+
+I first looked at linear regression models with SARIMA errors with no seasonal differencing ($D = 0$ gives a SARMA model for the errors). To compare models, I initially looked at the AIC and found the two lowest AIC values came from models with errors modeled as SARMA$(3,0,0) \times (2,0,1)_{15}$ and with errors modeled as SARMA$(3,0,0) \times (1,0,1)_{15}$. Their AIC values are 27020.15 and 27020.25, respectively. I looked at many SARMA models for the errors, but chose not to include an AIC table because I felt it would clutter the report -- there is no simple way to make a table while varying so many parameters.
+
+Here are the coefficient estimates of the best linear regression models with SARMA errors:
+
+SARMA$(3,0,0) \times (2,0,1)$
+
+```{r echo = FALSE, comment = "", tidy = TRUE}
+names(m8$coef)[7] <- "int"
+round(m8$coef,3)
+```
+
+SARMA$(3,0,0) \times (1,0,1)$
+
+```{r echo = FALSE, comment = "", tody = TRUE}
+names(m10$coef)[6] <- "int"
+round(m10$coef,3)
+```
+
+Since the AIC values (and the parameter estimates and diagnostic plots) are so similar for these two models it can be helpful to use a more formal approach to determine the better model. Since these are nested models, I can use a likelihood ratio test based on Wilks' approximation where $H_0$ is the linear regression with SARMA$(3,0,0) \times (1,0,1)_{15}$ errors and $H_1$ is the linear regression with SARMA$(3,0,0) \times (2,0,1)_{15}$ errors. Wilks' approximation tells us:
+
+$$\Lambda = 2(\mathcal{l}_1 - \mathcal{l}_0) \approx \chi^2_{D_1-D_0}$$
+
+where $\mathcal{l}_i$ is the maximum log likelihood under hypothesis $H_i$ and $D_i$ is the number of parameters estimated under hypothesis $H_i$. We will reject the null hypothesis if $\Lambda$ is larger than the $\chi^2$ cutoff. When comparing the linear regressions with SARMA$(3,0,0) \times (1,0,1)_{15}$ errors and SARMA$(3,0,0) \times (2,0,1)_{15}$ errors, $\Lambda = 2.095$, which we can compare to the cutoff value of $3.841$ for a 95% significance level and 1 degree of freedom. This tells us that we cannot reject our null hypothesis -- the smaller linear regression model with SARMA$(3,0,0) \times (1,0,1)_{15}$ errors is more appropriate for the data.
+
+```{r echo = FALSE, warnings = FALSE}
+cut <- qchisq(0.95, 1)
+lam <- 2*(m8$loglik - m10$loglik)
+```
+
+To evalute the goodness of fit of this model, I can consider the sample ACF plot of the residuals. To fit a linear regression with SARMA errors we make the assumption that the $\{\varepsilon_n\}$ are uncorrelated, something we can check with this sample ACF plot. While the autocorrelation is much smaller than in the original data, there are a good number of non-negligible autocorrelations that seem to have an oscillating pattern beyond a lag of about 7. There are similar problematic patterns in other diagnostic plots -- the residuals plot has an oscillating pattern and the residuals don't seem to be particualarly normally distributed. This seems to indicate that there is some dependence in the data that isn't being adequately modeled with the linear regression model with SARMA$(3,0,0) \times (1,0,1)_{15}$ errors.
+
+```{r echo = FALSE, fig.width = 13, fig.height = 6}
+par(mfrow = c(1,3))
+acf(m10$residuals, main = "Sample Autocorrelation Function of Residuals")
+plot(m10$residuals, main = "Residuals", ylab = "Residuals")
+qqnorm(m10$residuals)
+qqline(m10$residuals)
+```
+
+As an attempt to find a better model for the data, I will also try including a seasonal difference term. I looked at models with the differencing parameter $D = 1$ and $D = 2$, but the simpler models with $D = 1$ performed better. Similar to what I did for the linear regression models with SARMA errors above, I looked at many different regression models with SARIMA errors. I found the best ones had errors of the form SARIMA$(3,0,0) \times (P,1,0)_{15}$. As I increased the value of $P$, however, the AIC of the model continually dropped, seemingly indicating better and better models.
+
+P|1|2|3|4|5|6|7|8
+-|-|-|-|-|-|-|-|-
+**AIC**|28031.81|27664.48|27492.89|27412.03|27337.63|27254.13|27203.94|27156.93
+
+```{r echo = FALSE}
+# these are the models that I fit to get the AIC values used below -- I commented them out for knitting because they take a REALLY long time to run, but if you run them, you will get the AIC values listed below
+# i1 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(3,1,0), period = 15), SSinit = "R", xreg = t.n)
+# i7 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(2,1,0), period = 15), SSinit = "R", xreg = t.n)
+# i10 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(4,1,0), period = 15), SSinit = "R", xreg = t.n)
+# i11 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(1,1,0), period = 15), SSinit = "R", xreg = t.n)
+# i12 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(5,1,0), period = 15), SSinit = "R", xreg = t.n)
+# i13 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(6,1,0), period = 15), SSinit = "R", xreg = t.n)
+# i14 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(7,1,0), period = 15), SSinit = "R", xreg = t.n)
+
+# this is the model I used
+i15 <- arima(maxmax$water, order = c(3,0,0), seasonal = list(order = c(8,1,0), period = 15), SSinit = "R", xreg = t.n)
+
+aics <- c(28031.81,27664.48,27492.89,27412.03,27337.63,27254.13,27203.94,27156.93)
+table <- matrix(c("1","2","3","4","5","6","7","8", aics), byrow = TRUE, 2, 8)
+dimnames(table) <- list(c("<b> P </b>", "<b> AIC </b>"), rep("",8))
+#kable(table, digits = 2)
+
+```
+
+In my analysis, I stopped with $P = 8$ because it took increasingly long to fit the models with larger values of P. This is probably due to the increasing complexity of the models combined with the fact that this time series has over 3000 data points. Since I stopped looking at models before the AIC flattened out, however, I can't be sure what value of $P$ gives the lowest AIC for this type of model. While this is somewhat concerning (maybe an even bigger model would have a better fit), it seems that models that are larger than, or even as large as, the ones I looked at could run into the problem of overfitting. Although the AIC penalizes for adding more parameters, I would suspect that this does not completely prevent the problem.
+
+Additionally, as the value of $P$ increased and the value of the AIC decreased, I found an increasing trend in the coefficient of the regression predictor measurement date. This seems to indicate that as the model fit gets better (in terms of AIC), there is more evidence that canal water levels are rising over time. These changes in parameter estimates and AIC corresponding to increasing values of $P$ are interesting to me, and somewhat surprising. I would have liked to have more computing power so that I could continue to fit larger models and see the results.
+
+P|1|2|3|4|5|6|7|8
+-|-|-|-|-|-|-|-|-
+**Date Coefficient**|-0.0019|-0.0018|-0.0020|-0.0017|-0.0007|-0.0007|-0.0004|0.0002
+
+```{r echo = FALSE}
+tns <- round(c(-0.001876083,-0.00178000,-0.002007294,-0.001702565,-0.0007210694,-0.0006636074,-0.0004064087,0.0001869943),4)
+table <- matrix(c("1","2","3","4","5","6","7","8", tns), byrow = TRUE, 2, 8)
+dimnames(table) <- list(c("<b> P </b>", "<b> Time Coefficient </b>"), rep("",8))
+#kable(table)
+
+```
+
+Due to these factors, and the limitations of my computer, I will use the linear regression model with SARIMA$(3,0,0) \times (8,1,0)_{15}$ errors as the best model with SARIMA errors. I will keep in mind, however, that there is both a possibility of overfitting and of not enough complexity with this model.
+
+```{r echo = FALSE, fig.width = 13, fig.height = 6}
+par(mfrow = c(1,3))
+acf(i15$residuals, main = "Sample Autocorrelation Function of Residuals")
+plot(i15$residuals, main = "Residuals", ylab = "Residuals")
+qqnorm(i15$residuals)
+qqline(i15$residuals)
+```
+
+The model diagnostic plots look very similar to those for the linear regression with SARMA$(3,0,0) \times (1,0,1)_{15}$ errors from above. This indicates that adding the seasonal differencing to the model didn't fix the problems seen in those plots. There are still non-negligible autocorrelations and the residuals aren't very close to normally distributed. This might be because even these complex models aren't capable of capturing the true behavior of the data, or maybe my model specification could have been better. Regardless, the linear regression models with SARMA$(3,0,0) \times (1,0,1)_{15}$ errors and with SARIMA$(3,0,0) \times (8,1,0)_{15}$ errors are the two best models that I found. Since this is an exploratory analysis, I will move forward with doing inference, despite the limitations.
+
+# **Inference for Parameter Estimates**
+
+For the two models that were chosen to be the best in the section above, I can look at the coefficient of the measurement date to try to determine if the water level has been rising in the Venetian canals. Recall the linear regression model is of the form $Y_n = \beta t_n + \eta_n$, where $t_n$ is the date for measurement $n$ and $\beta$ is the coefficient for that measurement date. 
+
+For the linear regression with SARMA errors, $\hat{\beta}_n = 0.0018$, which means that for an increase of one day, the canal levels rose $0.0018$ cm. This corresponds to $0.66$ cm per year. I can then compare this number to the rates for the sinking of Venice and the rising of the seas given in the introduction. Over this time frame, Venice is estimated to have been sinking at a rate of 0.2 to 0.4 cm per year and the sea levels have been rising at about 0.32 cm per year -- this means water levels should be rising at about 0.52 to 0.72 cm per year. The estimate given by my model fits exactly in this range.
+
+For the linear regression with SARIMA errors, $\hat{\beta}_n = 0.0002$, which means that for an increase of one day, the canal levels rose $0.0002$ cm. This corresponds to $0.073$ cm per year. This estimate is much smaller and doesn't match as well with what is reported by scientists.
+
+To do inference for these estimates, I want to look for a confidence interval for the coefficient $\beta$. The simplest approach is to use the standard error provided by the R output to create a confidence interval for the coefficient estimate. These standard errors are estimated using the observed Fisher information. Below are approximate 95% confidence intervals for the coefficient estimate of the measurement date for both models.
+
+*Linear Regression with SARMA$(3,0,0) \times (1,0,1)_{15}$ Errors*:
+
+$$[0.0018 - (1.96)(0.0012), 0.0018 + (1.96)(0.0012)] = \textbf{[-0.000552, 0.00415]}$$
+
+This confidence interval contains zero, which indicates that there is not significant evidence that $\beta$ is different from zero. If we reduce our confidence level to 80%, then the interval shrinks sufficiently to be entirely above zero. It would be interesting to use more data (a longer time period) to fit this model to see how the standard error and this confidence interval would change.
+
+*Linear Regression with SARIMA$(3,0,0) \times (8,1,0)_{15}$ Errors*:
+
+$$[0.0002 - (1.96)(0.012), 0.0002 + (1.96)(0.012)] = \textbf{[-0.02332, 0.02372]}$$
+
+This confidence interval also contains zero, further indicating $\beta$ is not different from zero. This model is interesting, however, since the estimate for $\beta$ was increasing with the length of the seasonal AR polynomial (see discussion above). This gives the possibility that with a sufficiently long seasonal AR polynomial, the $\beta$ estimate would be large enough that a 95% confidence interval could be entirely above zero. This is speculation, however, since I was not able to fit any models with longer seasonal AR polynomials.
+
+It is known that Fisher information standard errors can be unreliable for these types of models, so it is advisable to use another method to construct confidence intervals, for example, profile likelihood. Due to the length of the time series and the complexity of these models, however, simulation-based techniques became impractical. My computer was not able to produce results in a reasonable amount of time. While this is not ideal, the fact that neither Fisher information confidence interval gave a significant result indicates that the profile likelihood confidence intervals likely would not either. This is because Fisher information standard errors tend to give narrower confidence intervals than the profile likelihood method.
+
+# **Conclusions and Future Analysis**
+
+The question I was interested in exploring was whether or not the maximum daily canal level has been rising over time. Neither of the two models I fit to the data, a linear regression with SARMA$(3,0,0) \times (1,0,1)_{15}$ errors and a linear regression with SARIMA$(3,0,0) \times (8,1,0)_{15}$ errors, showed that the coefficient of measurement date was significantly different from zero. This indicates that there is not sufficient evidence to conclude that water levels in the canals have been rising. However, I  think these results also do not provide conclusive evidence against that fact. First, there does seem to be some evidence of increased water levels over time from the smoothed time series and the estimate for $\beta$ from the model with SARMA$(3,0,0) \times (1,0,1)_{15}$ errors seems to match scientific intuition. Also, as can be seen in the diagnostic plots above, neither model seems to do a perfect job of modeling the data. This is probably due both to the complexity of the data and some of the choices that I made in doing this analysis. For example, I used the maximum water level per day, instead of each high tide (there is either one or two high tides per day). I did this to increase simplicity, but it could have interfered with the periodicity in the data. Since this work was exploratory, I can't make many concrete statements about my conclusions, but I do think I found enough interesting aspects to make further analysis worthwhile.
+
+To eliminate some of the complexity in the data, I could have looked at a monthly number (maybe maximum level per month or the average of the daily maximums). This would have ignored a lot of the tidal variation in the data, probably making the analysis simpler, but also removing an aspect of the data I was interested in trying to model.
+
+There is some other analysis that would be interesting to do with this data, although I would need more computing power to do some of it. For example, it would be interesting to continue to fit larger and larger linear regression models with SARIMA$(3,0,0) \times (P,1,0)_{15}$ errors to see what happens as $P$ continues to increase. It would also be interesting to use simulation-based methods to check the inference done above. Finally, there is a lot more data available from the City of Venice (similar measurements dating back to the beginning of 1983) that would be interesting to look at. It would be more reliable to look at trends over a longer time period. All of this interesting work, however, would require larger computing capabilities.
+
+# **Sources**
+
+[1] “Archivio Storico: Dati Di Livello Di Marea a Venezia.” *Comune Di Venezia*, Istituzione Centro Maree , www.comune.venezia.it/en/archivio/25419.
+
+[2] Bronchal, Luis. *Water Levels in Venezia, Italia*. Kaggle, 24 May 2017, www.kaggle.com/lbronchal/venezia.
+
+[3] “Sea Level Rise.” *National Geographic*, 7 Apr. 2017, www.nationalgeographic.com/environment/global-warming/sea-level-rise/.
+
+[4] “Tide.” *Wikipedia*, Wikimedia Foundation, 4 Mar. 2018, en.wikipedia.org/wiki/Tide.
+
+[5] “Venice.” *Wikipedia*, Wikimedia Foundation, 28 Feb. 2018, en.wikipedia.org/wiki/Venice.
+
+[6] “Venice Menace: Famed City Is Sinking & Tilting.” *LiveScience*, Purch, 21 Mar. 2012, www.livescience.com/19195-venice-sinking-slowly.html.

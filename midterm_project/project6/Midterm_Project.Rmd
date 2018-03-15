@@ -1,0 +1,226 @@
+---
+title: "Earthquakes World Wide from 1917 to 2017"
+date: "February 3, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(dplyr)
+require(zoo)
+require(forecast)
+```
+
+# Earthquake Time Series Midterm Project
+
+# 1.Introduction
+* Earthquakes occur all over the world multiple and times a year. Some are so small that they can't be felt. Some are so violent that buildings get destroyed. Scientists study earthquakes to prepare for future earthquakes, understand the moving of the tectonic plates, and comprehend why they happen.
+
+* More specifically one measure for earthquakes is magnitude; it measures the relative size of the earthquake. By looking at a time series of earthquake magnitudes from the last one hundred years, it is possible to predict when another large earthquake will appear and find appropriate models to fit earthquake magnitude data.
+
+* By looking at a time series of world earthquake magnitude data, it is the hope to have a better understanding of models that fit the data well, if there is trend, and what a 5 year forecast looks like. 
+
+Earthquake Magnitude:
+Values range: 0.0 to 9.9
+"The value in this column contains the primary earthquake magnitude. Magnitude measures the energy released at the source of the earthquake. Magnitude is determined from measurements on seismographs. For pre-instrumental events, the magnitudes are derived from intensities. There are several different scales for measuring earthquake magnitudes. The primary magnitude is chosen from the available magnitude scales." (NOAA)
+
+#Analysis of Data
+First the data is read in from National Oceanic and Atomospheric Association (NOAA) on earthquake magnitudes from 1917 - 2000. This is the average magnitude from every year for the last 100 years. The reason for using average magnitude for each year is because there are not enough earthquakes occurring in each month to do average for month. This is a look at the first few data points to get an idea of what the data looks like:
+
+```{r Magnitude, echo=FALSE}
+read.excel <- function(header=TRUE,...) {
+  read.table("clipboard",sep="\t",header=header,...)
+}
+eq <- read.excel()
+eq1<-na.omit(eq)
+eq_1 <- as.data.frame(eq1)
+eq_2 <- eq_1 %>% group_by(Year) %>% summarise_all(funs(mean(., na.rm=TRUE)))
+head(eq_2)
+```
+
+
+```{r plot}
+plot(eq_2$Mag~eq_2$Year,type="l", main = "Earthquake Magnitude from 1917 to 2017", xlab = "Years", ylab ="Magnitude")
+```
+
+This plot shows the fluctuation over time of the average earthquake magnitude around the world. It appears to have a slight decreasing trend just by looking at the data. However, modeling the data is the only way to know if the trend is decreasing or stable. First we will assume the trend is constant and later test whether that assumption is true or whether the assumption is false.
+
+
+# Arma Model
+This is a stationary ARMA(p,q) model under the null hypothesis that there is no trend. To the naked eye it appears to have a slightly decreasing trend but we will look at that later. The null is stating that magnitude has not changed across the globe from the last 100 years.
+*Stationary Guasian ARMA(p,q) model:
+\[\phi(B)(Y_{n}-\mu)=\psi(B)\epsilon_{n}\]
+where
+\[\mu=E[Y_n]\]
+\[\psi=1+\psi_1x+\psi_2x^2+...+\psi_qx^q\]
+\[\phi=1-\phi_1x-\phi_2x^2-...-\phi_qx^q\]
+\[\epsilon_n\]~Normal[0,$\sigma^2$]
+In order to decide what values of p and q to use, an Akaik Information Criterion (AIC) table is to be computed as follows:
+\[AIC = -2 * \mathcal{l}(\theta)+2D\]
+where D is the number of parameters.
+```{r arma}
+eq_mag <- eq_2$Mag
+eq_year <- eq_2$Year
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q), method = 'ML')$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+weather_aic_table <- aic_table(eq_mag,4,5)
+require(knitr)
+kable(weather_aic_table,digits=2)
+```
+
+From the AIC table ARMA(1,1), ARMA(2,1), and ARMA(1,2) seem like reasonable models to assess. None of them are too large of models in which case overfitting would be a concern. 
+
+```{r arma model, echo=FALSE}
+arma21 <- arima(eq_mag, c(2,0,1))
+arma21
+
+arma12 <- arima(eq_mag, c(1,0,2))
+arma12
+
+arma11_0 <- arima(eq_mag, c(1,0,1))
+arma11_0
+```
+
+From looking at the models individually, it is shown that all of the models have larger fitted values than their standard errors. However all of the fitted values are inside the unit circle. This might be an issue later with stability. ARMA(1,1) appears to have the best performance with low standard errors and larger fitted values. We will analyze the data set using ARMA(1,1).
+
+```{r roots}
+arma21_roots <- polyroot(c(1,-coef(arma21)))
+abs(arma21_roots)
+arma12_roots <- polyroot(c(1,-coef(arma12)))
+abs(arma12_roots)
+arma11_roots <- polyroot(c(1,-coef(arma11_0)))
+abs(arma11_roots)
+```
+All of the models have roots inside of the unit circle. This is a concern with the stability of the model. However, sometimes it cannot be avoided picking a model where the roots are within the unit circle. Thus we will stick with ARMA(1,1) model for now.
+
+#Testing Trend
+Since ARMA(1,1) model was chosen previously we will test an ARMA(1,1) model with trend against the model with no trend. Here is the model with a linear trend:
+```{r testing trend}
+arma11_1 <- arima(eq_mag, c(1,0,1),xreg = eq_year)
+arma11_1
+```
+The model that is above is:
+\[(1-\phi*B)(Y_n-\mu-\beta*t_n)=\psi(B)\epsilon_n\]
+where $\epsilon_n$ is Gaussian white noise iid N[0,$\sigma^2$].
+The null hypothesis:
+\[H_0: \beta=0\]
+Alternative hypothesis:
+\[H_1:\beta\neq0\]
+
+```{r hypothesis test}
+#Hypothesis test
+LRT <- 2*(-.6+5.55)
+1-pchisq(LRT,1)
+```
+Using the likelihood ratio test to test whether or not it is appropriate to model the data with a model that has trend. The null hypothesis can be rejected that $\beta=0$ with a  pvalue of .00165 and $\alpha<.05$. So a model with trend is the better way to model the data. 
+
+#Detrend
+```{r detrend}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,1,q), method = 'ML')$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+weather_aic_table <- aic_table(eq_mag,4,5)
+require(knitr)
+kable(weather_aic_table,digits=2)
+
+arima111 <- arima(eq_mag, c(1,1,1))
+arima111
+```
+
+Because the model has a decreasing trend it is important to consider using a different model.
+The transformed model changes the data $y_n-y_{n-1}$
+This is written as 
+\[\phi(B)((1-B)^dY_n-\mu=\psi(B)\epsilon_n\]
+where $\epsilon_n$ is Gaussian white noise.
+The reason for using this is to make the data look more stationary.
+
+#Frequency Domain Analysis
+```{r periodogram}
+spectrum(eq_mag, main="Unsmoothed Periodogram of Earthquake Magnitude")
+```
+
+```{r smoothed periodogram}
+smoothed<-spectrum(eq_mag, spans=c(3,3), main="Smoothed Periodogram of Earthquake Magnitude")
+spectrum(eq_mag, spans=c(3,3), main="Smoothed Periodogram of Earthquake Magnitude")
+```
+
+```{r smoothed freq}
+highest_freq<-smoothed$freq[which.max(smoothed$spec)]
+highest_freq
+1/highest_freq
+```
+The smoothed periodogram frequency is in cycles per data point (year). The highest frequency is at .0462. This corresponds to a period of 21.6 years. This is a significant period. None of the other peaks seem to be significant which can be seen by looking at the confidence interval bar on the right hand side. 
+
+#Model Diagnostics
+```{r checking normality, echo=FALSE}
+acf(arima111$resid, main="ACF of Residuals from ARiMA(1,1,1)")
+plot(arima111$resid, ylab = "residuals", main="Residual Plot of ARiMA(1,1,1)")
+fit_vector <- as.vector(fitted(arima111))
+fit_residuals <- as.vector(residuals(arima111))
+plot(fit_vector, fit_residuals, xlab = "Predicted scores", ylab = "Residuals", main="Residuals vs. Fitted") 
+```
+
+Looking at the ACF (autocorrelation function) graph of the ARMA(1,1) with trend, there does not appear to be any issues with autocorrelation. Lag 10 appears to be slightly out of the 95% confidence range where we would expect to see Gaussian white noise. However, this is not concerning.
+The residuals, however, appear to have a lot of variability and peaks around every 20 years. 
+Looking at the residual scatter plot of the predicted versus the residuals shows that they are scattered very randomly. This suggests that further analysis of doing a log transformation is not necessary by looking at the residuals.
+
+```{r normality}
+qqnorm(eq_2$Mag)
+qqline(eq_2$Mag)
+shapiro.test(eq_2$Mag)
+```
+
+It is also important to check that the magnitudes are in fact normal. To test that it is important to look at a qqplot. From the qqplot, it can be seen that the data is normally distributed. However, it does have really long tails on each end. To further test normality we use the shairo test with $H_0:$ the data is normally distributed versus $H_1:$ the data is not normally distributed. With a pvalue of .2129 we cannot reject the null hypothesis that the data is normally distributed.Thus we conclude that we have normally distributed data.
+
+#Forecast
+```{r forecast}
+arma_forecast <- forecast(arma11_0, h = 5)
+plot(arma_forecast, ylab="Time since 1917" )
+
+```
+This is a forecast using R's build in forecast function for 5 more years. we see that the analysis is that average magnitude will decrease slightly and then stay constant for the next 5 years.
+
+
+#Conclusion
+* By using AIC and checking the standard errors of various models, we found that ARMA(1,1) is the best model for the data.
+* After finding the best model, a hypothesis test was carried out to test whether or not the model has a linear trend or not. We rejected the null. Thus the model is best represented with linear trend.
+* From looking at the smoothed periodogram, it was found that there seems to be a cycle of approximately 21.6 years.
+* It was also found that the data is well modeled by the ARMA(1,1) with trend.
+* The ARIMA(1,1,1) model was used to try to make the model stationary. From looking at the acf graph it appears to have performed well and there is not much autocorrelation. However the residual graph is concerning with the peaks.
+* Lastly the data is approximately normal. It passes diagnostic tests.
+
+For further analysis, it would be a good idea to take a look at the time series of the count of earthquakes during the same years.
+```{r further analysis}
+read.excel <- function(header=TRUE,...) {
+  read.table("clipboard",sep="\t",header=header,...)
+}
+eq <- read.excel()
+eq_1 <- as.data.frame(eq)
+eq_2 <- eq_1 %>% group_by(Year) %>% summarise(count = n())
+plot(eq_2$count~eq_2$Year,type="l", ylab="Count of Earthquakes", xlab="Year", main="Time Series Plot of the Count of Earthquakes")
+```
+
+There is a dramatic increase in the number of earthquakes after 2001-2002. However, if you look at the magnitude after approximately 2001-2002, it drops by to the lowest point it ever reaches in the past 100 years. It would be an interesting next step to look at how earthquake frequency around the globe impacts earthquake magnitude in the essence of time series analysis by doing a joint analysis.
+A hypothesis to look at with the added information is whether increased earthquake frequency decreases earthquake magnitude. Earthquake magnitude is a measure of intensity. Perhaps having a multitude of small earthquakes allows the tension in the earth's tectonic plates to be reduced. If there are fewer earthquakes perhaps more tension builds up which results in highly intense but fewer earthquakes.
+
+Another hypothesis is that the instruments to detect earthquakes have gotten a lot better so they are detecting earthquakes that are very small.
+
+#References
+* Ionides, E. (n.d.). Stats 531 (Winter 2018) 'Analysis of Time Series' http://ionides.github.io/531w18/
+* National Centers for Environmental Information: NOAA (n.d.). https://www.ngdc.noaa.gov/hazard/
+* Shumway, R., Stoffer, D. (n.d) Time Series Analysis and Its Applications

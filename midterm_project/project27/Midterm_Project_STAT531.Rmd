@@ -1,0 +1,605 @@
+---
+title: "Which Airport should you choose to avoid flight delayed"
+date: "March 8, 2018"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+    toc_depth: 2
+    fig_caption: true
+---
+
+
+------
+
+------
+
+
+# 1. Introduction 
+
+Flight delays happen very common in the airline industry. According to [Bureau of Transportation statistics](https://www.transtats.bts.gov/HomeDrillChart.asp), appriximately 18% of flights were delayed more than 15 minutes from 2015 to 2017. Even though airline will accordingly compensate delayed passengers, [there is no federal requirements in terms of compensations](https://www.transportation.gov/airconsumer/fly-rights). Therefore, it is best to the passenger to choose an airline and airport with good on-time records. 
+
+
+This study focused on two airports located in New York City, LaGuardia Airport (LGA) and John F. Kennedy International Airport (JFK). The goal is first build a prediction model on delay time for each airport given some covarites and recommend which airport is better in terms of avoiding flight delay based on historical data.  
+
+
+------
+
+------
+
+# 2. Data Preparation & Overview
+
+## 2.1 Data Desciption
+A dataset from [Kaggle](https://www.kaggle.com/giovamata/airlinedelaycauses), which are provided from the Bureau of Transportation statistics in DOT. This dataset provides 1,936,758 domestic flights in 2008 with information on minutes of delay, cancelation (yes/no), cancelation reason, date (year, month, week, day) and scheduled departure minute, carrier airline, origin and destination and so on. 
+
+
+## 2.2 Exclusion/Inclusion
+We only include flights with origin in JFK and LGA whose carriers are one of the following airlines: 
+
+(1). American Airlines (AA) 
+
+(2). Delta Airlines (DL) 
+
+(3). United Airlines (UA)
+
+(4). Comair Airline (OH)
+
+(5). American Eagle Airline (MO)
+
+
+Since the two airport have different distribution of airlines, we pick these five major airline that have similar flight numbers from in 2008. 
+
+```{r, cache=T,echo=F}
+dt = read.csv("DelayedFlights.csv")
+JFK = dt[dt$Origin=="JFK",]
+LGA = dt[dt$Origin=="LGA",]
+library(knitr)
+x = t(cbind(table(JFK$UniqueCarrier),table(LGA$UniqueCarrier)))
+rownames(x) = c("JFK","LGA")
+kable(x,caption = "Total number of airlines in 2008")
+
+JFK = JFK[JFK$UniqueCarrier%in%c("AA","DL","UA","OH","MO"),]
+LGA = LGA[LGA$UniqueCarrier%in%c("AA","DL","UA","OH","MO"),]
+```
+
+
+## 2.3 Daily Delay Time
+Considering a goal of a general reflection of departure punctuality performance, we create a weekly delay time (DDT) for JFK and LGA, which takes the average of delay minutes for that particular week. For example, DDT = 30 in JFK, implies that flight tend to delay 30 minutes for departure for the given date in JFK. 
+
+```{r,echo=F,warning=F,fig.width=15, fig.cap="Fig1: Time trend of Daily Delayed Time (DDT) for JFK and LGA",fig.align="c"}
+library(plyr)
+# Formate the date
+JFK$date = as.Date((JFK$Month-1)*30+(JFK$DayofMonth),origin = "2008-01-01")
+LGA$date = as.Date((LGA$Month-1)*30+(LGA$DayofMonth),origin = "2008-01-01")
+
+# Work on this dataset
+daily_JFK = data.frame(day=unique(JFK$date),
+                  DDS=aggregate(JFK$DepDelay,list(JFK$date),mean)[,-1],
+                  Fl_num = as.vector(table(JFK$date)))
+
+daily_LGA = data.frame(day=unique(LGA$date),
+                  DDS=aggregate(LGA$DepDelay,list(LGA$date),mean)[,-1],
+                  Fl_num = as.vector(table(LGA$date)))
+
+# sort in consequent day
+daily_JFK = daily_JFK[order(daily_JFK$day),]
+daily_LGA = daily_LGA[order(daily_LGA$day),]
+
+par(mfrow=c(1,2))
+# Plot 
+library(scales)
+plot(daily_JFK$day,daily_JFK$DDS,type="l",ylab = "Daily Delay Score",xlab = "Time in 2008",main = "Average delay in minutes for Airport in New York City",col="red")
+lines(daily_LGA$day,daily_LGA$DDS,col=alpha("blue",0.7))
+legend("topleft",col=c("red",alpha("blue",0.7)),lty = c(1,1),legend = c("JFK","LGA"))
+
+plot(daily_JFK$day,log(daily_JFK$DDS),type="l",ylab = "log-Daily Delay Score",xlab = "Time in 2008",main = "Average log(delay) in minutes for Airport in New York City",col="red")
+lines(daily_LGA$day,log(daily_LGA$DDS),col=alpha("blue",0.7))
+legend("topleft",col=c("red",alpha("blue",0.7)),lty = c(1,1),legend = c("JFK","LGA"))
+
+```
+
+The above figure shows the avergae delay in minutes from JFK or LGA from 2008-01-01 to 2008-12-31. We also shows a log-transformed version in comparison with the original picture. There are some interesting remarks from this simple observation. 
+
+- First, it seems that some spike in LGA and JFK are not overlapping, indicating opportunities for passengers to choose one over the other. 
+
+- Moreover, it seems that the general trend of daily delay score changed at around September, which might due to random or some specific reason that we need to explore. This is much more obvious in the log-transformed time trend plot.
+
+- Lastly, we might want to model the log-transformed DDS, which looks more "stationary" than the original sclae. Further, exploration will be performed in the following section.
+
+
+## 2.4 Number of Flightes
+It is natural to suspect more flights within the same day is correlated with minutes in departure delay. More flights means higher chance of congestion in departure coordinations and operation errors. 
+
+```{r, echo=F,fig.width=15,fig.cap="Fig 2: Total number of flights per day vs log-DDT in JFK and LGA",fig.align="c"}
+par(mfrow=c(1,2))
+
+plot(daily_JFK$day,daily_JFK$DDS,type="l",ylab = "log-Daily Delay Score",xlab = "Time in 2008",main = "Average log(delay) in minutes for JFK Airport",col="red")
+lines(daily_JFK$day,daily_JFK$Fl_num,col=alpha("blue",0.7))
+legend("topleft",col=c("red",alpha("blue",0.7)),lty = c(1,1),legend = c("log-DDT","# Flights"))
+
+plot(daily_LGA$day,daily_LGA$DDS,type="l",ylab = "log-Daily Delay Score",xlab = "Time in 2008",main = "Average log(delay) in minutes for LGA Airport",col="red")
+lines(daily_LGA$day,daily_LGA$Fl_num,col=alpha("blue",0.7))
+legend("topleft",col=c("red",alpha("blue",0.7)),lty = c(1,1),legend = c("log-DDT","# Flights"))
+```
+
+The above figure shows the time trend of total number of flights (the five major airlines we picked) in JFK or LGA. It seems that the number of flights is highly correlected with DDS. 
+
+- During May-July when there is a surge of flights number, we see a clear correpsondence in increasing spikes in DDS.
+
+- During Sep-Nov when there is a decline of flights number, we see a clear more stable and lower level of DDS. 
+
+Becuase of the above observation, we will need to assess how much does the information of total number of flights improve the general prediction of DDS. 
+
+------
+
+------
+
+# 3. Build Prediciton Model on each airport seperately 
+
+## 3.1 Frequency domain analysis for outcome and predictor 
+```{r, echo=F, fig.width=10,fig.height=6,fig.cap="Fig 3. Smoothed periodgram for DDT JFK and LGA",fig.align="c"}
+spec= spectrum(cbind(daily_JFK$DDS,daily_LGA$DDS),spans=c(5,5), main="Smoothed periodogram for Outcome: Daily Delyaed Time",xlab = "frequency: # cycles per day")
+legend(0.39,1500,legend = c("JFK","LGA"),col=c("black","red"),lty=c(1,2))
+```
+
+```{r}
+spec$freq[which.max(spec$spec[,1])] # JFK
+spec$freq[which.max(spec$spec[,2])] # LGA
+```
+
+By plotting the smoothed periodogram, we find that the dominat frequency is 0.00277 for both JFK and LGA, corresponding to an annual cycle (not interesting finding since we only have one year data). Besides that the time-series of the daily delayed time is very "noisy" impling it might **not have any seasonal components**. 
+
+However, we do notice **opposite direction** between JFK and LGA. For example, at a frequency of 0.9 (cycles per day), we see a high power for specturm of LGA but low power for JFK. We can observe many such "opposite direction" instances in the dataset, impling **opportunities to choose a better airport over the other**. 
+
+
+```{r, echo=F, fig.width = 10, fig.height=8, fig.cap="Fig 4. Smoothed periodgram for DDT and number of daily flights in JFK and LGA",fig.align="c"}
+par(mfrow=c(2,1))
+spectrum(cbind(daily_JFK[,2:3]),spans=c(3,3), main="Smoothed periodogram in JFK ",xlab = "frequency: # cycles per year")
+legend(0.4,8000,legend = c("DDT","#Flight"),col=c("black","red"),lty=c(1,2))
+spectrum(cbind(daily_LGA[,2:3]),spans=c(3,3), main="Smoothed periodogram in LGA ",xlab = "frequency: # cycles per year")
+legend(0.4,6000,legend = c("DDT","#Flight"),col=c("black","red"),lty=c(1,2))
+
+```
+
+From the observation in Section 2, we notice that correlation between daily delayed time and number of daily flights. This is further verfiy by the above peroidgram (Figure 4). The red-shaded line corresponds to number of flights at the same airport, they have a very good correspondence with DDT as shwon in Figure 2. 
+
+**In conclusion**, 
+
+- from the frequency domain analysis, we did not observe any dominant cycle within one year. 
+
+- Also, based on the simple time trend plot, the DDT looks "stationary" except for several outlier points. 
+
+- Therefore, we will try to fit some ARMA models in the next section.
+
+## 3.2 Fitting a simple ARMA Model without any predictor
+
+Since the log-DDT looks "stationary" from Figure 1, we will try to fit a simple $ARMA(p,q)$ Model first without any predictor. A selection of $p$ and $q$ will be determnied based on both AIC and fitted ARMA being causal and invertibel. 
+
+
+Let $log(Y_{1:N})$ be the log-Daily delayed time in JFK at time $t_{1:N}$, We will try to first fit with $ARMA(p,q)$. 
+
+In specific, 
+$$\phi(B)(log(Y_n)-\mu)=\psi(B)\epsilon_n$$
+where $\epsilon_n \sim N(0,\sigma^2)$, $B$ is the backshift operator and 
+$$\phi(x) = 1-\phi_1x-\phi_2x^2 +...-\phi_px^p$$
+$$\psi(x) = 1+\psi_1x+\psi_2x^2 +...+\psi_px^p$$
+
+```{r,echo=F, warning=F}
+aic_table <- function(y,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(y,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aic_table1 <- aic_table(log(daily_JFK$DDS),3,4)
+aic_table2 <- aic_table(log(daily_LGA$DDS),3,4)
+
+require(knitr)
+kable(aic_table1,digits=1,caption = "AIC for ARMA Model without predictor (JFK)")
+kable(aic_table2,digits=1,caption = "AIC for ARMA Model without predictor (LGA)")
+```
+
+From the AIC tables, we are selecting several p,q combination (to see whether they are causal and invertible)
+
+- For JFK, we decided to try ARMA(3,1), ARMA (1,2), ARMA(1,3)
+
+- For LGA, we decided to try ARMA(1,2), ARMA(3,1), ARMA(1,3)
+
+```{r,echo=F, warning=F}
+# JFK
+fit1.1 = arima(log(daily_JFK$DDS),order = c(3,0,1))
+# polyroot(c(1,-fit1.1$coef[1:3])); fit1.1$coef[4] 
+# caulsal, not invertible
+
+fit1.2 = arima(log(daily_JFK$DDS),order = c(1,0,2))
+# fit1.2$coef[1]; polyroot(c(1,-fit1.2$coef[2:3])) 
+# non-caulsal, invertible
+
+fit1.3 = arima(log(daily_JFK$DDS),order = c(1,0,3))
+# fit1.3$coef[1];polyroot(c(1,-fit1.3$coef[2:4]))
+# non-caulsal, invertible
+
+# LGA
+fit2.1 = arima(log(daily_LGA$DDS),order = c(1,0,2))
+# fit2.1$coef[1] ;polyroot(c(1,-fit2.1$coef[2:3]))
+# caulsal, non-invertible
+
+fit2.2 = arima(log(daily_LGA$DDS),order = c(3,0,1))
+# polyroot(c(1,-fit2.2$coef[1:3]));fit2.2$coef[4]; 
+# caulsal, non-invertible
+
+fit2.3 = arima(log(daily_LGA$DDS),order = c(1,0,3))
+# fit2.3$coef[1] ;polyroot(c(1,-fit2.3$coef[2:4]))
+# non-caulsal, invertible
+```
+
+
+
+```{r, echo=F,fig.width=15, fig.height= 6, fig.cap="Fig5. ACF plot of DDT and log-DDT",fig.align="c"}
+par(mfrow=c(1,2))
+plot(acf(log(daily_JFK$DDS),plot = F,lag.max = 25),main = "ACF of log-Daily Delay Time in JFK")
+plot(acf(log(daily_LGA$DDS),plot=F,lag.max = 25),main = "ACF of log-Daily Delay Time in LGA")
+```
+
+
+- However, it seems that none of the fitted ARMA model is causal and invertible (calculcation hided, could be found back in code). 
+
+- Moreover, we see that the auto-correlation has some significant repetitiv pattern impling that the DDT is definietly not white noise process. 
+
+- Therefore, we know that simple ARMA model does not well capture the dependecy between adjacent time point.
+
+
+## 3.3 Fitting a simple ARMA Model regress on number of flights
+
+We will repeat similar process in 3.2 only adding number of flights as predictor. 
+
+Let $log(Y_{1:N})$ be the log-Daily delayed time in JFK at time $t_{1:N}$, and $log(X_{1:N})$ be the log-number of flights. We will try to first fit with ARMA(1,1) for simplicity (just as a start). 
+
+In specific, 
+$$ log(Y_n) = \alpha + \beta \ log(X_n) + \epsilon_n$$
+Where, 
+$$\phi(B)\epsilon_n=\psi(B)w_n$$
+With $w_n \sim N(0,\sigma^2)$
+
+
+```{r,echo=F, warning=F}
+aic_table <- function(y,x,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(y,order=c(p,0,q),xreg = x)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aic_table1 <- aic_table(log(daily_JFK$DDS),log(daily_JFK$Fl_num),3,4)
+aic_table2 <- aic_table(log(daily_LGA$DDS),log(daily_LGA$Fl_num),3,4)
+
+require(knitr)
+kable(aic_table1,digits=1,caption = "AIC for AMRA Model with regressor on number of flights (JFK)")
+kable(aic_table2,digits=1,caption = "AIC for AMRA Model with regressor on number of flights (LGA)")
+```
+
+
+We first notice, that the entire value in AIC table are much smaller than in Section 3.2. 
+
+- For JFK, we decided to try ARMA(2,3), ARMA(3,2), ARMA(3,3)
+
+- For LGA, we decided to try ARMA(2,3), AR(3), MA(3). 
+
+```{r,echo=F, warning=F}
+# JFK
+fit1.1 = arima(log(daily_JFK$DDS),order = c(2,0,3),xreg = log(daily_JFK$Fl_num))
+# polyroot(c(1,-fit1.1$coef[1:2]));polyroot(c(1,-fit1.1$coef[3:5]))
+# causal + invertible 
+
+fit1.2 = arima(log(daily_JFK$DDS),order = c(3,0,2),xreg = log(daily_JFK$Fl_num))
+# polyroot(c(1,-fit1.2$coef[1:3]));polyroot(c(1,-fit1.2$coef[4:5]))
+# causal + invertible 
+
+fit1.3 = arima(log(daily_JFK$DDS),order = c(3,0,3),xreg = log(daily_JFK$Fl_num))
+# polyroot(c(1,-fit1.3$coef[1:3]));polyroot(c(1,-fit1.3$coef[4:6]))
+# causal + invertible 
+
+# LGA
+fit2.1 = arima(log(daily_LGA$DDS),order = c(2,0,3),xreg = log(daily_LGA$Fl_num))
+# polyroot(c(1,-fit2.1$coef[1:2]));polyroot(c(1,-fit2.1$coef[3:5]))
+# causal, non-invertibel 
+
+fit2.2 = arima(log(daily_LGA$DDS),order = c(3,0,0),xreg = log(daily_LGA$Fl_num))
+# polyroot(c(1,-fit2.2$coef[1:2]));polyroot(c(1,-fit2.2$coef[3:5]))
+# causal, non-invertibel 
+
+fit2.3 = arima(log(daily_LGA$DDS),order = c(0,0,3),xreg = log(daily_LGA$Fl_num))
+# polyroot(c(1,-fit2.3$coef[1:3]))
+# causal 
+```
+
+
+Based on the calculation of each root for the polynomials of the above fitted model (calculcation hided, could be found back in code), we decided to select the simpliest model which are causal and invertible. Therefore we will select ARMA(2,3) for JFK and AR(3) for LGA. 
+
+Since in Section 3.2 we did not find any causal-invertible ARMA model, we will not consider them and believe that the addition of number of flights is key to have precise prediction of daily delayed time.
+
+
+## 3.4 Conclusions
+
+**In conclusion**, we will use model for log-DDT regress on log-(number of flights): 
+
+ - For data in **JFK**, we found **ARMA(2,3)** fit the best. 
+ 
+ - For data in **LGA**, we found **AR(3)** fit the best.
+ 
+
+```{r, echo=T}
+fit1 = arima(log(daily_JFK$DDS),order = c(2,0,3),xreg = log(daily_JFK$Fl_num))
+fit1
+fit2 = arima(log(daily_LGA$DDS),order = c(3,0,0),xreg = log(daily_LGA$Fl_num))
+fit2
+```
+```{r, echo=F,fig.width=12, fig.height= 8, fig.cap="Fig7. Final Model's Diagnostic",fig.align="c"}
+par(mfrow=c(2,2))
+plot(acf(fit1$residuals,plot = F,lag.max = 25),main = "ACF of Resdiauls from above fit 1 model (JFK)")
+qqnorm(fit1$residuals,main = "QQ-plot of Residuals from ARMA (2,3) for log-DDT in JFK")
+qqline(fit1$residuals)
+plot(acf(fit2$residuals,plot = F,lag.max = 25),main = "ACF of Resdiauls 
+from above fit 2 model (LGA)")
+qqnorm(fit2$residuals,main = "QQ-plot of Residuals from AR (3) for log-DDT in LGA")
+qqline(fit2$residuals)
+```
+
+
+**Diagnostic**
+
+- From the qq-plot for the residuals from the final models, we could see that the residuals approximately follow normal (for the middle part) but not for the extreme values. This is expected, since the extreme delayed time are probably due to extreme whether which could not be explained by the stational causal model. Therefore, our future recommendation should be taken with caution. 
+
+- The auto-corelation figure shows that most residuals are well within the 95% bound of white noise process, impling a general reasonable good fitting. 
+
+
+------
+
+------
+
+
+# 4. JFK or LGA ? 
+
+Now, that we have build two time-series model for daily delayed time (DDT). The two questions are of interest: 
+
+- Which airport is more sensitive to number of flights? What are the implications? 
+
+- If the two airport have same number of flights that day, is there a better choice to avoid flight delay? 
+
+
+## 4.1 Sensitivity to number of flight
+
+** 95% Profile Confidence Interval for slope of number of flight**:
+
+In order to understand whether the number of flight is significant predictor in ARMA model, and how the effect is different between airport, we tries to get a profile confidence interval. 
+
+```{r,echo=F,warning=F,cache=T,fig.height=5,fig.width=12,fig.cap="Fig6. Profile Liklihood for slope"}
+set.seed(000)
+K = 500
+slope = seq(0.3,0.5,length.out = K)
+profile_loglike = rep(NA,K)
+for (k in 1:K){
+  profile_loglike[k] = logLik(arima(log(daily_JFK$DDS),order = c(2,0,3),xreg = log(daily_JFK$Fl_num),fixed = c(NA,NA,NA,NA,NA,NA,slope[k])))
+}
+plot(profile_loglike~slope,ty="l",main="profile-liklihood for slope (JFK)")
+abline(h = max(profile_loglike)-1.92,lty=2)
+
+est = slope[which.max(profile_loglike)]
+
+print(paste0("The estiamted slope (JFK) is ",round(est,2), " with 95% profile CI [",
+              round(slope[min(which(max(profile_loglike)-profile_loglike < 1.92))],2),",",round(slope[max(which(max(profile_loglike)-profile_loglike < 1.92))],2),"]"))
+
+
+slope = seq(0.1,0.35,length.out = K)
+profile_loglike = rep(NA,K)
+for (k in 1:K){
+  profile_loglike[k] = logLik(arima(log(daily_LGA$DDS),order = c(3,0,0),xreg = log(daily_LGA$Fl_num),fixed = c(NA,NA,NA,NA,slope[k])))
+}
+plot(profile_loglike~slope,ty="l",main="profile-liklihood for slope (LGA)")
+abline(h = max(profile_loglike)-1.92,lty=2)
+
+est = slope[which.max(profile_loglike)]
+
+print(paste0("The estiamted slope (LGA) is ",
+             round(est,2), 
+             " with 95% profile CI [",
+              round(slope[min(which(max(profile_loglike)-profile_loglike < 1.92))],2),",",
+             round(slope[max(which(max(profile_loglike)-profile_loglike < 1.92))],2),"]"))
+```
+
+Therefore, it is clear that the information in number of flight is important. And the number of flight seems to have stronger influence on daily dealyed time in JFK than in LGA. Although the slope is based on log(number of flights) and log(DDT), we could interpreate them in a more meaningful way through simulations. (see nect section) 
+
+
+## 4.2 Comparison with same number of flights
+
+
+```{r,echo=F,fig.width=10}
+x = rbind(quantile(daily_JFK$DDS,probs=c(0.1,0.25,0.5,0.75,0.9))
+          ,quantile(daily_LGA$DDS,probs=c(0.1,0.25,0.5,0.75,0.9))
+          ,quantile(daily_JFK$Fl_num,probs=c(0.1,0.25,0.5,0.75,0.9))
+          ,quantile(daily_LGA$Fl_num,probs=c(0.1,0.25,0.5,0.75,0.9)))
+
+rownames(x) = c("JFK Daily Delayed Time", "LGA Daily Delayed Time",
+                "JFK Number of flights", "LGA Number of flight")
+colnames(x) = c("10%","25%","50%", "75%","90%")
+kable(round(x,1),caption = "Summary table of the quantile for daily delayed time and number of flights within 2008",align = "c")
+```
+
+
+For simplicity, let us compare the daily delayed time when number of flight are: 
+
+- 10 ("perfect" time)
+
+- 50 ("avergae" time)
+
+- 100 ("worst" time)
+
+
+```{r, echo=F,fig.align="c",fig.width=15,fig.height=10,fig.cap="Fig8. Simulated Daily Delayed Time under perfect and worst time"}
+gen_sim=function(x){
+  x1 = arima.sim(n = 365, list(ar = fit1$coef[1:2], 
+                               ma =fit1$coef[3:5],
+                               sd=sqrt(fit1$sigma2)),n.start = 100)
+  +fit1$coef[6]+fit1$coef[7]*x
+  
+  x2 = arima.sim(n = 365, list(ar = fit2$coef[1:3],
+                             sd =sqrt(fit2$sigma2)),n.start = 100)
+  +fit1$coef[4]+fit2$coef[5]*x
+
+  return(list(x1,x2))}
+
+par(mfrow=c(2,2))
+set.seed(002)
+plot(exp(gen_sim((10))[[1]]),type="l",ylim=c(0,30),ylab="Daily Delayed Time",main="Perfect time in JFK")
+plot(exp(gen_sim((10))[[2]]),type="l",ylim=c(0,30),ylab="Daily Delayed Time",main="Perfect time in LGA")
+plot(exp(gen_sim((100))[[1]]),type="l",ylim=c(0,30),ylab="Daily Delayed Time",main="Worst time in JFK")
+plot(exp(gen_sim((100))[[2]]),type="l",ylim=c(0,30),ylab="Daily Delayed Time",main="Worst time in LGA")
+
+```
+
+Above is two simulated ARMA data at "perfect" and "worst" time. We will expect that the long-run mean of delayed time is constant since the model is stationary. However, it is more interesting to know the number of time they hit "high peaks" within one year. Therefore, we will repeat the simulation for 10000 times and count the day during one year period that have daily time greater than 5min, 10min, 15min, 30min. 
+
+
+```{r, echo=F,fig.width=15,fig.height=8,fig.cap="Fig9. Number of Days that have delayed departure based on flight number = 10,50,100",fig.align="c"}
+gen_sim1=function(x){
+  x1 = arima.sim(n = 365, list(ar = fit1$coef[1:2], 
+                               ma =fit1$coef[3:5],
+                               sd=sqrt(fit1$sigma2)),n.start = 100)
+  +fit1$coef[6]+fit1$coef[7]*x
+
+  return(x1)}
+gen_sim2=function(x){
+  x2 = arima.sim(n = 365, list(ar = fit2$coef[1:3],
+                             sd =sqrt(fit2$sigma2)),n.start = 100)
+  +fit1$coef[4]+fit2$coef[5]*x
+
+  return(x2)}
+
+extreme_delay = function(x){
+  return(c(sum(exp(x)>=5),sum(exp(x)>=10),sum(exp(x)>=15),sum(exp(x)>=30)))
+}
+
+set.seed(000)
+Results1 = matrix(0,nrow=3,ncol=4)
+Results2 = matrix(0,nrow=3,ncol=4)
+
+for (i in 1:1e4){
+  sim1 = list(gen_sim1(10),gen_sim1(50),gen_sim1(100))
+  sim2 = list(gen_sim2(10),gen_sim2(50),gen_sim2(100))
+  Results1 = Results1+ matrix(unlist(lapply(sim1, extreme_delay)),byrow=T,nrow=3)
+  Results2 = Results2+ matrix(unlist(lapply(sim2, extreme_delay)),byrow=T,nrow=3)
+}
+
+Result1 = Results1/1e4
+Result2 = Results2/1e4
+
+library(ggplot2)
+draw_function = function(x,note){
+  x1 = cbind(rbind(Result1[x,],Result2[x,]),c("JFK","LGA"))
+  x1 = data.frame(cbind(rbind(x1[,c(1,5)],x1[,c(2,5)],x1[,c(3,5)],x1[,c(4,5)]),rep(c("> 5min","> 10min","> 15min","> 30min"),each=2)))
+colnames(x1) = c("Days","Airport","DT")
+x1[,1] = round(as.numeric(x1[,1]),1)
+x1$DT = factor(x1$DT,levels = c("> 30min","> 15min","> 10min","> 5min"))
+
+p = ggplot(x1[order(x1$Days),], aes(fill=DT, y=Days, x=Airport)) + 
+  geom_bar(stat="identity") +
+  labs(x="Airport", y="Number of days within one year that delayed") +
+  ggtitle(paste0("Delayed Distribution during",note))+
+  scale_fill_manual(values=c("gold","darkorange","steelblue","lightblue3")) 
+
+return(p)
+}
+
+library(gridExtra)
+grid.arrange(
+  draw_function(1," \"perfect time \""),
+  draw_function(2," \"avergae time \""),
+  draw_function(3," \"worst time \""),
+  nrow=1
+)
+```
+
+
+From Figure 8, we can see that 
+
+- Most delays are actually around 10-15 minutes (not 5-10 mininute) 
+
+- JFK has more days of departure delays in all four category (>5,>10,>15,>30) than LGA 
+
+- Little difference was observed for having different number flights, impling the predictor is statistically significant but might not have a enough practical affect on delayed time
+
+- In total, there will be around 6 days of delayed deaprture in JFK and
+5 days of dealyed departure in LGA, which is way too optimistic than the 18% statistics we see in Introduction. 
+
+- However, remeber that we took the mean of all flights delayed time during one day. And therefore 5 min in Daily Delayed Time (DDT) means that every flight in the airport in that particular date is delayed by 5 minute, which is impling either a sequential delayed for a most of flights or a extreme long delayed time for some flights. 
+
+------
+
+------
+
+
+# 5. Discussion  & Conclusion 
+
+## 5.1 Dicussion
+
+**DDT**: 
+
+Before we provide the final conclusion, we would like to discuss some pros and cons of creating a dialy delay time (DDT), which is the mean of delayed time of all flights in one day. 
+
+* Pros: 
+    + Since, we are interested to compare the general delayed     performance in two airport, DDT summarize all flights information and thus create one time-series for each airport 
+    + DDT is easy to analyze
+
+* Cons: 
+    + DDT is a much dense score, and thus DDT = 5 could mean a lot of scenarios (all flights delayed by 5 minute or 5 % of flights delayed by 100 minutes). Therefore, the interpretation should be careful that DDT = 5 is in fact a reflection of modertae delayed time of an airport. 
+    + DDT is tricky to interpretate
+
+
+**Selection of 5 airlines**:
+
+We also only selected 5 major airlines from both airport to make the analysis result comparable. However, it should be expected thqt reason for departure delays not only depends on airport but also the carriers and destinations. In the future, more segmentation should be carried our and perform detailed analysis on each such cases. However, this study is aim to provide a general comparison between the two airport and thus we think our procedure is reasonable. 
+
+
+**ARMA Model**:
+
+Every model is worong. If we could find a perfect model that perfectly fit the data, it will be overfiiting and not-generalizable. Our ARMA model provide time series of DDT, assuming everything is ususal (no extreme bas weather, no rare event). It is important to remeber such assumption and do not over-generalize our fina conclusion. 
+
+
+## 5.2 Conclusion 
+
+- We found that number of flights is a statistically important predictor but not do have practically large influence for daily delayed time (DDT). 
+
+- JFK seems to have a more days of departure delays than LGA. 
+
+- We will recommend passengers to book flights departure from LaGuardia Airport over John F. Kennedy International Airport under a normal day (to avoid possible flight delayed). 
+
+------
+
+------
+# 6. Reference & Source 
+[1] Statistics Source:Bureau of Transportation statistics. https://www.transtats.bts.gov/HomeDrillChart.asp
+
+[2] Statistics Source: Delayed and Cancel Flights. U.S. Department of Transportation. 
+https://www.transportation.gov/airconsumer/fly-rights
+
+[3] Data Source from Kaggle. https://www.kaggle.com/giovamata/airlinedelaycauses
+
+[4] Knowledge Sourece: Winter 2016 Midterm Exam. https://ionides.github.io/531w18/exam/w16/mt531w16.pdf
+
+[5] Knowledge Sourece: Previous Midterm project ("Midterm Project - Monthly Fatal Crashes in Michigan") https://ionides.github.io/531w16/midterm_project/project17/midterm_project_-_montyly_fatal_crashes_in_michigan.html
+
+[6] Knowledge Sourece: Previous Midterm project ("A Study on Crude Oil Price and CPI Value") https://ionides.github.io/531w16/midterm_project/project1/Stats_531_Midterm_Project.html
+
+[7] Knowledge Sourece: Lecture Notes 3 https://ionides.github.io/531w18/03/notes03.html
+
+[8] Knowledge Sourece: Lecture Notes 5 https://ionides.github.io/531w18/05/notes05.html
+
+[9] Knowledge Sourece: Lecture Notes 7
+https://ionides.github.io/531w18/07/notes07.html

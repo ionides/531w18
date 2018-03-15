@@ -1,0 +1,196 @@
+---
+title: "Curious about Bitcoin?"
+date: "March 7, 2018"
+output: html_document
+---
+
+```{r eval = TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+library(dplR)
+library(TSA)
+library(ggplot2)
+library(gridExtra)
+library(readr)
+library(lubridate)
+```
+
+Cryptocurrency has been a trending topic lately, especially amongst millenials following a significant increase in volume as well as prices. Bitcoin, the first decentralized and most widely used cryptocurrency has been in circulation since 2009. The currency is created through mining, and the prices are set solely based on demand. As expected there has been some speculation, and research into how exactly bitcoin prices trend, how consumers are making the decision to use bitcoin, and if there is a relationship between demand for the crptocurrency and other economic indicators. 
+
+In particular, there has been research to try to deduce if investors are using bitcoin as a hedge or short in times of financial distress. This area of research seeks to find out, if investors demand more bitcoin just like other more stable financial instruments like bonds, in times of high volatility. This begs the question of if bitcoin is a stable financial instrument. In this brief, I seek to study the trend of bitcoin prices, conduct times series spectral analysis to find any possible trends and cycles as well as deduce the relationship between bitcoin prices and times of financial stress. 
+
+##Data
+The data for this analysis includes weekly open prices for bitcoin, from July 2010 to February 2018. I will be using open prices to reflect the price for bitcoin.  
+To proxy times of financial stress, I've used the St. Louis FED financial stress index reported weekly and for the same time frame. For the stress indicator, I've added a constant (5) to remove negative values and make the data easier to work with.
+
+##Limitations
+Because bitcoin, and cryptocurrency in general is fairly new, there isn't a lot of data to base this analysis on. 
+
+##Bitcoin prices in the last decade
+```{r eval = TRUE, echo=FALSE, messages = FALSE, warning=FALSE}
+btc_wk <- read_csv("C:/Users/Sandra/Downloads/BTC-USD weekly.csv",
+                col_types = cols(`Adj Close` = col_skip(),
+                Close = col_skip(), Volume = col_skip(), High = col_skip(),
+                Low = col_skip()))
+
+btc_mn <- read_csv("C:/Users/Sandra/Downloads/BTC-USD monthly.csv",
+                   col_types = cols(`Adj Close` = col_skip(),
+                                    Close = col_skip(), High = col_skip(),
+                                    Low = col_skip(), Volume = col_skip()))
+btc <- na.omit(btc_wk)
+plot(btc, type = "l")
+
+fsi <- read_csv("C:/Users/Sandra/Downloads/STLFSI.csv")
+fsi <- fsi[863:1261, ]
+#I'm going to add 5 to all values in this index so that I don't have to deal with negative values in
+#my ARIMA model
+fsi$STLFSI <- fsi$STLFSI + 5
+plot(fsi, type = "l", ylim = c(3, 5.5))
+abline(h = 5)
+
+btc_ts <- ts((btc$Open), start=decimal_date(ymd("2010-07-11")), frequency=365.255/7)
+```
+
+Looking at the plot of bitcoin prices, we can see that there has been a steady increase with a substantial jump at around 2017. I will take a log of the `open price` variable to show any possible trends and reduce some of the variance from volatility. 
+
+```{r eval=TRUE, echo = FALSE}
+#Take the log of the prices to reduce some of the variance from volatility
+btc_logts <- ts(log(btc$Open), start=decimal_date(ymd("2010-07-11")), frequency=365.255/7)
+plot(btc_logts)
+```
+
+The log of the `open price` shows us any possible trends much better. We see a little noise where there are some volatile peaks, but it looks like there is an overall trend of an increase in bitcoin prices which tracks with what we know about cryptocurrency and it's current popularity. 
+
+##Spectrum Analysis
+To see if there are any cycles bitcoin prices have, I will look at the spectrum and wavelength of the data. Although I am working with such limited data, I do not believe any cycles identified are applicable in the long run.
+
+```{r eval = TRUE, echo = FALSE}
+spectrum(btc_logts,main = "Unsmoothed periodogram")
+spectrum(btc_logts, spans=c(2,2,2), main = "Smoothed periodogram")
+abline(v = which.max(spectrum(btc_logts, spans=c(2,2,2), main = "Smoothed periodogram")$spec), col="red", lty="dotted")
+```
+
+From the unsmoothed and smoothed spectrums, there doesn't seem to be any obvious cycles in the raw data. it looks like the highest frequency is around 1. To analyse this further, I will detrend both the bitcoin and FSI data, and remove seasonality by separating out the high frequencies from the low using Loess smoothing.
+
+```{r eval = TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+btc_low <- ts(loess(log(Open)~as.numeric(Date), btc, span=0.5)$fitted,start=decimal_date(ymd("2010-07-11")), frequency=365.255/7)
+btc_high <- ts(log(btc$Open) - loess(log(Open)~as.numeric(Date), btc, span=0.1)$fitted,start=decimal_date(ymd("2010-07-11")), frequency=365.255/7)
+btc_cycles <- log(btc$Open) - btc_high - btc_low
+plot(ts.union(log(btc$Open), btc_low, btc_high, btc_cycles),
+     main="Decomposition of Bitcoin Open Prices as trend + noise + cycles")
+
+fsi_low <- ts(loess(log(STLFSI)~as.numeric(DATE), fsi, span=0.5)$fitted,start=decimal_date(ymd("2010-07-09")), frequency=365.255/7)
+fsi_high <- ts(log(fsi$STLFSI) - loess(log(STLFSI)~as.numeric(DATE), fsi, span=0.1)$fitted,start=decimal_date(ymd("2010-07-09")), frequency=365.255/7)
+fsi_cycles <- log(fsi$STLFSI) - fsi_high - fsi_low
+plot(ts.union(log(fsi$STLFSI), fsi_low, fsi_high, fsi_cycles),
+     main="Decomposition of Financial Stress Index as trend + noise + cycles")
+```
+
+The trend is a lot more identifiable in the low frequency of the data. The cycles are a lot more apparent as well. Let's analyze the cycles of bicoin prices, and FSI to see if there are any commonalities, or similarities in cycle and overall trend. 
+
+```{r eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE}
+plot(as.Date(btc$Date), log(btc$Open), type="l",col="blue",xlab="Year",ylab="",
+     main="Bitcoin Prices and Financial Stress Index")
+par(new=TRUE)
+plot(as.Date(fsi$DATE),fsi$STLFSI, col="red",type="l",axes=FALSE,xlab="",ylab="")
+axis(side=4, col="red")
+legend("topleft",legend=c("Bitcoin Prices","FSI"),col=c("blue","red"),
+       cex=0.8,lty=1,bty="n")
+```
+
+Looking at bitcoin prices plotted against FSI, we can see that they trend similarly with a slight lag after times of financial stress. 
+
+```{r eval = TRUE, echo=FALSE}
+plot(as.Date(btc$Date),btc_cycles,type="l",xlab="Year",ylab="",col="blue",ylim=c(-1,3),
+     main="Detrended bitcoin prices (blue; left axis) and detrended financial stress index (red; right axis)")
+par(new=TRUE)
+plot(as.Date(fsi$DATE),fsi_cycles,col="red",type="l",axes=FALSE,xlab="",ylab="",ylim=c(-0.5,0.2))
+axis(side=4, col="red")
+legend("topleft",legend=c("Bitcoin Prices","FSI"),col=c("blue","red"),
+       cex=0.8,lty=1,bty="n")
+
+```
+
+Let's also look at the wavelength to identify possible cycles. Here I've included a plot of the 'morlet' wavelet which is the wavelet that estimates the periodogram.
+
+```{r eval = TRUE, echo = FALSE}
+library(dplR)
+wave.out <- morlet(btc_logts, dj = 0.1, p2 = 9, siglvl = 0.95)
+# p2=6 <=> estimate out to 2^8 = 256 months dj <=> controls the frequency
+# resolution hack the period estimate to be in years, not months
+wave.out$period <- wave.out$period/52.18
+wavelet.plot(wave.out)
+```
+
+From this, we can see that the strongest component is about 10 years at all time points.  
+We can also calculate the "averaged" wavelet. If we calculate the average across all times, we should get another estimate of the spectral density function.
+
+```{r eval=TRUE, echo=FALSE}
+wave.avg <- data.frame(power = apply(wave.out$Power, 2, mean), period = (wave.out$period))
+plot(wave.avg$period, wave.avg$power, type = "l") #This is a plot of period not frequency
+```
+
+This plot shows a weak peak frequency at about 4.2 years and again a steady increase in frequency from 8 years. This is to be expected as the data is only for about 8 years. The slight peak at 4.2 years is more intersting.
+
+##Parametric methods to estimate the relationship between FSI and bitcoin prices
+From looking at the spectrums, and the cycles, we now have an idea of how bitcoin prices have been trending historically, as well as possible correlations to times of financial stress. Now, let us try to estimate the relationship parametrically and see if we can find any conclusive results. First, I will start with a linear regression just to see if in fact FSI is a significant contribitor to `open prices`. 
+
+```{r eval=TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+#Relationship between btc and fsi
+summary(lm(log(btc$Open) ~ fsi$STLFSI))
+```
+
+Looking at the negative coefficient, we can speculate the bitcoin prices, and demand by proxy do see to go do in times of financial stress. This suggests thats investors are not demaniding bitcoin in the same way as more stable instruments like bonds, but might be investing in bitcoin as a hedge against any coming period of financial stress. 
+
+We can also model this relationship using an ARIMA model. Here I will observe AIC values for the optimal model, and see if the relationship holds. 
+```{r eval=TRUE, echo=FALSE, warning=FALSE}
+aic_table <- function(data,regdata,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data, xreg = regdata, order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+aic_table(log(btc$Open), fsi$STLFSI, 4, 5)
+```
+
+The AIC values suggests an ARMA(3,1) model
+
+```{r eval=TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+btc31 <- arima(log(btc$Open), xreg=log(fsi$STLFSI), order=c(3,0,1))
+btc31
+```
+
+Now lets observe the roots to chech for invertibility and stationarity in the model.
+```{r eval= TRUE, echo=FALSE}
+AR_roots <- polyroot(c(1,-coef(btc31)[c("ar1","ar2", "ar3")]))
+AR_roots
+```
+
+The roots are outside the unit circle which means we have a stationary model. Although the root 1.0000008 is really close to 1 which means the model is at the threshold of invertibility. This model also suggests a negatively correlated relationship between FSI and open prices. 
+
+Let's assess the normality of the model.
+```{r eval=TRUE, echo=FALSE}
+qqnorm(resid(btc31))
+qqline(resid(btc31))
+```
+
+The autocorrelation shows slight oscillations with a peak at 1, although the residuals seem to have fairly long tails.
+
+##Conclusion
+The relationship between cryptocurrency and times of financial stress has broad implications for how investors behave. This new currency is steadily gaining trust and confidence, and seems to be in more demand when there are times of financial stress. 
+
+##Sources
+1. [Yahoo Finance Bitcoin Weekly and Monthly Data](https://finance.yahoo.com/quote/BTC-USD/history?period1=1267678800&period2=1520139600&interval=1mo&filter=history&frequency=1mo)
+
+2. [St. Louis FED Financial Stress Index](https://fred.stlouisfed.org/series/STLFSI)
+
+3. [Spectral Analysis of Time Series](https://rstudio-pubs-static.s3.amazonaws.com/9428_1197bd003ebd43c49b429f22ea4f36e5.html)  
+
+4. [Exploring the determinants of Bitcoin's price: an application of Bayesian Structural
+Time Series](https://arxiv.org/ftp/arxiv/papers/1706/1706.01437.pdf)
+
+5. Past midterm projects

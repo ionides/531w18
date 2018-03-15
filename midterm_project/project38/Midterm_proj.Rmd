@@ -1,0 +1,419 @@
+---
+title: "Time Series Analysis for Log Returns of S&P500"
+date: "3/4/2018"
+output: 
+  html_document: 
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+```{r, message=FALSE, warning=FALSE}
+library(knitr)
+library(fBasics)#for data description
+library(forecast,quietly = T)
+```
+
+#1.Summary
+
+This project is about the time series analysis about the log return of the S&P500. 
+
+* I use the daily S&P500 data from 2013-03-05 to 2018-03-02. 
+
+  First, I take differences for log transformation of the Adjusted Close prices for S&P500. Then, the smoothed spectrum shows that there is no evidence for significant cycles. 
+  
+  After that, by AIC criteria, I choose to fit ARMA(1,1) model for log returns. By Fisher Information and simulation method, I confirm that the parameters I chose is reasonable. 
+  
+  The ACF figure shows no evidence that the residuals are correlated, but the absolute value of residuals are highly correlated. 
+  
+  The qqplot also shows that the distribution of residuals has a heavier tail than normal distribution, which deviates from the standard assumption that the residuals are Gaussian White Noise Processes.
+
+* I try to forecast the log returns of S&P500 by ARMA(1,1) model and the result shows that there will not be a very large volatility by predicting.
+
+* To solve the problem of residuals, I decide to trade off between the accuracy of the model and the normality of the residuals. I use weekly data to do the same time series analysing process. By fitting ARMA(1,1) model to the weekly data, I get a residual distribution which is closer to normal, by testing on QQPlot, ACF and ACF of abs.
+
+#2.Background
+
+> The Standard & Poor's 500, often abbreviated as the S&P500, is an American stock market index based on the market capitalizations of 500 large companies having common stock listed on the NYSE or NASDAQ. The S&P 500 index components and their weightings are determined by S&P Dow Jones Indices. It is one of the most commonly followed equity indices, and many consider it one of the best representations of the U.S. stock market, and a bellwether for the U.S. economy.[1]
+
+Compared with the Dow Jones industrial average stock index, standard & Poor's 500 index has the characteristics of wide range and sampling representativeness, high accuracy, good continuity, and is generally considered to be an ideal underlying asset of stock-index futures contracts.
+
+So it is useful to analyse S&P500 because they are representative of the industries in the United States economy. People always want to know how the market performance is and how to predict its return. Since there are not perfect method to model the distribution of the stock prices and returns, we try to use ARMA model to see where the disadvantages are, and try to give a general conclution of the returns of S&P500. This has practical value for quantitative finance.
+
+#3.Data Analysis
+
+##3.1 Explore the data
+
+The data I use in this report is the daily data of S&P500 from 2010-03-04 to 2017-03-03, which are captured from [Yahoo Finance](https://finance.yahoo.com/quote/%5EGSPC?p=^GSPC). The dataset contains Open prices, High prices, Low prices, Close prices, Adjusted Close prices and Volume of S&P500. I've checked that there is no NA or omitted data, so we don't need to work on the missing values. 
+
+We can see some of the data from below. 
+
+```{r, message=FALSE, warning=FALSE}
+data = read.csv("https://raw.githubusercontent.com/Zixuanzhu/dataset/master/13-18-daily.csv",header = TRUE)
+head(data)
+```
+
+Here, we focus mostly on Adjusted Close prices. We plot the Adj. Close v.s. time and here we get 1259 observations.
+
+```{r}
+t = as.Date(data$Date)
+stock_price = data$Adj.Close
+x0 = min(t,na.rm=T)
+x1 = max(t,na.rm=T)
+y0 = min(stock_price,na.rm=T)
+y1 = max(stock_price,na.rm=T)
+plot(t,stock_price,type="l",xlim=c(x0,x1),ylim=c(y0,y1),xlab="time",ylab="Adj.Close",main="SP500 Adj.Close")
+```
+
+From the plot of Adj.Close against time, we can find that stock prices have a general increasing trend over time, and there is a significant downward trend in Sep. 2015, Jan. 2016 and Feb. 2018.
+
+##3.2 Return and Log Return
+
+For the purpose of detrend, I try to analyse returns instead of prices. Then we can get a more stationary time series data.
+
+As for practical meaning, people always concentrate on log returns because they are simply eliminate the non-stationary properties of the data set, making the financial data more stable. Here we can plot returns and log returns to see, they are very close to each other at each time point. 
+
+In the report, I use log return as target of the research.
+
+```{r,echo=TRUE}
+n=length(data$Adj.Close)
+Ret = data$Adj.Close[-1]/data$Adj.Close[-n]-1
+ret = diff(log(data$Adj.Close))
+plot(t[-1],100*Ret,type="l",xlab="Time",ylab="%",col=1)
+points(t[-1],100*ret,col=2,cex=0.1)
+legend(16600,-4.5,legend=c("Return","Log-Return"),lty=1,col=c(1:2))
+```
+
+Here, I plot log return v.s. time, we can see that the mean of log return is almost zero, but the volatility becomes larger at the beginning of 2016 and beginning of 2018. This phenomenon is consistent with the Adj. Close price figure, that at those time, there exist significantly fluctuations.
+
+```{r}
+stocks=log(data$Adj.Close)
+ret = diff(stocks)
+plot(t[-1],ret,type="l",xlab = "time",ylab="log-return",main="Log-Return of SP500 Adj.Close")
+abline(h=mean(ret),col="red")
+```
+
+##3.3 Description of Log Returns
+
+```{r}
+summary(ret)
+```
+
+As we can see, the mean of log returns are almost 0 and the min and max are approximately around zero.
+
+```{r}
+kur = kurtosis(ret)
+ske = skewness(ret)
+cat(" The kurtosis of log return is",kur,"\n","The skewness of log return is",ske,"\n")
+```
+
+From the description above, we can see that the kurtosis is 3.44 which is larger than normal distribution, which kurtosis = 3. So the S&P500 return has a heavier tail than normal. The skewness is -0.6, which means the distribution of return is asymmetric and the negative value implies that the distribution has a long left tail.
+
+##3.4 Spectrum
+
+```{r,echo=TRUE}
+raw = spectrum(ret)
+smooth = spectrum(ret,spans=c(25,5,25),main="Smoothed periodogram",ylim=c(1e-5,2e-4))
+```
+
+From the smoothed periodogram, we can see that there is no significant dominant frequency, which means there is no significant cycles. Although there are some small peaks in the spectrum, but when we move the crossbar to each peak along the estimated spectrum, it gives pointwise 95% confidence intervals, and we can see that all the peaks are insignificant.
+
+This is not contrary to our common sense that the stock price and return is a kind like random walk, one can hardly find cycles in such a few years.
+
+#4.Fit ARMA Model
+
+##4.1 AIC table
+
+First, we use AIC criteria to choose the model.
+
+* Let's start by fitting a stationary ARMA$(p,q)$ model under the null hypothesis that there is no trend. We seek to fit a stationary Gaussian ARMA(p,q) model with parameter vector $\theta=(\phi_{1:p},\psi_{1:q},\mu,\sigma^2)$ given by
+$$ \phi(B)(X_n-\mu) = \psi(B) \epsilon_n,$$
+where 
+$$\begin{eqnarray}
+\mu &=& E[X_n]
+\\
+\phi(x)&=&1-\phi_1 x-\dots -\phi_px^p,
+\\ 
+\psi(x)&=&1+\psi_1 x+\dots +\psi_qx^q, 
+\\
+\epsilon_n&\sim&\mathrm{ iid }\, N[0,\sigma^2].
+\end{eqnarray}$$
+
+* We need to decide where to start in terms of values of $p$ and $q$. Here, I use AIC criteria.
+
+* Akaike's information criterion **AIC** is given by $$ AIC = -2 loglik(\theta) + 2D$$ where D is the number of parameters in the model.
+
+Let's tabulate some AIC values for a range of different choices of $p$ and $q$.
+
+```{r,echo=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+aic_table = function(dataset,P,Q){
+  table = matrix(NA,(P+1),(Q+1))
+  for (p in 0:P){
+    for (q in 0:Q){
+      table[p+1,q+1] = arima(dataset,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR",0:P,"</b>",sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+ret_aic_table = aic_table(ret,4,4)
+require(knitr)
+kable(ret_aic_table,digits=2)
+```
+
+* From the table we can see that ARMA(1,1) has the lowest AIC. So we will choose ARMA(1,1).
+
+* Although we've learned that AIC criteria is not the only rule to help us choose the model, but we can see that besides ARMA(1,1), the lowest AIC occurs at ARMA(3,4) and ARMA(4,4). However, these models are more complex, so it may lead to problems like overfitting, numerical stability and etc. We usually prefer a simply model, which also better for interpretation.
+
+##4.2 Model Fitting
+
+###4.2.1 Fit ARMA(1,1) Model
+
+```{r,echo=TRUE}
+arma11 = arima(ret,order=c(1,0,1))
+arma11
+```
+
+We have:
+
+Write $x_{1:N}^{*}$ for the N values of S&P500 log returns, at times $t_{1:N}$. We model $x_{1:N}^{*}$ as a realization of the time series model $X_{1:N}$ defined by $(1-\phi_1 B)(X_n-\mu)=(1+\psi_1B)\epsilon_n$, where $\epsilon_n$ is Gaussian white noise, i.e. $\epsilon_n\sim\mathrm{ iid }\, N[0,\sigma^2]$.
+
+Use the data we've got, I have the model:
+$$(1-0.9409 B)(X_n-0.0004)=(1-0.9716B)\epsilon_n$$ where $\epsilon_n\sim\mathrm{ iid }\, N[0,9.286*10^{-5}]$
+
+###4.2.2 Confidence Interval for Parameters
+
+From the summary above, we can see that for the parameter $\phi_1$, the approximate 95% confidence interval derived from Fisher Information is:
+$$[0.9409-1.96*0.0206,0.9409+1.96*0.0206]=[0.900524,0.981276]$$
+This Confidence Interval doesn't include 0, so we can say that $\phi_1$ is significant at $\alpha = 0.05$.
+
+Similarly, for the parameter $\psi_1$, the approximate 95% confidence interval derived from Fisher Information is:
+$$[-0.9716-1.96*0.0137,-0.9716+1.96*0.0137]=[-0.998452,-0.944748]$$
+This Confidence Interval also doesn't include 0, so we can say that $\psi_1$ is significant at $\alpha = 0.05$.
+
+To get further confirmation, I do a simulation study to see whether the parameter has been given a reliable value. We can plot the histogram and density plot for the ar1 and ma1 parameters.
+
+```{r,message=FALSE, warning=FALSE}
+set.seed(2016)
+J <- 1000
+params <- coef(arma11)
+ar <- params[grep("^ar",names(params))]
+ma <- params[grep("^ma",names(params))]
+intercept <- params["intercept"]
+sigma <- sqrt(arma11$sigma2)
+theta <- matrix(NA,nrow=J,ncol=length(params),dimnames=list(NULL,names(params)))
+for(j in 1:J){
+   Y_j <- arima.sim(list(ar=ar,ma=ma),n=length(ret),sd=sigma)+intercept
+   theta[j,] <- coef(arima(Y_j,order=c(1,0,1)))
+}
+#simulation of ma1
+hist(theta[,"ma1"],freq=FALSE,main="Histogram of ma1",xlab="ma1",xlim = c(-1,-0.6),breaks=100)
+plot(density(theta[,"ma1"]),bw=0.05,main="Density Plot of ma1",xlab="ma1",xlim = c(-1.15,-0.6),breaks=100)
+#simulation of ar1
+hist(theta[,"ar1"],freq=FALSE,main="Histogram of ar1",xlab="ar1",xlim=c(0.7,1),breaks=100)
+plot(density(theta[,"ar1"]),bw=0.05,main="Density Plot of ar1",xlab="ar1",xlim=c(0.7,1.15),breaks=100)
+```
+
+These plots are consistent with the confidence interval we've concluded before. That the peaks occur at ma1 parameter approximately -1 and ar1 parameter approximately 0.95.
+
+From both two methods, we can say that the ar1 and ma1 parameters are significant, and the value we chose are reasonable.
+
+
+##4.3 Diagnostics
+
+###4.3.1 Test for Roots
+```{r,echo=TRUE}
+AR_roots = polyroot(c(1,-coef(arma11)[1]))
+AR_roots
+```
+
+We can see that the ARMA(1,1) model is causal because the AR polynomial has all its roots outside the unit circle in the complex plane. 
+
+```{r,echo=TRUE}
+MA_roots = polyroot(c(1,coef(arma11)[2]))
+MA_roots
+```
+
+We can see that the ARMA(1,1) model is invertible because the MA polynomial has all its roots outside the unit circle, too.
+
+###4.3.2 Test for Residuals
+
+* Test for independence
+
+We plot residuals and ACF figures for diagnostic analysis.
+
+```{r}
+plot(t[-1],arma11$residuals,ylab="Residuals",,type="l",xlab="Time",main="Residuals for ARMA(1,1) Model")
+abline(h=mean(arma11$residuals),col=2)
+acf(arma11$residuals,main="ACF of residuals",lag.max = 50)
+acf(abs(arma11$residuals),main="ACF of |residuals|",lag.max = 50)
+```
+
+From the residual plot we can see the mean of residuals is almost zero. However, we can see that the variance seems like not a constant, there are larger variance at beginning of 2016 and beginning of 2018.
+
+From the acf plot we can see that there is a slight deviation at lag=15 and lag=24 when comparing with the Gaussian White Noise Process. The values of ACF almost fall inside the dashed lines, and we expect a fraction of 5% of the lags of the ACF to fall outside the two dashed lines under the null hypothesis. The figure shows no significant evidence that the residuals are autocorrelated.
+
+To further study, we plot the ACF of absolute value of residuals, however, it obviously shows an autocorrelated relationship, so we will reject the standard assumption that the residuals are independent. This phenomenon shows that high volatility today implies high volatility in the future, but the price goes up or down are unknown.
+
+This is a quite common phenomenon when trying to fit ARMA model to time series data, that the residuals have some inner correlation and some other properties. That's why GARCH model was introduced.
+
+* Test for normality 
+
+```{r}
+qqnorm(arma11$residuals)
+qqline(arma11$residuals)
+```
+
+From QQ-Plot we can see that the distribution of residuals have a much heavier tail than normal distribution.
+
+##4.4 Forecasting
+
+We use tha ARMA(1,1) model to forecast the log return of S&P500. We take 90% of the data as train data and 10% of the data as test data.[2]
+
+```{r message=FALSE, warning=FALSE}
+ret_train = ret[1:(0.9*length(ret))]
+ret_test = ret[(0.9*length(ret)):(length(ret))]
+trainmod = arima(ret_train,order=c(1,0,1))
+pred = predict(trainmod,n.ahead=(length(ret)-0.9*length(ret)))$pred
+fore = forecast(arma11,h=25)
+plot(fore)
+```
+
+The dark grey bar shows 99% CI for the forecast while the light grey bar shows 95% CI. We can see that there will not be a large volatility by forecasting.
+
+##4.5 Modification
+
+Since the ACF plot and QQ plot shows that the data fitted with ARMA model has residuals which are not normal distributed, we try to solve this problem. 
+
+I choose to use weekly data instead of daily data of S&P500, try to lose some accuracy, but get a more normalized data via this method. Also, by weekly data, we can actually get an equally spaced time series data.
+
+I read the weekly data of S&P500 during the same period as I analysed before.
+
+```{r, message=FALSE, warning=FALSE}
+data = read.csv("https://raw.githubusercontent.com/Zixuanzhu/dataset/master/13-18.csv",header = TRUE)
+head(data)
+```
+
+Similarly, we can plot the weekly Adjusted Close prices v.s. time.
+
+```{r}
+t = as.Date(data$Date)
+stock_price = data$Adj.Close
+x0 = min(t,na.rm=T)
+x1 = max(t,na.rm=T)
+y0 = min(stock_price,na.rm=T)
+y1 = max(stock_price,na.rm=T)
+plot(t,stock_price,type="l",xlim=c(x0,x1),ylim=c(y0,y1),xlab="time",ylab="Adj.Close",main="SP500 Adj.Close_Weekly")
+```
+
+We can see that the price plot is smoother than daily data. Still, it has an increasing trend and a sharp fall at around 2016 and beginning of 2018. That is, the weekly plot captured the main character of the data.
+
+Then we plot the log returns of weekly data. 
+
+```{r}
+stocks=log(data$Adj.Close)
+ret = diff(stocks)
+plot(t[-1],ret,type="l",xlab = "time",ylab="log-return",main="Log-Return of SP500 Adj.Close_Weekly")
+abline(h=mean(ret),col="red")
+```
+
+Also, we can see the log return plot is smoother than daily. And its volatility seems more convergence than daily.
+
+Then we can plot the periodogram for the weekly log returns.
+
+```{r,echo=TRUE}
+raw = spectrum(ret)
+smooth = spectrum(ret,spans=c(25,5,25),main="Smoothed periodogram",ylim=c(5e-5,5e-4))
+```
+
+Similarly to the explaination before, moving the crossbar and we'll find that the peaks are insignificant. So from the smoothed periodogram, we can see that there is no significant dominant frequency, which means there is no significant cycles. 
+
+### 4.5.1 AIC table_Weekly
+
+```{r,echo=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+aic_table = function(dataset,P,Q){
+  table = matrix(NA,(P+1),(Q+1))
+  for (p in 0:P){
+    for (q in 0:Q){
+      table[p+1,q+1] = arima(dataset,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR",0:P,"</b>",sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+ret_aic_table = aic_table(ret,4,4)
+require(knitr)
+kable(ret_aic_table,digits=2)
+```
+
+From the AIC table, we still choose ARMA(1,1) model to fit the log return of weekly data. Because the AIC of ARMA(1,1) has the smallest value.
+
+###4.5.2 Fit ARMA(1,1) model_Weekly
+
+```{r,echo=TRUE}
+arma11 = arima(ret,order=c(1,0,1))
+arma11
+```
+
+We have:
+
+Write $y_{1:N}^{*}$ for the N values of S&P500 log returns, at times $t_{1:N}$. We model $y_{1:N}^{*}$ as a realization of the time series model $Y_{1:N}$ defined by $(1-\phi_1 B)(Y_n-\mu)=(1+\psi_1B)\epsilon_n$, where $\epsilon_n$ is Gaussian white noise, i.e. $\epsilon_n\sim\mathrm{ iid }\, N[0,\sigma^2]$.
+
+Use the data we've got, I have the model:
+$$(1-0.7506 B)(X_n-0.0021)=(1-0.8696B)\epsilon_n$$ where $\epsilon_n\sim\mathrm{ iid }\, N[0,0.0002449]$
+
+###4.5.3 Check Confidence Interval for Parameters
+
+From the summary above, we can see that for the parameter $\phi_1$, the approximate 95% confidence interval derived from Fisher Information is:
+$$[0.7506-1.96*0.0898,0.7506+1.96*0.0898]=[0.574592,0.926608]$$
+This Confidence Interval doesn't include 0, so we can say that $\phi_1$ is significant at $\alpha = 0.05$.
+
+Similarly, for the parameter $\psi_1$, the approximate 95% confidence interval derived from Fisher Information is:
+$$[-0.8696 -1.96*0.0635,-0.8696 +1.96*0.0635]=[-0.99406,-0.74514]$$
+This Confidence Interval also doesn't include 0, so we can say that $\psi_1$ is significant at $\alpha = 0.05$.
+
+###4.5.4 Test for Residuals
+
+* Test for normality
+
+```{r}
+qqnorm(arma11$residuals)
+qqline(arma11$residuals)
+```
+
+From the qq plot we can see that residuals for weekly data is quite close to normal distributed values, although the left tail is still heavier than normal.
+
+The normality test shows that the we've solved the residuals' normality problem to some extent.
+
+* Test for independence
+
+```{r}
+plot(t[-1],arma11$residuals,ylab="Residuals",,type="l",xlab="Time",main="Residuals for ARMA(1,1) Model_Weekly")
+abline(h=mean(arma11$residuals),col=2)
+acf(arma11$residuals,main="ACF of residuals_Weekly",lag.max = 50)
+acf(abs(arma11$residuals),main="ACF of |residuals|_Weekly",lag.max = 50)
+```
+
+From the residual plot we can see that the variance seems like not a constant, there are larger variance at beginning of 2016 and beginning of 2018. This also shows the main character of the model fitted by daily data.
+
+From the ACF plot we can see that there is a slight deviation at lag=4 when comparing with the Gaussian White Noise Process. All the other values of ACF fall inside the dashed lines, so we can say that there is no evidence to reject the null hypothesis that the residuals are uncorrelated.
+
+Then focus on the ACF plot of the absolute values of residuals, we can see deviations at lag=4 and lag=24. This shows that there are not much correlation between the absolute values of residuals. It is reasonable to consider the residuals as Gaussian White Noise Process. This shows that the ARMA model for weekly data is more fittable than for daily data.
+
+#5.Conclusion
+
+* I've shown that the ARMA(1,1) model for daily S&P500 log returns and the other ARMA(1,1) model for weekly S&P500 log returns. 
+
+* For daily data, the residuals of ARMA model is against the i.i.d normal distribution. And for weekly data, the residuals performs better(i.e closer to i.i.d normal distribution), but the model is less accurate.
+
+* The defect of this project is that we couldn't handle the correlated and not normal distributed residuals with the same dataset. A further solution is that we can try to fit GARCH model, which focus on solving the inner properties of the residuals.
+
+
+#6.References
+[1]. [Wikipedia S&P 500 Index](https://en.wikipedia.org/wiki/S%26P_500_Index)
+
+[2]. [Time Series Analysis for Stock Data](https://ionides.github.io/531w16/midterm_project/project21/531-Midterm_Project.html)
+
+[3]. Lecture Notes and Previous Homework solutions and Practice Midterm Exam solutions
+

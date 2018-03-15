@@ -1,0 +1,306 @@
+---
+title: "Modeling Dengue case counts in San Juan, Puerto Rico"
+date: "2/26/2018"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(repos=c(CRAN="https://cran.mtu.edu/"))
+install.packages('ggplot2')
+install.packages('dplyr')
+install.packages('forecast')
+install.packages('readr')
+library('ggplot2')
+library('dplyr')
+library('forecast')
+library('readr')
+```
+# Introduction
+
+## Dengue fever
+
+Dengue fever is a tropical disease that is spread by the bite of a species of mosquito called Aedes Aegypti. The cause of the disease is the dengue virus, of which there are four serotypes (sub-types).^[1]^ The mosquitoes which act as a vector for the disease prefer to breed in stagnant water. ^[2]^
+
+## Motivation for the work
+
+In this project, we are going to try to model dengue case counts in San Juan, Puerto Rico using observed case counts between 1990 and 2009 as well as weather data for the corresponding time period. One may wonder that even though there may be much more sophisticated ways to model such case counts, a classical time-series ARIMA analysis could capture much of the variation in our data. For instance, we know that the Aedes Aegypti mosquitoes breed in stagnant water. Since we expect to see stagnant water after rainy periods, we may think that temperature and rainfall could be used as predictors of the breeding levels of the mosquitoes, which could be predictive of dengue case counts. This is a similar approach to Zhang et al.^[3]^ where minimum temperature, relative humidity and rainfall were used to model dengue case counts in Zhongshan, China. A key difference between that approach and the following is that the former uses a GLM, which is an extension of independent errors assumption in OLS. In our case, we allow our errors to be correlated. The motivation for this project is, therefore, to explore a time-series model where we consider temperature and rainfall as our signal and an ARMA process as our noise process. Our case counts (log-transformed, as we'll see later) will then be the response variable. 
+
+# Data Preparation
+
+```{r, echo = FALSE, message = F}
+sj_dengue = read_csv('http://dengueforecasting.noaa.gov/Training/San_Juan_Training_Data.csv')
+sj_station = read_csv('http://dengueforecasting.noaa.gov/StationData/SanJuanRQW00011641.csv')
+```
+
+The two datasets we'll be using were obtained from the National Oceanic and Atmospheric Administration. ^[4]^ One of the datasets includes Dengue case counts in San Juan, Puerto Rico, between April 30, 1990 and April 23, 2009. Although this dataset provides weekly counts *for each serotype*, we will, for simplicity's sake, consider totalized counts per week (summing up the counts for each serotype) as our variable of interest. 
+
+```{r, message = FALSE, echo=FALSE}
+require(gridExtra)
+plot1 = ggplot(data = sj_dengue, mapping = aes(x = week_start_date, y = total_cases)) + 
+  geom_line() +
+  labs(x = "Week start date", y = "Total cases")
+  
+plot2 = ggplot(data = sj_dengue, mapping = aes(x = week_start_date, y = log(total_cases+1))) + 
+  geom_line() +
+  labs(x = "Week start date", y = "Log total cases")
+
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+The other dataset includes temperature and precipitation data from a station in the same city. This dataset has daily data. In order to have the same frequency of measurement as our weekly case counts, we use average weekly temperature and total weekly precipitation as our weekly weather measurements. There were three days of precipitation data that were missing and we imputed the precipitation average for the entire dataset for these days.
+
+```{r, message = FALSE, echo = FALSE}
+sj_station = sj_station %>% mutate(date = as.Date(paste(YYYY, MM, DD, sep = "-")))
+
+# ggplot(data = sj_station, mapping = aes(x = date, y = PRCP)) + # geom_line()
+```
+
+
+```{r, message = FALSE, echo = FALSE}
+sj_station[sj_station$PRCP < 0,]$PRCP = mean(sj_station$PRCP, na.rm = TRUE)
+
+# add week_start_date variable and correct for week_start_date problem with dengue data
+sj_station = sj_station%>%mutate(week_start_date = as.Date(format(as.Date(date, "%m/%d/%Y"),"%Y-%W-1"),"%Y-%W-%u"))
+sj_dengue = sj_dengue %>% rename(old_week_start_date = week_start_date)
+sj_dengue = sj_dengue %>% mutate(week_start_date = as.Date(format(as.Date(old_week_start_date, "%m/%d/%Y"),"%Y-%W-1"),"%Y-%W-%u"))
+# restrict to dates for which we have Dengue data
+sj_station = sj_station[sj_station$week_start_date >= as.Date('1990-04-30'),]
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+require(gridExtra)
+# plot precipitation vs. week_start_date
+weekly_total_precip = sj_station%>%group_by(week_start_date)%>%
+  summarize(total_precip = sum(PRCP, na.rm = T))
+plot1 = ggplot(data = weekly_total_precip, mapping = aes(x = week_start_date, y = total_precip)) + 
+  geom_line() +
+  labs(x = "Week start date", y = "Weekly precipitation (in mm.)")
+
+# plot average weekly temperature vs time
+weekly_avg_temp = sj_station%>%group_by(week_start_date)%>%
+  summarize(avg_temp = mean(TAVG, na.rm = T))
+plot2 = ggplot(data = weekly_avg_temp, mapping = aes(x = week_start_date, y = avg_temp)) + 
+  geom_line() + 
+  labs(x = "Week start date", y = "Weekly average temperature (in Celsius)")
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+For all future analysis we will refer to the variable $\texttt{full_dengue}$ as a dataset that has combined weekly weather and dengue data.
+
+```{r, echo = FALSE, message=FALSE}
+full_dengue = inner_join(sj_dengue, weekly_avg_temp, by = "week_start_date")
+full_dengue = inner_join(full_dengue, weekly_total_precip, by = "week_start_date")
+```
+
+# Preliminary analysis
+
+Now that we have weekly weather and disease data, let's start by fitting an OLS regression (with independent errors) with temperature and precipitation as predictors. In preparation for ARMA modeling, I consider the log-transformed total case count as my response variable. This is because, as we saw in the midterm exams of 2016 and 2018, when our data have occasional large spikes (as is clear in our first figure), the log-transformed data is better modeled using ARMA models than is the original-scale data.
+
+```{r}
+cases.lm = lm(log(total_cases + 1) ~ avg_temp + total_precip, data = full_dengue)
+cases.lm.resid = resid(cases.lm)
+par(mfrow=c(1,3))
+plot(full_dengue$avg_temp, cases.lm.resid,
+     ylab="Residuals", xlab="Average temperature", 
+     main="Residuals vs. Avg. temperature")
+abline(0,0)
+plot(full_dengue$total_precip, cases.lm.resid,
+     ylab="Residuals", xlab="Weekly precipitation", 
+     main="Residuals vs. Weekly precipitation")
+abline(0,0)
+# autocorrelation plot
+acf(cases.lm.resid, lag = 100, main = 'Autocorrelation of residuals')
+```
+
+Unsurprisingly, we have found that the data are not modeled well by a linear regression with independent gaussian errors. We notice two  things from the plots above: first, we notice some small heteroskedasticity in the residuals with respect to the precipitation variable. Second, the residuals show evidence of significant oscillating autocorrelation.
+
+The autocorrelations with the first 17 lags suggests that we should consider ARMA models and the seasonally oscillating autocorrelations indicate the suitability of a SARMA model. We shall use an AIC table to help us get started with parameters of an ARMA model. But first, let's look at a periodogram of the log-transformed case counts.
+
+```{r, echo = F}
+p.gram <- spectrum(log(full_dengue$total_cases + 1),spans=c(3,5,7), main="Smoothed periodogram",ylim=c(1,100), xlim=c(0,0.1))
+```
+
+Note that I've restricted the x-axis limits so that I could focus on the portion of the plot with non-negligible power. The predominant frequencies occur at 0.019 cycles per week and 0.007 cycles per week, which translate to about 52 weeks per cycle and 2.75 years per cycle.
+
+# A signal-plus-noise model with SARMA errors
+
+Let us construct an AIC table with possible ARMA models (leaving out seasonality for now):
+
+```{r, echo=FALSE, warning = FALSE, message = FALSE}
+
+aic_table <- function(data, P, Q, xreg = NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q), xreg = xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+cases_lm_aic_table <- aic_table(log(full_dengue$total_cases+1),5,10, xreg = full_dengue[c('avg_temp', 'total_precip')])
+require(knitr)
+kable(cases_lm_aic_table,digits=2)
+```
+
+Let's put aside seasonality for a moment. If we use AIC as our criterion, it looks like ARMA(4,5) is the model that we are invited to pick. Consider, however, ARMA(3,2). Although ARMA(4,5) is better in terms of prediction accuracy, we know that larger ARMA models are prone to numerical problems. We can, therefore, perform a hypothesis test on whether ARMA(4,5) is significantly better than ARMA(3,2) by comparing the log-likelihoods under the two models.
+
+```{r}
+arma45_ll = arima(log(full_dengue$total_cases+1),order=c(4,0,5), xreg = full_dengue[c('avg_temp','total_precip')])$loglik
+
+arma32_ll = arima(log(full_dengue$total_cases+1),order=c(3,0,2), xreg = full_dengue[c('avg_temp','total_precip')])$loglik
+
+chi_sq_diff = 2*(arma45_ll - arma32_ll)
+1 - pchisq(chi_sq_diff, df = 4)
+```
+
+The difference between ARMA(4,5) and ARMA(3,2) is statistically significant. Given the seasonality we've seen, and the suitability of ARMA(4,5), let us fit a SARMA(4,0,5) $\times$ (1,0,1) (we set our seasonal AR and MA parameter counts to 1 so as to capture both forms of dependence without adding many more parameters to an already large ARMA model) and investigate our parameter estimates. Note that I've supplied a period of 52 for the seasonality since this is the predominant period according to our periodogram.
+
+```{r}
+# estimate ARMA(4,5) and beta parameters
+sarma45 <- arima(log(full_dengue$total_cases + 1),order=c(4,0,5), seasonal=list(order=c(1,0,1),period=52), xreg = full_dengue[c('avg_temp', 'total_precip')])
+sarma45
+```
+
+## Discussion of our SARMA parameter estimates
+It seems that our seasonal AR and MA parameters ($\texttt{sar1}$ and $\texttt{sma1}$) are both significant. One might mistakenly think that there might not be seasonality in our noise because our regressors (temperature and rainfull) capture what we traditionally call "seasonal" behavior. However, it makes sense that there is still a remarkable amount of seasonality in our noise process because the relationship among the Aedes mosquitoes' life-cycle, seasonal weather patterns and human-mosquito interaction is highly dynamic and difficult to explain using only weather variables.
+
+As an example of complex cyclicality, consider the following. Recovery from infection by one serotype of the virus leads to lifelong immunity against that particular serotype^[1]^. Therefore, as a massive epidemic from a specific serotype of the virus ends, we expect the population to have _herd immunity_ (a phenomenon in which the immunity of a large segment of the population prevents large breakouts of an epidemic) against that serotype. This immunity will protect the entire population from another massive epidemic even though we still expect annual flare-ups as seen in our first figure (these flare-ups could be caused by other serotypes of the virus). As the herd immunity wanes (due to death, migration, new births or evolution of the virus) we see the population becomes susceptible to massive epidemics again, leading to the massive spikes that we see occasionally in our first figure. This is an example of a cyclical component of the disease that is not captured by annual seasonal weather patterns.
+
+Another factor that adds to the complex cyclical nature of the system is the existence of temporary cross-immunity (immunity of a person to a serotype of the virus that is different from the one that infected them).^[1]^ Paradoxically, however, once this temporary cross-immunity fades away, subsequent infections from other serotypes make individuals more susceptible to *severe dengue* (a form of dengue fever associated with more severe symptoms and possibly death).
+
+Finally, we also notice that our total precipitation covariate surprisingly has a coefficient that is not significant. This could be because the information contained in this variable is already encoded by the average temperature of the week.
+
+## Model Diagnostics
+
+Below are the time plot, sample auto-correlation function and QQ plot for the residuals after fitting our SARMA model.
+
+```{r, echo = FALSE, message = FALSE}
+# residual plot
+sarma45.resid = resid(sarma45)
+require(gridExtra)
+plot1 = ggplot() +  
+  geom_line(mapping = aes(x = full_dengue$week_start_date, y = sarma45.resid)) +
+  labs(x = "Week Start Date", y = "Residual", title = "Time plot of residuals")
+
+# QQ plot
+plot2 = ggplot(data = as.data.frame(sarma45.resid)) + stat_qq(mapping = aes(sample = sarma45.resid)) + labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title = "QQ plot of residuals")
+
+grid.arrange(grobs = list(plot1, plot2), ncol = 2)
+
+# sample ACF (auto-correlation function) plot
+acf(sarma45.resid, lag = 100, main = "Autocorrelation of residuals of SARMA(4,5) model")
+
+
+
+
+
+```
+
+The residuals seem to be mean-zero, uncorrelated (we expect 5 out of 100 lines to cross the blue lines and 6 do, which isn't too bad) and approximately Gaussian, as our model dictates.
+
+# Simulation vs. Observed Data
+
+We got a hint from section 4.1 that the "signal" in our signal-plus-noise model failed to capture some large portion of the variability in our data. If we believe that most of the variation in the case count data is captured in the temperature and precipitation of the region, then we expect that using the weekly temperature and precipitation values as covariates will get us close to the observed data and the noise process will be small. Let's visually inspect if a simulation from our model resembles our observed data.
+
+```{r, echo=FALSE, message = FALSE}
+# estimate ARMA(4,5) and mean parameters
+arma45 <- Arima(log(full_dengue$total_cases + 1),order=c(4,0,5), seasonal=list(order=c(1,0,1),period=52), xreg = full_dengue[c('avg_temp', 'total_precip')])
+
+# compare simulated with log true case counts
+simulated_cases = simulate(arma45, xreg = full_dengue[c('avg_temp','total_precip')])
+
+ggplot() + 
+  geom_line(mapping = aes(x = full_dengue$week_start_date, y = log(full_dengue$total_cases+1), color = 'Observed Cases')) +
+  geom_line(mapping = aes(x = full_dengue$week_start_date, y = simulated_cases, color = "Simulated Cases")) +
+  scale_colour_manual("", 
+                      breaks = c("Observed Cases", "Simulated Cases"),
+                      values = c("blue", "red")) +
+  labs(x = 'Week start date', y = 'Log Cases')
+```
+
+The key takeaway from the plot above is that most of the variation in our data is _not_ captured by temperature and rainfall. We had hoped that since these covariates can be used as a proxy to predict mosquito population (since the mosquitoes breed in stagnant waters), we could perhaps recover the variation in our case counts for dengue using these covariates as our regressors. However, as discussed in section 4.1, the systems and laws that dictate the interplay among the mosquitoes, the humans, the virus (which itself has four strains) and the weather are highly complex and not easily modeled by only looking at prevailing weather conditions. Therefore, we can say that while a signal-plus-noise model with temperature and rainfall as regressors and a SARMA(4,5) process as a noise process is a model whose assumptions seem to be met by the data, this model is still quite inadequate at accounting for the major sources of variation in the data.
+
+# Disentangling case counts as trend, noise and cycle
+
+Despite not finding the holy grail of covariates that explain the variation in our data, we've been able to make important advances in understanding which ARMA model fits our data best, what covariates are significant, and how much seasonality is left after we take into account the seasonality in our covariates. Using the tools from smoothing, we can also try to tease out the trend, noise and cycle in our data.
+
+Using the appropriate $\texttt{span}$ window, we can see the trend of the log-transformed data (using the colloquial version of "trend" here):
+
+```{r, message=F}
+library(lubridate)
+full_dengue = full_dengue %>% mutate(wsd_decimal = decimal_date(week_start_date))
+log_dengue_loess = loess(log(total_cases + 1)~wsd_decimal,data = full_dengue, span=0.4)
+ggplot() +
+  geom_line(mapping = aes(x = full_dengue$wsd_decimal, y = log(full_dengue$total_cases + 1), color = "Observed Log Cases")) +
+  geom_line(mapping = aes(x = full_dengue$wsd_decimal, y = log_dengue_loess$fitted, color = "Trend")) + 
+  scale_colour_manual("", 
+                      breaks = c("Observed Log Cases", "Trend"),
+                      values = c("red", "black")) +
+  labs(x = 'Week start date', y = 'Log Case Counts')
+```
+
+Between the annual high-frequency seasonality we see in the observed case counts and the low-frequency long-term trend (in black above), we see that there is a mid-frequency seasonality corresponding to the cycle of large spikes in the log-tranformed data. Let's try to disentagle this important piece from the rest of the data and get a sense of its frequency.
+
+```{r, echo=FALSE}
+obs = ts(log(full_dengue$total_cases+1), frequency = 12, names = "log cases")
+low_frq <- ts(loess(log(total_cases + 1)~wsd_decimal, data = full_dengue,span=0.5)$fitted,frequency=12)
+hi_frq <- ts(log(full_dengue$total_cases+1) - loess(log(total_cases + 1)~wsd_decimal, data = full_dengue, span=0.1)$fitted,frequency=12)
+cycles <- obs - hi_frq - low_frq
+plot(ts.union(obs, low_frq,hi_frq,cycles),
+  main="Decomposition of case counts as trend + noise + cycles",
+  xlab = "Months since 4/30/1990")
+```
+
+We can now plot a frequency response plot for these mid-range frequency cycles and pinpoint the frequencies that this decomposition identifies as spike cycles.
+
+```{r, echo=FALSE}
+cut_fraction = 0.7
+epsilon = 0.002
+spec_cycle = spectrum(ts.union(obs,cycles),
+  spans=c(3,3),
+  plot=FALSE)
+freq_response_cycle = spec_cycle$spec[,2]/spec_cycle$spec[,1]
+plot(spec_cycle$freq,freq_response_cycle,
+  type="l",log="y",
+  ylab="frequency ratio", xlab="frequency (in cycles per month)",
+  xlim = c(0,0.9),
+  main=paste("Frequency response, showing region for ratio >", cut_fraction))
+abline(h=1,lty="dashed",col="blue")  
+freq_cycles = range(spec_cycle$freq[freq_response_cycle>=cut_fraction-epsilon]) 
+abline(v=freq_cycles,lty="dashed",col="blue") 
+abline(h=cut_fraction,lty="dashed",col="blue")
+print(freq_cycles)
+```
+
+Therefore, the work we've done by separating the mid-range frequency cycles has taught us that the spike cycles in our log-transformed data (corresponding to the business cycles example we saw in class) have frequency between 0.048 cycles per month and 0.144 cycles per month corresponding to 6.94-20.83 months per cycle. This range is, of course, sensitive to what value we use for our frequency ratio cutoff.
+
+# Summary and future works
+
+- Our mission was to see if we can model most of the variance in our data using a signal-plus-noise model where temperature and precipitation accounted for the signal and an ARMA model could be used for the noise process.
+
+- By examining a naïve model of OLS with independent errors and using the ARMA tools that we've developed in the first half of the course, we are able to pin down an appropriate ARMA model for the data that captures autocorrelation and seasonality of the noise process. Using the lesson from the midterm, we took a log transformation of our data since when we have occasional large peaks, the log-transformed data is better modeled using ARMA models than the data in its original scale.
+
+- We learned that even though our predictors are themselves seasonal variables, there is still a very significant amount of seasonality in our noise process. In other words, a significant amount of seasonality in the San Juan data is _not_ explained by the seasonality in temperature and precipitation in San Juan. Furthermore, we were surprised to find that the coefficient for the precipitation variable was not significant. This could be because the information about precipitation is already encoded in temperature.
+
+- By comparing a simulation from our signal-plus-noise model to the observed data, we notice that much of the variability in the data is still not captured by our model. We discuss why this is so in the context of dengue fever. The laws that dictate the spread of the virus are complex, and highly non-linear so that we'd need many more variables and a more careful approach about the latent processes that result in our observed data.
+
+- We were able to disentangle our log-transformed data into trend, noise and cycles to identify the spike cycles in the data. 
+
+- In the future, I would like to take advantage of the later parts of this course to construct a POMP-based compartment model, which assumes a latent dynamic process that produces the measurements.
+
+# References
+
+1. World Health Organization, Dengue and severe dengue,  http://www.who.int/mediacentre/factsheets/fs117/en/, April 2017
+
+2. Wikipedia, Aedes Aegypti,  https://en.wikipedia.org/wiki/Aedes_aegypti, February 2018
+
+3. Zhang Y., Wang T., et al., Developing a Time Series Predictive Model for Dengue in Zhongshan, China Based on Weather and Guangzhou Dengue Surveillance Data, PLOS, 2016
+
+4. National Oceanic and Atmospheric Administration, Dengue Forecasting,  http://dengueforecasting.noaa.gov/

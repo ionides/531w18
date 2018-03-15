@@ -1,0 +1,500 @@
+---
+title: "Do Returns Have Trends, Long Memory, Autocorrelation and Cycles? : Evidence from Markets of Different Financial Products and Regions"
+author: "Stats 531 Midterm Project"
+date: ""
+output:
+  html_document:
+    fig_caption: yes
+    number_sections: yes
+    theme: flatly
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+csl: ecology.csl
+---
+
+---
+
+# Introduction
+In this study, we explore several kinds of financial times series by adopting various time series techniques covered in class such as SARIMA, parameter estimation, spectral analysis, and extra techniques such as estimating Hurst parameter to give some statistical, mathematical and financial explanations for empirical phenomena.
+
+## Raising Questions
+In the class, we found that the absolute value of centered returns of S&P500 times series is correlated$^{[1]}$. A series of questions about this interests me a lot. Is the normal distribution model really fit the log returns? How are the log returns correlated? Do log returns have cycles or seasonality? How to model them if they are correlated? If the market is not efficient, can we statistical arbitrage on them? Do other kinds of assets have cycles? After being confused by these questions, I read papers first to see how predecessors deal with these problems.
+
+## Literature Reviews
+Financial stock indexes log returns are observed to have less autocorrelation when the markets become more mature$^{[2]}$. They have more or less long term memory$^{[3]}$ which can be modeled by ARMA model or ARFIMA model. The distribution of log returns are poorly modeled by normal distribution and have a heavier tail$^{[4]}$.To better model the log returns' long memory property and heavy tail, we no longer assume the independent of log returns. Fractional Brownian motion is introduced and can describe these properties well$^{[5]}$. We will estimate the Hurst parameter of fractional Brownian motion in modelling the log returns. Futures have some common properties as equity$^{[6]}$ and later we will see the spot and futures relationship and try to find seasonality of fitted residuals and explore the arbitrage opportunity. Spectral analysis after smoothing can help us read the cycles more clearly$^{[7]}$. Moreover, there exist seasonality in some spot-futures spread$^{[8]}$.
+
+# Introduction of Data
+The S&P500 Index and futures data I analyzed is the close value and last price of S&P500 Index and futures from Jan 1st 2000 to Feb 23th, 2018. The data is downloaded from Factset at Tozzi Financial Trading Center, Ross School of Business, University of Michigan. The HangSeng Index and futures, CSI 300 Index and futures and Shanghai Stock Exchange reverse repurchase interest rate GC001(retRevRepo) are from the same source with different starting date but all end Feb 23th, 2018.
+
+First we load and take a look at the data. We are quite familiar with the exponential increasing graph of S&P500 index in the class so we directly get the log returns and see the ACF of square of log returns. 
+```{r}
+SP500Index=read.table(file="https://raw.githubusercontent.com/RickYuankangHung/Quant-python/master/SP500PriceHistory.csv")
+lretSP500Index=diff(log((array(rev(as.numeric(as.character(SP500Index[,1])))))))
+date=seq(from=1,to=length(lretSP500Index),by=1)
+
+VSP500Index=rev(array((as.numeric(as.character(SP500Index[,1])))))
+
+SP500FuturesIndex=read.table(file="https://raw.githubusercontent.com/RickYuankangHung/Quant-python/master/S%26P500CMEContinuousPriceHistory.csv")
+VSP500FuturesIndex=rev(array((as.numeric(as.character(SP500FuturesIndex[,1])))))
+
+revrepo=read.csv(file="https://raw.githubusercontent.com/RickYuankangHung/Quant-python/master/revrepo.csv")
+retRevRepo=rev(revrepo[,3]/100)
+```
+```{r}
+acf(lretSP500Index^2)
+```
+<br>
+We can see the square of log returns are highly correlated. If we use a band pass filter to see the log returns. 
+
+## Detecting Trend and Cycles by Band Pass Filter
+
+```{r}
+lretSP500Index_low = ts(loess(lretSP500Index ~ as.numeric(date),span=0.35,frequency=252)$fitted)
+Trend = lretSP500Index_low
+lretSP500Index_hi = ts(lretSP500Index - loess(lretSP500Index ~ as.numeric(date),span=0.16,frequency=252)$fitted)
+Noise = lretSP500Index_hi
+lretSP500Index_cycles=lretSP500Index - lretSP500Index_hi - lretSP500Index_low
+Cycles = lretSP500Index_cycles
+plot(ts.union(lretSP500Index, Trend, Noise, Cycles), type = "l", main = "Decomposition of lretSP500Index Value as Trend + Noise + Cycles")
+```
+<br>
+We find the noise is not stationary while the cycles are obvious and the trend's magnitude is small. The log returns of the index may be better modeled by the fractional Brownian motion which allows for autocorrelation and long memory. First we try ARIMA model for log index.
+
+## ARIMA Model of log Index
+
+Modeling the differences is a natural approach for log S&P 500 stock market index analysis$^{[1]}$. Moreover, the first order difference has direct economic meaning, which represents daily log returns. 
+Formally, the ARIMA(5,1,5) model with intercept $\mu$ for $Y_{1:N}$ is
+<br>
+$$\phi(B)\big( (1-B) log(Index)_n-\mu) = \psi(B) \epsilon_n$$,
+<br>
+where $\{\epsilon_n\}$ is a white noise process; $\phi(x)$ and $\psi(x)$ are the ARMA polynomials $$\phi(x) = 1-\phi_1 x -\phi_2 x^2 -\dots -\phi_5 x^5.\\\psi(x) = 1+\psi_1 x +\psi_2 x^2 + \dots +\psi_5 x^5,$$
+```{r}
+arima_SP=arima(log(VSP500Index),order=c(5,1,5))
+arima_SP
+```
+It seems just as what we saw in the AIC graph in the lecture that there should be a significant lag one term. We can also use another model to capture the violation of efficient market hypothesis( if we do not consider the transaction cost).
+
+# Estimating the Hurst Parameter of Fractional Brownian Motion
+
+
+## Mathematical Model Specification
+In probability theory, fractional Brownian motion $(fBm)$, also called a fractal Brownian motion, is a generalization of Brownian motion. Unlike classical Brownian motion, the increments of $fBm$ need not be independent. $fBm$ is a continuous-time Gaussian process $B_H(t)$ on $[0, T]$, which starts at zero, has expectation zero for all $t$ in $[0, T]$, and has the following covariance function$^{[9]}$:
+$$\begin{aligned}
+E[B_{H}(t)B_{H}(s)]=\frac{1}{2}(|t|^{2H}+|s|^{2H}-|t-s|^{2H})
+\end{aligned}
+$$
+where $H$ is a real number in $(0, 1)$, called the Hurst index or Hurst parameter associated with the fractional Brownian motion. The Hurst exponent describes the raggedness of the resultant motion, with a higher value leading to a smoother motion.
+The value of H determines what kind of process the fBm is:
+if H = 1/2 then the process is in fact a Brownian motion or Wiener process;
+if H > 1/2 then the increments of the process are positively correlated;
+if H < 1/2 then the increments of the process are negatively correlated.
+
+## Statistical Estimation Procedure
+In the following sections, I will use R/S method to evaluate the Hurst parameter.
+<br>
+Considering the time series$$X^*_j (j=1,..,N)$$
+<br>
+We divide the time series into $K^u$ non-overlapping blocks of length $d^u=\frac{N}{K^u}$
+<br>
+And we fix: $$t_i=d^u(i-1)+1$$
+<br>
+Next we get a new time series $W(i,k)$:
+<br>
+$$W(i,k)=\sum_{j=1}^{k}{[X^*_{t_i+j-1}-\frac{1}{d^u}\sum_{v=1}^{d^u}{X^*_{t_i+v-1}}]},\,k=1,..,d^u$$
+<br>
+From there, we get the following rescaled range:
+<br>
+$$R/s(i,u)=\frac{R(i,d^u)}{s(i,d^u)}$$
+<br>
+With
+$$R(i,d^u)=Max\{0,W(i,1),...,W(i,d^u)\}-Min\{0,W(i,1),...,W(i,d^u)\}$$
+<br>
+And
+$$s(i,d^u)=\sqrt{\frac{1}{d^u}\sum_{j=1}^{d^u}[X^*_{t_i+j-1}-\frac{1}{d^u}\sum_{v=1}^{d^u}X^*_{t_i+v-1}]^2}$$
+<br>
+Taking the mean over $i$, we then get:$R/s(d^u)$
+<br>
+$$R/s(d^u)=\frac{1}{K^u}\sum_{i=1}^{K^u}R/s(i,d^u)$$
+<br>
+Considering equation:$$log(R/s(d^u))=log(C)+Hlog(d^u)$$
+<br>
+We can plot $log(R/s(d^u))$ vs $log(d^u)$ for $u$ varying, $H$ is then the slope of the regression line which we simply get from the linear least squares method.
+<br>
+Fixing: 
+$x_u=log(d^u)$ and $y_u=log(R/s(d^u))$
+<br>
+We get:
+$$\boxed{H=\frac{U\sum_{u}x_uy_u -(\sum_{u}x_u)(\sum_{u}y_u)}{U(\sum_{u}x_{u}^2)-(\sum_{u}x_u)^2}}$$ with u varying from 1 to U
+<br>
+$N$ and $K^u$ are chosen adequately so that $d^u$ is always an integer.
+<br>
+Here comes the R function.
+
+```{r}
+hurst<-function (x, d = 50, display = FALSE) 
+{
+    stopifnot(is.numeric(x), is.numeric(d))
+    d <- max(2, floor(d[1]))
+    N <- length(x)
+    if (N%%2 != 0) {
+        x <- c(x, (x[N - 1] + x[N])/2)
+        N <- N + 1
+    }
+    rssimple <- function(x) {
+        n <- length(x)
+        y <- x - mean(x)
+        s <- cumsum(y)
+        rs <- (max(s) - min(s))/sd(x) 
+        log(rs)/log(n)
+    }
+    rscalc <- function(z, n) {
+        m <- length(z)/n
+        y <- matrix(x, n, m)
+        e <- apply(y, 2, mean)
+        s <- apply(y, 2, std)
+        for (i in 1:m) y[, i] <- y[, i] - e[i]
+        y <- apply(y, 2, cumsum)
+        mm <- apply(y, 2, max) - apply(y, 2, min)
+        return(mean(mm/s))
+    }
+    divisors <- function(n, n0 = 2) {
+        n0n <- n0:floor(n/2)
+        dvs <- n0n[n%%n0n == 0]
+        return(dvs)
+    }
+    N <- length(x)
+    dmin <- d
+    N0 <- min(floor(0.99 * N), N - 1)
+    N1 <- N0
+    dv <- divisors(N1, dmin)
+    for (i in (N0 + 1):N) {
+        dw <- divisors(i, dmin)
+        if (length(dw) > length(dv)) {
+            N1 <- i
+            dv <- dw
+        }
+    }
+    OptN <- N1
+    d <- dv
+    x <- x[1:OptN]
+    N <- length(d)
+    RSe <- ERS <- numeric(N)
+    for (i in 1:N) RSe[i] <- rscalc(x, d[i])
+    for (i in 1:N) {
+        n <- d[i]
+        K <- c((n - 1):1)/c(1:(n - 1))
+        ratio <- (n - 0.5)/n * sum(sqrt(K))
+        if (n > 340) 
+            ERS[i] <- ratio/sqrt(0.5 * pi * n)
+        else ERS[i] <- (gamma(0.5 * (n - 1)) * ratio)/(gamma(0.5 * 
+            n) * sqrt(pi))
+    }
+    ERSal <- sqrt(0.5 * pi * d)
+    Pal <- polyfit(log10(d), log10(RSe - ERS + ERSal), 1)
+    Hal <- Pal[1]
+    Pe <- polyfit(log10(d), log10(RSe), 1)
+    He <- Pe[1]
+    P <- polyfit(log10(d), log10(ERS), 1)
+    Ht <- P[1]
+    Hs <- rssimple(x)
+    if (display) {
+      cat("Corrected empirical Hurst exponent: ", Hal, "\\n")
+    }
+    else {
+        return(list(Hal=Hal))
+    }
+}
+std<-function (x, flag = 0) 
+{
+    if (length(x) == 0) 
+        return(c())
+    if (!is.numeric(x)) 
+        stop("Argument 'x' must be a numeric vector or matrix.")
+    n <- if (flag == 0) 
+        length(x) - 1
+    else length(x)
+    sqrt(sum((x - mean(x)) * (x - mean(x)))/n)
+}
+polyfit<-function (x, y, n = 1) 
+{
+    if (!is.numeric(x) || !is.numeric(y)) 
+        stop("Arguments x and y must be numeric.")
+    if (length(x) != length(y)) 
+        stop("Vectors/matrices x and y must be of same length.")
+    if (is.null(n) || n < 0 || ceiling(n) != floor(n)) 
+        stop("Degree n must be a non-negative integer.")
+    x <- x[1:length(x)]
+    y <- y[1:length(y)]
+    A <- outer(x, seq(n, 0), "^")
+    p <- qr.solve(A, y)
+    return(p)
+}
+```
+
+## Model Specification and Statistical Inference
+<br>
+To answer the question whether the log returns are correlated with each other. We design the following test and try to get the estimates.
+
+$$
+H_{0}:\text{accumulatd log returns process of SP500 since 2000 is Brownian motion}\\\text{(daily log returns are independent)} \\\text{Corrected Empirical Hurst Exponent  }Hal=0.5 \\H_{1}:H_{0}\text{ is not true}
+$$
+
+```{r}
+hurst(lretSP500Index)
+```
+We can see that the estimated empirical Hurst parameter is 0.5010563, which is close to but greater than the Brownian motion. Does this deviate from what it should be if we assume the process of accumulatd log returns of S&P500 since 2000 is Brownian motion(daily log return are independent)? We do a bootstrap of generating a lot of independent normal random vectors with same time length as the original data and getting the Hurst parameter empirical distribution.
+
+```{r}
+mu <- mean(lretSP500Index)
+sigma <- sd(lretSP500Index)
+hurst_hat=array(dim=500)
+for (i in 1:500){
+X1 <- rnorm(length(lretSP500Index),mean=mu,sd=sigma)
+hurst_hat[i]=hurst(X1)$Hal
+}
+hist(hurst_hat)
+```
+
+From the empirical distribution of our estimates, we do not reject the null hypothesis because it is obvious that the estimates(0.5010563) falls into the 95% confidence interval(which is [0.43,0.56] to be shown later). We believe that the process of accumulatd log returns of SP500 since 2000 is Brownian motion(daily log return are independent). How about taking a look at how the Hurst parameter changes since 2000? The x-axis represents the tranding day since Jan 3rd, 2000. The gap results from that the beginning 1000 days are used to calculate the estimate.
+```{r}
+hurstUS=array(NA,length(lretSP500Index))
+for(i in 1000:(length(lretSP500Index))){
+  hurstUS[i]=hurst(lretSP500Index[(i-1000):i],display = FALSE)$Hal
+}
+plot(hurstUS,xlab='Trading days since Jan 3rd, 2000')
+```
+```{r}
+quantile(hurst_hat,0.025)
+quantile(hurst_hat,0.975)
+```
+<br>
+We can see that around 2600th trading days(year 2009), the hurst parameters of past four year(around 1000 trading days) are significantly greater than 0.5 and greater than the 0.975 quantile(0.56), which means the increments (daily log returns) are positively correlated and not independent during financial crisies(year 2007-2008). We also observe that the Hurst parameter is a lagging indicator for financial crises. From finance perspective, when the crises came, investors were herding to sell the stocks which may lead to the positive correlation. Nowadays, the autocorrelation of daily log returns in US market is less. What worths mentioning here is that fractional brownian motion model still does not take the changing of variance into consideration, which I will discuss in the conclusion part. This is also where the improvement should be.
+
+# Futures as Proxy and Regression with ARMA Errors Model
+
+## Introduction of Futures Data
+The "S&P500CMEContinuousPriceHistory" is the historical daily last price of S&P Futures. We can see from the graph that it is almost the same as S&P Index because of the financial equation covered in next subsection.
+```{r, warning=FALSE}
+plot(VSP500FuturesIndex,type="line",main = "S&P500Futures(solid line) and S&P500Index(dashdot)")
+lines(VSP500Index,col="red",lty = "dotdash")
+legend("topright",expression("VSP500FuturesIndex","VSP500Index"),lty=c(1,2),col=c("black","red"))
+```
+<br>
+The futures and spot are quite close with each other and we can observe some spread. Let us focus on their relationship first.
+
+## Spot–future Parity
+Spot–future parity (or spot-futures parity) is a parity condition whereby, if an asset can be purchased today and held until the exercise of a futures contract, the value of the future should equal the current spot price adjusted for the cost of money.
+$$
+F=Se^{rT}
+$$
+F, S represent the cost of the index on the futures market and the spot market(Index ETF fund), respectively.
+e is the mathematical constant for the base of the natural logarithm.
+r is the applicable interest rate (for arbitrage, the cost of borrowing), stated at the continuous compounding rate.
+T is the time period applicable (fraction of a year) to delivery of the forward contract.
+Note that the formulation assumes that transaction costs are insignificant.
+
+## Regression with ARMA
+Regress the index with the futures to see how they are linearly related given maturity T fixed.
+```{r}
+SpotFuturesArbitrage <- lm(VSP500Index~VSP500FuturesIndex)
+summary(SpotFuturesArbitrage)
+```
+The linear relationship is so obvious. Let us regard the futures price as proxy and do a regression with ARMA errors model.
+<br>
+**linear regression with ARMA errors** 
+<br>
+$$  \phi(B) ((Index)_n-\beta*(Futures)_{n}-\mu) = \psi(B) \epsilon_n$$
+where $\{\epsilon_n\}$ is a white noise process. $B$ is the backshift operator. $\mu$ is the mean. $\phi(x)$ and $\psi(x)$ are the ARMA polynomials. $$\phi(x) = 1-\phi_1 x -\phi_2 x^2 -\dots -\phi_p x^p.\\\psi(x) = 1+\psi_1 x +\psi_2 x^2 + \dots +\psi_q x^q,$$
+<br>
+```{r, warning=FALSE}
+aic_table <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q),xreg=xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+SpotFuturesArbitrage_aic_table <- aic_table(VSP500Index,2,2,xreg=VSP500FuturesIndex)
+require(knitr)
+kable(SpotFuturesArbitrage_aic_table,digits=2)
+```
+
+Further attempts of increasing P and Q gives me Warning:possible convergence problem: optim gave code = 1possible convergence problem: optim gave code = 1
+possible convergence problem: optim gave code = 1
+Error in arima(data, order = c(p, 0, q), xreg = xreg) : non-stationary AR part from CSS.
+
+In fact those two series are both unstationary series as we can see on the graph before. We believe that there exists a spurious regression. From the financial perspective and regression result, we know that they have long-term equilibrium. The residual of their regression represents the contango or backwardation of the futures relative to spot index. We want to take a glance at the spectrum of the residual. 
+
+## Spectrum of Spot-Futures Spread
+```{r}
+spectrum(SpotFuturesArbitrage$residuals)
+```
+<br>
+The cycles are not obvious, let us smooth the data.
+
+```{r}
+spectrum(SpotFuturesArbitrage$residuals,spans=c(3,5,3))
+```
+<br>
+Observing the smoothed Periodogram we can see several obvious peak at 0.015, 0.025 0.05, 0.07 cycles per day. The periods are around 67 days(around a season's trading day), 40 days(around two months), 20 days(around one month), 14 days(three weeks) respectively. It corresponds to the position changing period of hedge funds and asset management companies. Some professional small institutions feed on these contango and backwardation by arbitraging between the spot and futures market.
+
+# Financial Assets with Autocorrelated Returns
+Are all financial assets have almost independent daily returns? Let's look at a kind of fixed income asset, Shanghai Stock Exchange reverse repurchase product. The daily return, Shanghai Stock Exchange reverse repurchase interest rate GC001(retRevRepo) having ACF as following graph.
+
+
+```{r, warning=FALSE}
+acf(retRevRepo)
+```
+<br>
+The daily returns of reverse repurchase product are highly correlated and have a quite long tail on the ACF. Let us use ARMA model specified before again and check the AIC table to determine the best model.
+
+## Model Selection
+```{r, warning=FALSE}
+retRevRepo_aic_table <- aic_table(retRevRepo,7,7)
+require(knitr)
+kable(retRevRepo_aic_table,digits=2)
+``` 
+
+We choose ARMA(6,5) model because it provides with smallest AIC in a relatively small model.
+
+## Test of Seasonality and Diagnostic Analysis
+Many investors in the reverse repurchase market believe that there is a monthly seasonality because banks need liquidity at the end of each month, thus leading to higher reerse repurchase interest rate by the increase of demand. We use SARMA model to test  this hypothesis based on the previous ARMA coefficients we have got. 21 represents the number of trading days per month.
+We fit the data with SARMA$(6,5)×(1,0)_{21}$ model 
+$${\quad\quad\quad}{\phi}(B){\Phi}(B^{21}) ((RetRevRepo))_n-\mu) = {\psi}(B){\Psi}(B^{21}) \epsilon_n$$
+<br>
+where $\{\epsilon_n\}$ is a white noise process and
+$$
+\mu = E[(RetRevRepo)_n]
+\\
+\phi(x)=1-\phi_1 x-\dots -\phi_6x^6,
+\\ 
+\psi(x)=1+\psi_1 x+\dots +\psi_5x^5, 
+\\
+\Phi(x)=1-\Phi_1 x,
+\\ 
+\Psi(x)=1.
+$$
+$$
+H_{0}:\Phi_1=0\\H_{1}:H_{0}\text{ is not true}
+$$
+```{r, warning=FALSE}
+seasonality_of_RevRepo=arima(retRevRepo,order=c(6,0,5),seasonal=list(order=c(1,0,0),period=21))
+SARMA_roots <- polyroot(c(1,-coef(seasonality_of_RevRepo)[c("sar1")]))
+seasonality_of_RevRepo
+SARMA_roots
+```
+<br>
+It is stationary but the coefficient $\Phi_1$ is almost zero and the t-statistics of seasonal AR coefficient $\Phi_1$ is 0.53<1.96. Let us see the profile likelihood.
+
+```{r, warning=FALSE}
+K=10
+sar1 <- seq(from=0.01,to=0.8,length=K)
+profile_loglik <- rep(NA,K)
+for(k in 1:K){
+   profile_loglik[k] <- logLik(arima(retRevRepo,order=c(6,0,5),seasonal=list(order=c(1,0,0),period=21),
+      fixed=c(NA,NA,NA,NA,NA,NA, NA,NA,NA,NA,NA,sar1[k],NA)))
+}
+plot(profile_loglik~sar1,ty="l")
+```
+<br>
+It seems the loglikelihood is maximized around 0. Let us zoom in to take a look and check the magnitude.
+
+```{r, warning=FALSE}
+K=10
+sar1 <- seq(from=-0.02,to=0.02,length=K)
+profile_loglik <- rep(NA,K)
+for(k in 1:K){
+   profile_loglik[k] <- logLik(arima(retRevRepo,order=c(6,0,5),seasonal=list(order=c(1,0,0),period=21),
+      fixed=c(NA,NA,NA,NA,NA,NA, NA,NA,NA,NA,NA,sar1[k],NA)))
+}
+plot(profile_loglik~sar1,ty="l")
+```
+<br>
+From both the confidence interval of $\Phi_1$ and the loglikelihood graph, we can not reject the $H_{0}$ because 5676.8-1.92=5674.88 and the interval  contains 0. The one month seasonality of the return of RevRepo may not exist. The phenomenon of increasing of reverse repurchase rate is occasional rather than a significant pattern.
+
+# Estimates of other markets
+We apply the hurst function to log returns of other markets to find interesting patterns.
+
+## China A-Share Market
+
+```{r}
+CSI300Index=read.csv(file="https://raw.githubusercontent.com/RickYuankangHung/Quant-python/master/CSI300IndexPriceHistory.csv")
+HangSengIndex=read.csv(file="https://raw.githubusercontent.com/RickYuankangHung/Quant-python/master/HangSengIndexPriceHistory.csv")
+lretCSI300Index=diff(log((array(rev(as.numeric(as.character(CSI300Index$Price)))))))
+lretHangSengIndex=diff(log((array(rev(as.numeric(as.character(HangSengIndex$Price)))))))
+date=seq(from=1,to=length(lretCSI300Index),by=1)
+
+VCSI300Index=rev(array((as.numeric(as.character(CSI300Index$Price)))))
+
+CSI300FuturesIndex=read.csv(file="https://raw.githubusercontent.com/RickYuankangHung/Quant-python/master/CSI300ContinuousPriceHistory.csv")
+VCSI300FuturesIndex=rev(array((as.numeric(as.character(CSI300FuturesIndex$SettlementPrice)))))
+```
+
+```{r}
+hurst(lretCSI300Index)
+hurstCN=array(NA,length(lretCSI300Index))
+for(i in 1000:(length(lretCSI300Index))){
+  hurstCN[i]=hurst(lretCSI300Index[(i-1000):i],display = FALSE)$Hal
+}
+plot(hurstCN,xlab='Trading days')
+```
+<br>
+We can see that the estimated empirical Hurst parameter is 0.6050533 which is much greater than Brownian motion. From the confidence interval derived from a bootstrap, we believe this is not a Brownian motion and the increments are positively correlated.
+
+The Hurst parameter also decreases gradually but still has not arrived at 0.5. This market is not as mature as US market, which means there are still a lot of arbitrage opportunities.
+
+## Hong Kong Market
+
+```{r}
+hurst(lretHangSengIndex)
+hurstHK=array(NA,length(lretHangSengIndex))
+for(i in 1000:(length(lretHangSengIndex))){
+  hurstHK[i]=hurst(lretHangSengIndex[(i-1000):i],display = FALSE)$Hal
+}
+plot(hurstHK,xlab='Trading days since Jan 3rd, 2000')
+```
+<br>
+We can see that nowadays Hong Kong Market is becoming more and more efficient. During recent years, we can not reject that the Hurst estimate is 0.5 when we read from the graph that the recent estimates is around 0.5. The log returns are almost linearly independent with each other.
+
+# Conclusion and Discussion on the Improvement
+
+* First, according to Hurst estimates, S&P500 index daily log returns are observed to have severe positive autocorrelation during financial crises. During other time period after Jan 3rd, 2000, the random walk model seems to fit the accumulated log returns quite well, which means the daily log returns are not linearly correlated.
+
+* S&P500 futures is a very good proxy of S&P500 although they are not perfectly correlated. They are both unstationary but the regression residuals, backwardation or contango in economic meaning, have cycles corresponding to the period of position changing of hedge funds and asset manage companies.
+
+* Fixed income asset can have severe autocorrelation without arbitraging opportunity. The seasonality of one month that many investors in the reverse repurchase market believe to exist is not significant as the profile loglikelihood and confidence interval show.
+
+* What also interests me is that, because the next day Asian Market opens around 12 hours later than US Market does, whether there exists some statistical relationships between todays' daily log return of US market and the next day's Asian market daily log return.
+
+* There are several ways to obtain the Hurst Parameter as literature told me. The estimate also varies when we adopt different methods. Some improvement can be made regarding the characteristics of the data in this project. We prefer the method that leads to asymptotically Gaussian distribution of estimate and is robust to seasonality and length of segment.
+
+* The question of autocorrelation of absolute value of centered return raised in class and at the beginning of this project might have something to do with the changing and autocorrelation of volatility. The fractional Brownian motion assumes the variance of increment is only related to time interval, which still violates what we observed in the data. Further improvement will be done after I learn the fractional Ornstein-Uhlenbeck processes or GARCH to model the volatility.
+
+-----
+# Reference
+
+* [1] Class notes of Stats 531 (Winter 2018) 'Analysis of Time Series', instructor: Edward L. Ionides (http://ionides.github.io/531w18/).
+
+* [2] Oh, G., Um, C. J., & Kim, S. (2006). Statistical properties of the returns of stock prices of international markets. arXiv preprint physics/0601126.
+
+* [3] Martens, M., Van Dijk, D., & De Pooter, M. (2009). Forecasting S&P 500 volatility: Long memory, level shifts, leverage effects, day-of-the-week seasonality, and macroeconomic announcements. International Journal of forecasting, 25(2), 282-303.
+
+* [4] Egan, W. J. (2007). The distribution of S&P 500 index returns.
+
+* [5] Bayraktar, E., Poor, H. V., & Sircar, K. R. (2004). Estimating the fractal dimension of the S&P 500 index using wavelet analysis. International Journal of Theoretical and Applied Finance, 7(05), 615-643.
+
+* [6] Gorton, G., & Rouwenhorst, K. G. (2006). Facts and fantasies about commodity futures. Financial Analysts Journal, 62(2), 47-68.
+
+* [7] Gould, F. J. (1988). Stock index futures: the arbitrage cycle and portfolio insurance. Financial Analysts Journal, 44(1), 48-62.
+
+* [8] Girma, P. B., & Paulson, A. S. (1998). Seasonality in petroleum futures spreads. Journal of Futures Markets, 18(5), 581-598.
+
+* [9] Shreve, S. E. (2004). Stochastic calculus for finance II: Continuous-time models (Vol. 11). Springer Science & Business Media.
+

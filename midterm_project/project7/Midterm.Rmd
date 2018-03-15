@@ -1,0 +1,296 @@
+---
+title: "Analysis on the Shanghai Stock Exchange Composite Index"
+date: "2/25/2018"
+output: 
+  html_document:
+    toc: yes
+    number_sections: true
+---
+
+<style>
+/* resize the widget container */
+.plotly { 
+  width: 100% !important;
+}
+
+/* center the widget */
+div.svg-container {
+  margin: center !important;
+}
+</style>
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\given{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+
+```{r setup, include=FALSE}
+# Install the following packages if missing
+#install.packages("quantmod")
+#install.packages("plotly")
+#install.packages("tidyr")
+
+knitr::opts_chunk$set(echo = F, warning = F, message = F, fig.align = "center", comment = "")
+
+# Loading the required packages
+library(quantmod)
+library(tidyr)
+library(plotly)
+library(ggplot2)
+```
+
+# Introduction
+
+## Background
+
+The SSE Composite (also known as Shanghai Stock Exchange Composite) Index is the most commonly used indicator to reflect SSE's market performance. Constituents for the SSE Composite Index are all listed stocks (A shares and B shares) at the Shanghai Stock Exchange. The index was launched on July 15, 1991 **[1]**. Investors spend a great amount of time and energy in studying the stock market, hoping to find certain laws within the trend and profit from it. However, many have failed. A natural question has raised from it: as the stock market are recorded by certain lag of time, will a time series model appropriate for modeling? So in this report, we are interested in finding any patterns within the stock market data, which should be highly related to the Composite Index. And we also try to see whether it is appropriate to use basic time series approaches in modeling stock data. 
+
+## Object
+
+We manage to identify potential patterns with the SSE Composite Index. SSE index is collected from Yahoo from 1998-01-01 to 2017-12-31 **[2]**. We will be focusing on the following aspects. Particularly, we are interested in the increase rate of the SSE Composite Index, and we will calculate it from the existing data.         
+
+1. Potential period or seasonality within the increase rate   
+2. Suitable time series models    
+3. Diagnostics of the models   
+4. Further modifications and concerns   
+
+These aspects will be primarily enough to identify patterns within the stock markets. 
+
+# Summary of the data
+
+The data are collect from *Yahoo Finance*. The Time period will be from 1998-01-01 to 2017-12-31. 
+
+```{r, echo=TRUE}
+SSE <- getSymbols("000001.SS",auto.assign = FALSE, from = "1998-01-01", to = "2017-12-31")
+```
+
+```{r}
+SSE <- SSE[,c(1:4)]
+colnames(SSE) <- c("Open", "High", "Low", "Close")
+SSE$Rates <- 100 * (SSE$Close - SSE$Open)/SSE$Open
+SSE <- SSE[SSE$Rates != 0, ]
+SSE <- SSE[!is.na(SSE$Open),]
+SSE <- as.data.frame(SSE)
+SSE$Date <- row.names(as.data.frame(SSE))
+
+plot_ly(SSE, x = ~Date) %>%
+  add_lines(y = ~Close, name = "Stock Rates") %>%
+  add_lines(y = mean(SSE$Close), name = "Mean Price") %>%
+  layout(
+    title = "Shanghai Stock Exchange Composite Index (1998 - 2017)",
+    xaxis = list(
+      rangeslider = list(type = "Date")),
+    yaxis = list(title = "Close Price"))
+```
+
+The original data contains four variables, i.e. *Open Price*, *High Price*, *Low Price* and *Close Price*. We are interested in the increase rate (%) of the index, which can be computed with the following formula
+
+\[
+  \operatorname{Increase Rate} = \frac{\operatorname{Close Price} - \operatorname{Open Price}}{\operatorname{Open Price}} \times 100\%
+\]
+
+Then, the data is as follow. 
+
+```{r echo=TRUE}
+head(SSE)
+```
+
+As the stock market is close during weekends and holidays, several rows contain missing data, and they are removed. This gives us a total of 4840 observations.    
+
+The following plot shows the increase rate across time. The variance seems to be approximately stable. However, there is potential period within the data. The variance increase after a particular time. We will be looking into that in the coming sections.     
+
+```{r, echo=T}
+ggplot(data = SSE, aes(x = c(1:nrow(SSE)), y = Rates)) + geom_line() + xlab("Time")
+```
+
+# Detailed Analysis
+
+## Spectrum and Correlation Analysis 
+
+First we take a look at the data in frequency domain, i.e. the spectrum analysis. The smoothed periodogram actually suggests that there is period within the increase rate. Approximately a 0.25 cycles per day can be read from the plot, which is about 1 cycle per 4 days. As we mentioned before, the stock market is closed during weekends. Therefore, a weekly cycles may be reasonable. 
+
+```{r, echo=T}
+spectrum(SSE$Rates, spans = c(100,3,100))
+```
+
+Then we can also take a look at the auto correlation function. It is clear that there are obvious correlation when lag = 1, 20, 35. Such patterns should be considered. 
+
+```{r, echo=T}
+acf(SSE$Rates)
+```
+
+## Fitting the ARMA Model
+
+In order to find a way to match the patterns we discovered, fitting a ARMA model for this time series data is appropriate. Under the null hypothesis, we assume that the process is stationary, and the noise is i.i.d. Gaussian.    
+
+A ARMA(p,q) model is as follow **[3]**,
+\[
+  \phi(B)(X_{n} - \mu) = \psi(B)\epsilon_{n}
+\]
+Where
+\[
+  BX_{n} = X_{n-1} \quad \operatorname{and} \quad B\epsilon_{n} = \epsilon_{n-1}
+\]
+\[
+  \mu = \E(X_{n})
+\]
+\[
+  \phi(x) = 1-\sum_{i=1}^{p}\phi_{i}x^{i}
+\]
+\[
+  \psi(x) = 1+\sum_{i=1}^{q}\psi_{i}x^{i}
+\]
+As we mentioned, under the null hypothesis, the noise are independently identically distributed as follow, 
+\[
+  \epsilon_{n} \sim N(0, \sigma^{2}).
+\]
+
+The $p$ and $q$ are tuning parameters. In order to choose the most suitable ones, we will be using AIC criterion, which is defined as follow,
+\[
+  \operatorname{AIC} = -2 \times \operatorname{likelihood}_{\theta} + 2\times D
+\]
+where $D = p+q+2$, i.e. the #parameter + 1. The smaller the AIC, the better the model is. The following is a table of different choice of $p$ and $q$, and the corresponding AIC value.  
+
+```{r}
+## AIC for arima model selection
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+SSE_Rates_table <- aic_table(SSE$Rates,5,4)
+require(knitr)
+kable(SSE_Rates_table, digits=2)
+```
+
+From the table we can see that ARMA(2,2) and ARMA(4,4) are among the lowest AICs. However, the AIC is not the only criterion of the model selection, we should also consider the complexity of the model. As we have more then enough amount of data, which is 4840 observations, the model is hardly overfitted with only a few parameters. But we also notice that adding two parameters only leads to a slight decrease in AIC. Therefore, the simpler model, ARMA(2,2), is preferred.   
+
+Then the next step is to take a closer look at the ARMA(2,2) model. 
+
+```{r, echo=TRUE}
+model <- arima(SSE$Rates, order = c(2,0,2))
+model
+```
+
+By writting it as the previous form, we have
+\[
+  (1-0.1364B+0.7846B^2)(X_n - 0.0763) = (1+0.7930B + 0.7722B)\epsilon_n
+\]
+where $\epsilon \sim N(0, 2.158)$. Also, we can tell from the summary that the standard error of each parameter are very small, which means that the estimation itself is reliable.    
+
+A examination on the root of $\phi(x)$ and $\psi(x)$ is also necessary.   
+
+```{r, echo=T}
+rootAR <- polyroot(c(1,-coef(model)[c("ar1","ar2")]))
+rootAR
+```
+
+```{r, echo=T}
+rootAR <- polyroot(c(1,coef(model)[c("ma1","ma2")]))
+rootAR
+```
+
+For both of $\phi(x)$ and $\psi(x)$, their roots are all outside the unit circle. It suggests that the model is both invertible and causal. With these properties, it also concludes that the model is reliable in predicting the future values. 
+
+## Diagnostics
+
+When we have chosen a model, a detailed diagnostics should be carried out. Usually, diagnostics for residual is very important. We start with the acf plot of the residual. From the plot, we can see that the correlation for lag < 5 no longer exists. However, the correlation for lag = 35 is still significant. We will try to modify the model by adding seasonality effects into the model. 
+
+```{r, echo=T}
+acf(model$residuals)
+```
+
+We should also take a look at the distribution of the residual with a qqplot. The result is surprising that while most of the residuals is very close to Gaussian, part of the residuals are from heavy tailed distribution. It suggest that low probability cases always exist in the stock market. And they are very hard to predict. 
+
+```{r, echo=T}
+qqnorm(model$residuals)
+qqline(model$residuals,probs = c(0.1,0.9))
+```
+
+## Modifying Model
+
+From the previous diagnostics, we learn that a seasonality effect should be included in the model. A SARMA$(p.q)$ $\times$ $(P,Q)_{k}$ model is as follow,
+\[
+  \phi(B)\Phi(B^k)(X_{n}- \mu) = \psi(B)\Psi(B^{k})\epsilon_{n}
+\]
+Where
+\[
+  \Phi(x)  =  1-\Phi_1 x-\dots -\Phi_Px^P
+\]
+\[
+  \Psi(x)  =  1+\Psi_1 x-\dots -\Psi_Qx^Q
+\]
+And the rest of the symbol has the same definition as ARMA(p,q) model. In our case, we set $P=1$, $Q=0$ and $k=35$. The estimated coefficient are as follow. 
+
+```{r, echo=T}
+model_modified <- arima(SSE$Rates, order = c(2,0,2), seasonal = list(order = c(1,0,0), period = 35))
+model_modified
+```
+
+Basically, the original ARMA coefficient does not change a lot. And the new model has very small standard error for each coefficient. The acf for the residual shows that there is no longer strong correlation for lag = 35. The residual can be considered as Gaussian white noise. 
+
+```{r, echo=T}
+acf(model_modified$residuals)
+```
+
+However, the qqplot is still the same as before, a heavy tailed distribution. We will try to fix this problem with potential transformation in the next section. 
+
+```{r, echo=T}
+qqnorm(model_modified$residuals)
+qqline(model_modified$residuals,probs = c(0.1,0.9))
+```
+
+## Potential Transformation
+
+The data does not have a very clear exponential trend. A log-transformation, however, worth a try due to its nice properties **[4]**. We will be using the log-Open and log-Close data to calculate the increase rate, and then follow the analysis as before. 
+
+```{r}
+SSE$logOpen <- log(SSE$Open)
+SSE$logClose <- log(SSE$Close)
+SSE$modifiedRate <- 100 * (SSE$logClose - SSE$logOpen) / SSE$logOpen
+```
+
+The ARMA model with transformed data seems to be very similar to the original model. There is only slight changes in the parameters, and the standard error is also very small. In this case, however, we cannot compare the likelihood and AIC with the previous models. It is not reasonable to compare these criterion after the transformation. 
+
+```{r, echo=T}
+model_transformed <- arima(SSE$modifiedRate, order = c(2,0,2))
+model_transformed
+```
+
+As we look at the qqplot, however, it is still heavy tailed distributed. Therefore, the log transformation is ineffective when handling this problem. On the other hand, we can also conclude that the increase rate of the stock market is actually heady tailed distributed. The low probability cases happens from time to time, making the prediction very hard. 
+
+```{r, echo=T}
+qqnorm(model_transformed$residuals)
+qqline(model_transformed$residuals,probs = c(0.1,0.9))
+```
+
+# Conclusion
+
+To sum up, our report manages to identify potential patterns within the increase rate of the Shanghai Stock Exchange Composite Index. Three approaches are attempted, i.e. the spectrum analysis, fitting the ARMA model, fitting the modified ARMA model with seasonality and log transformation. Several results can be draw from the analysis.     
+
+1. From the spectrum analysis, we can tell a 0.25 cycles per day period, which is the same as 1 cycle per four days. As the stock market has a weekly (5 days) circulation, this is reasonable.     
+
+2. A ARMA(2,2) model is most suitable for our data. The standard error for estimated coefficient is small, making the model reliable. However, the residual is heavy tailed distributed, and the acf shows sign of seasonality. Then, a modified model, SARMA$(2,2)$ $\times$ $(1,0)_{35}$, is used to deal with it.    
+
+3. A transformation is implemented to handle the heavy-tailed distributed residual. However, it is ineffective. 
+
+From these analysis, we can reach our conclusions as follow. We are able to discover cycles within the operations of the stock market, and a slightly seasonality of 35 days as well. This is the patterns we are looking for under the basic time series analysis. Also, the heavy tailed distributed residual also shows us that the low probability events happens all the time in the stock market, such as a lot of unpredictable sudden changes. That is to say, our assumption on the stationarity might not be reasonable. And the model under such hypothesis is not very meaningful. Therefore, more advanced techniques should be used. A basic time series approach is not effective enough.      
+
+
+# Reference
+
+[1] https://en.wikipedia.org/wiki/Shanghai_Stock_Exchange       
+[2] https://finance.yahoo.com     
+[3] https://ionides.github.io/531w18/     
+[4] https://stats.stackexchange.com/questions/6330/when-to-log-transform-a-time-series-before-fitting-an-arima-model     

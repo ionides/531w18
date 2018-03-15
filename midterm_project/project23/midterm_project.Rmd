@@ -1,0 +1,211 @@
+---
+title: "An Anlysis of Michigan Traffic Crash and Snowfall"
+author: "Midterm Project"
+date: "3/5/2018"
+output: 
+  html_document: 
+    toc: yes
+---
+
+### 1.Introduction and Data Overview
+
+* Every winter is a new challenge for people in Michigan, especially for car owners. When roads are covered by snow and ice, driving becomes more dangerous than usual. By intuation, we believe the number of traffic crash and the amount of snowfall are connected. Is this intuation ture or not? In this project, we aim to find out some evidence.
+* Monthly data are collected from 2004.1 to 2016.12
+* Traffic crash data includes all kinds of crash such as injury crash, fatal crash, motorcycle and snowfall data is measured by inches.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+mydata = read.csv(file="https://raw.githubusercontent.com/L-Yifei/STAT_DATA/master/crash_snow_data.csv",header=TRUE)
+#mydata$crash=log(mydata$crash)
+summary(mydata)
+```
+
+* Below are the line graphs and ACF plots for both crash number and the amount of snowfall. By visualizing the data, we can see a clear seasonal pattern for both traffic crash and snowfall. For the line graphs, there seems to be a peak every year, which will be tested later; for the ACF plots, patterns are similar especially around lag-12.     
+* Our intuation may be true, and a further analysis should be carried out to verify this.    
+
+```{r,fig.align='center', echo=FALSE, fig.align='center', message=FALSE, warning=FALSE,out.width='120%'}
+time = seq.Date(as.Date("2004/1/1"),by="month",length=156)
+par(mfrow=c(2,2))
+plot(time,mydata$crash,type="l",xlab="Year",ylab="Crash",main="Crash Number")
+acf(mydata$crash,main="ACF of Crash Number")
+plot(time,mydata$snowfall,type="l",xlab="Year",ylab="Inchies",main="Amount of Snow")
+acf(mydata$snowfall,main="ACF of Snowfall")
+```
+
+### 2.Data Analysis and Model Choosing
+
+* First, we will focus on the traffic crash data to find some evidence for seasonality.    
+
+* From smoothed periodogram, we can observe 3 main peaks. From left to right, the first one is the main peak, which is quite significant with a corresponding period of 1.03 year, and the second and third peaks may be potential harmonics of the first one.         
+
+* To the left of the first peak, we can observe a low frequency variation, or trend.    
+
+* The results are quite consistent with what we observe above. 
+
+```{r, echo=TRUE, fig.align='center',out.width='110%'}
+par(mfrow=c(2,1),cex=0.8)
+spectrum(mydata$crash,sub="",main="Unsmoothed Periodogram")
+smoothed_periodogram = spectrum(mydata$crash,method="pgram",spans=c(5,5),main="Smoothed Periodogram for Traffic Crash",sub="")
+periodogram_freq = smoothed_periodogram$freq[which.max(smoothed_periodogram$spec)]
+```
+```{r, echo=FALSE}
+cat("The estimated frequency through AR fit is : ",periodogram_freq,"cycles per month","\n")
+cat("The corrsponding period is :",1/periodogram_freq," months, or ",(1/periodogram_freq)/12," years")
+```
+
+* From part 1, we see that the crash number goes down from 2004 to 2012 and then goes up a little bit. However, we are not sure if we should take trend into consideration, Therefore, in order to find a better model, let's decompose the data first.
+
+* We use a local linear regression approach to decompose the data; we treat the high frequency part as noise and low frequency part as trend.
+
+```{r, echo=TRUE, fig.align='center', message=FALSE, warning=FALSE}
+n = seq(1,156)
+Crash = mydata$crash
+Trend = ts(loess(Crash~n,span=0.5)$fitted,start=2004,frequency=12)
+Noise = ts(Crash-loess(Crash~n,span=0.1)$fitted,start=2004,frequency=12)
+Cycles = Crash - Trend - Noise
+plot(ts.union(Crash,Trend,Noise,Cycles),main="Decomposition of Traffic Crash as Trend + Noise + Cycles",xlab="Year")
+```
+
+* The trend is quite clear, therefore a model with ARMA error may be appropriate.
+
+* We write $y_{1:N}^{\star}$ as the values of car crash number, $z_{1:N}$ for the corresponding values of snowfall. We model $y_{1:N}^{\star}$ coditional on $z_{1:N}$ as a realizeation of time series model $Y_{1:N}$ defined by
+
+$$
+Y_{n} = \alpha +\beta z_{n}+\epsilon_{n}
+$$
+* $\epsilon_{1:N}$ is a stationary, causal, invertable, Gaussian ARMA(p,q) model satisfying
+
+$$
+\phi(B)\epsilon_{n}=\psi(B)\omega_{n}
+$$
+* $\omega_{n}$ a Gaussian white noise and
+
+$$
+\omega_{n} \sim N(0,\sigma^{2})\\
+\phi(x) = 1 - \phi_{1}x -...- \phi_{p}x^{p}\\
+\psi(x) = 1 + \psi_{1}x +...+ \psi_{q}x^{q}
+$$
+
+* We condiser a table of AIC values for different ARMA(p,q) to find the best fit.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+aic_table = function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] = arima(data,order=c(p,0,q),xreg=mydata$snowfall)$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+crash_AIC_table = aic_table(mydata$crash,4,4)
+require(knitr)
+kable(crash_AIC_table,digits=2)
+```
+
+* The AIC table suggests that ARMA(3,2) may be a potential choice. However the ACF of residual shows a clear deviation from wihte noise, especially on the lag-11 lag-12 and lag-13 terms, which suggests a model with annual seasonality SMA(1) term may be better. 
+
+
+```{r,fig.align='center', echo=FALSE, fig.align='center', message=FALSE, warning=FALSE}
+fit1 = arima(mydata$crash,order=c(3,0,2),xreg=mydata$snowfall)
+acf(fit1$residuals,main="ARMA(3,2) residual ACF")
+```
+
+* Let's try $SARIMA(p,0,q)\times (0,0,1)_{12}$ model. Again we start by an AIC table and ACF plot.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+aic_table = function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] = arima(data,order=c(p,0,q),seasonal=list(order=c(1,0,1),period=12),xreg=mydata$snowfall,method="ML")$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+crash_AIC_table = aic_table(mydata$crash,4,4)
+require(knitr)
+kable(crash_AIC_table,digits=2)
+```
+
+* Looking at the AIC table, $SARMA(1,3)\times(1,1)$ has the lowest AIC, followed by $SARMA(2,3)\times(1,1)$, $SARMA(1,4)\times(1,1)$ and $SARMA(1,1)\times(1,1)$ 
+* $SARMA(1,1)\times(1,1)$ seems to be a good choice. Though it doesn't have the lowest AIC value, it is a small model and is easy to analyze.    
+
+```{r, echo=FALSE, fig.align='center', message=TRUE, warning=TRUE}
+fit2 = arima(mydata$crash,order=c(1,0,1),seasonal=list(order=c(1,0,1),period=12),xreg=mydata$snowfall)
+acf(fit2$residuals,main="SARMA(1,1)(1,1) residual ACF")
+fit2
+```
+
+* As we can see from the above regression summary, $\beta$ term is quite significant with a value of 90.6 and standard error only 13. via t-test. Also, all the coefficients of SARMA model are significant, with zero out of confidence intervals.    
+
+* The final model can be written as:
+
+$$
+Crash_{n} = 25526.8 + 90.6\times Snowfall_{n} + \epsilon_{n}
+$$
+
+* $\epsilon_{n}$ follows a $SARMA(1,1)\times(1,1)$ model
+
+$$
+(1-0.95B)(1-0.99B^{12})\epsilon_{n}=(1 - 0.71B)(1 - 0.79B^{12})\omega_{n}
+$$
+
+* $\omega_{n}$ a Gaussian white noise
+
+$$
+\omega_{n} \sim N(0,\sigma^{2})\\
+$$
+
+### 3.Diagonistic
+
+* From residual plot and QQ-plot, except for two potential outliers on the right tail, there is no much deviation from Gaussian white noise. Hoervrt we cannot simply remove these outliers because they may be real values that should be further investigated. 
+
+```{r,fig.align='center', echo=FALSE, fig.align='center', message=FALSE, warning=FALSE,out.width='110%'}
+par(mfrow=c(1,2))
+plot(time,fit2$residuals,type="p",ylab="residual",main="Residual Plot")
+qqnorm(fit2$residuals)
+qqline(fit2$residuals)
+```
+
+* If we check the absolute value of residuals, we can oberve spikes on lag-1, lag-11 and lag-12.(This can be a result of a mixture of lag-1 and lag-12 MA terms.) Therfore, there is still something unexplained in the residual. The possible explanation can be: there are other factors that have a correlation with traffic crash, maybe during summer time because the snowfall data only covers winter.
+* This may be a potential explanation for the existance of outliers detected from above QQ-plot.
+
+```{r,fig.align='center', echo=FALSE, fig.align='center', message=FALSE, warning=FALSE,out.width='80%'}
+acf(abs(fit2$residuals),main="SARMA(1,1)(1,1) absolute residual ACF")
+```
+
+* If we calculate the roots of AR polynomial and MA polynomial, we would observe a minimum AR root very close to 1, though it is greater than 1 which indicates the model is casual. If we look back, this corresponds to a close-to-1 "SAR" term.
+* This is another evidence for potential unexplained (annual) seasonality in residual.
+
+```{r}
+AR_roots = polyroot(c(1,-fit2$coef["ar1"],rep(0,10),-fit2$coef["sar1"],fit2$coef["sar1"]*fit2$coef["ar1"]))
+MA_roots = polyroot(c(1,fit2$coef["ma1"],rep(0,10),fit2$coef["sma1"],fit2$coef["sma1"]*fit2$coef["ma1"]))
+min(abs(AR_roots))
+min(abs(MA_roots))
+```
+
+### 4.Result and Conclusion
+
+```{r, message=FALSE, warning=FALSE,fig.align='center'}
+library(forecast)
+plot(time,mydata$crash,type="l",ylab="Crash",xlab="Year",main="Traffic Crash of Original Value and Fitted Value")
+lines(time,fitted(fit2),col="red",lty="dashed")
+legend("topright",c("Original Value","Fitted Value"),lty=c(1,2),col=c("black","red"))
+```
+
+* The model captures the main features of the data. Traffic crash number and the amount of snowfall tend to comove together, and our intuation at the beginning is true; the analysis result shows that the amount of snowfall has a significant correlation with traffic crash number.
+* Based on our analysis, during time window 2004-2016, traffic crash serie has a first downward then upward trend, with a seasonality of around 1 cycle per year. However there exist some mis-estimated troughs, and usually they are overestimated. This is probably because the snowfall is always zero during May to September, therefore the fitting is not very well for those time windows.     
+* A regression with SARMA(1,1)$\times$(1,1) error with period 12 fits the data best, however one can observe a small peak every summer, indicating something is happending seasonally, also, during model diagonistic, the lag-11 and lag-12 autocorrelation for absolute residuals is quite significant with an "SAR" term close to 1, which verifies this fact and indicates an potential unexplained part of residual. 
+* Therefore, the analysis can be further improved if we can find some related variables that happends not only on winter.   
+
+### 5.Resource and Reference
+
+* Michigan snowfall data. Retrieved from  http://www.mtu.edu/alumni/favorites/snowfall/
+
+* Michigan car crash data. Retrieved from https://www.michigantrafficcrashfacts.org/
+
+* Some time series technic from https://ionides.github.io/531w18/
+
+* Seasonality term identification from https://onlinecourses.science.psu.edu/stat510/node/67

@@ -1,0 +1,252 @@
+---
+title: "Stats 531 Midterm Project, An Analysis of Shanghai Car License Plate Auction Price"
+output: html_document
+---
+## Introduction
+
+According to a survey in 2016, Shanghai has a population of about 24.15 billion, and the average population density in urban areas is 3,854 people per square kilometer. Such high population density put a heavy burden on traffic. To alleviate the traffic congestion and the pollutions from cars, Shanghai uses an auction system to sell a limited number of license plates to fossil-fuel car buyers every month. Because of the high demand, nowadays the average price of a license plate is about $13000, which has been refered to as "the most expensive piece of metal in the world". In real life, it would be useful if we are able predict the price of the plate in the future, so that we can pick the best time of application if we were to apply for a license plate. In this project, I aim to explore the time series data of the average price of each month from 2002 to 2018. The goal is to find a decent model to fit the data, and explore the properties of the data along the way.
+
+## Data Exploration
+
+```{r, echo=F, warning=F, message=F}
+price = read.csv(file='LicensePlatePrice.csv')
+colnames(price) = c('Date','Issued','Lowest','Average','Applied')
+price = price[,-3]
+price$Date <- as.Date(paste(as.character(price$Date), "/01", sep=""), format="%Y/%m/%d")
+```
+
+First, let's take a first look of our data:
+```{r, echo=F, warning=F, message=F}
+head(price)
+summary(price)
+```
+It should be noted that the original data has only "year/month" information, and I added the first day of each month in order for R to read the dates.
+
+```{r, echo=F, warning=F, message=F}
+plot(price$Applied~price$Date, type='l', xlab = 'Time', ylab = 'Numbers')
+lines(price$Issued~price$Date, col = 'red')
+legend('topleft', 
+       legend = c('Number of applications', 'Number issued'), 
+       col = c('black', 'red'),
+       lwd=c(2.5,2.5), 
+       bty = "n", 
+       pt.cex = 1, 
+       cex = 1, 
+       text.col = "black", 
+       horiz = F , 
+       inset = c(0.05, 0.05))
+plot(price$Average~price$Date,type="l", xlab = 'Time', ylab = 'Average price')
+```
+
+We can see that the number of the license plate issued did not increase too much over the past 15 years, however, the number of the applications increased a lot, especially after 2014. The average price has an obvious increasing trend over the past 15 years, which is reasonable because of the increasing demand. It makes sense (either from the plot, or from common sense) that the average price is related to the number of the licensce plates issued and the number of the applications in that month.
+
+```{r, echo=F, warning=F, message=F}
+spectrum(price$Average,spans=c(3,5,3), main="Smoothed periodogram", xlab="Frequency, Cycles per Month")
+```
+
+The smoothed periodogram does not show any strong evidence of periodic pattern. There might be a small peak at around 0.2 cycles per month, which indicating a period of every 4-5 months, but it might not be real when considering the error bar.
+
+## Detrending Data with Linear Regression
+
+In order to tackle the trend of our time series, a linear regression model is used. The following plot shows the model below in red:
+$$\mathrm{AveragePrice} = \beta_0 + \beta_1 * \mathrm{Issued}_n + \beta_2 * \mathrm{log(Applied_n)} + \beta_3 * \mathrm{MonthIndex}+ \epsilon_n$$
+where $\epsilon_n$ is an ARMA process. The $\mathrm{MonthIndex}$ term is included to account for the inflation of RMB over the past 15 years.
+
+```{r, echo=F, warning=F, message=F}
+monthseq = seq(1, length(price$Date))
+
+
+model = lm(Average ~ Issued + log(Applied) + monthseq, data = price)
+plot(price$Date, price$Average, type = 'l', xlab = 'Time', ylab = 'Average price')
+lines(price$Date, predict(model), col = 'red')
+legend('topleft', 
+       legend = c('True average price', 'Predicted price'), 
+       col = c('black', 'red'),
+       lwd=c(2.5,2.5), 
+       bty = "n", 
+       pt.cex = 1, 
+       cex = 1, 
+       text.col = "black", 
+       horiz = F , 
+       inset = c(0.05, 0.05))
+```
+
+The linear regression captures the increasing trend of the data, while there are still many peaks and fluctuations not predicted well. Let's look at the summary of our linear regression model:
+
+```{r, echo=F, warning=F, message=F}
+summary(model)
+```
+
+We can see that the coefficients of $\mathrm{log(Applied)}$ and $\mathrm{MonthIndex}$ is being evaluated as significant for the model. The coefficient of $\mathrm{Issued}$ has a relatively high p-value, but it should be noted that the model has a potential collinearity problem from the variable $\mathrm{Issued}$ and $\mathrm{monthseq}$, so the significance of the coefficients may be underestimated.
+
+## Fitting to ARMA and SARMA models
+
+Next, let's focusing on the residuals of the linear model before. Specifically, we fit an ARMA model to the residuals from the linear model. First, let's look at the ACF plot and the smoothed periodogram of the residuals:
+
+```{r, echo=F, warning=F, message=F}
+price_res = model$residuals
+plot(price$Date,price_res, type = 'l', xlab = 'Time', ylab = 'Residuals', main = 'Plot of residuals')
+acf(price_res, main="ACF of Residuals")
+spectrum(price_res, span = c(3,5,3), main="Periodogram of Residuals", xlab="Frequency, Cycles per Month")
+```
+
+The ACF plot shows a high autocorrelation. In the periodogram, we can still see the small peak at around the frequency of 0.2, which corresponds to a 5-month cycle.
+
+We then fit our data to an ARMA(p,q) model where $p$ and $q$ are decided by the AIC values:
+
+```{r, echo=F, warning=F, message=F, cache=T}
+library(knitr)
+aic_table = function(data,P,Q){
+  table = matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] = arima(data,order=c(p,0,q), method="ML")$aic
+    }
+  }
+  dimnames(table) = list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+priceres_aic_table = aic_table(price_res,5,4)
+```
+
+<center><h4><b>AIC Values of ARMA models</b></h4></center> 
+```{r, echo=F, warning=F, message=F, cache=T}
+kable(priceres_aic_table,digits=2)
+```
+
+From the table, ARMA(1,2) has the lowest AIC value. We noted that the simple model ARMA(1,0) also has a relatively low AIC value. Here we choose ARMA(1,2) as our best model.
+
+We can plot the ACF of the residuals of ARMA(1,2) model:
+
+```{r, echo=F, warning=F, message=F}
+res_ar = arima(price_res, order=c(1,0,2))
+res_ar_res = res_ar$residuals
+acf(res_ar_res, lag.max = 40, main = 'ACF of Residuals of ARMA(1,2)')
+#spectrum(res_ar_res, span = c(3,5,3))
+```
+
+We can see that there is no significant autocorrelation between different time lags, and no seasonality is observed. The periodogram also shows no dominant cycles, indicating IID errors. Therefore, we tend not to believe that the "5-month cycle" is real.
+
+```{r, echo=F, warning=F, message=F}
+spectrum(res_ar_res, span = c(3,5,3), main="Periodogram of Residuals of ARMA(1,2) model", xlab="Frequency, Cycles per Month")
+```
+
+Let's take a look at the summary of ARMA(1,2) model:
+
+```{r, echo=F, warning=F, message=F}
+res_ar
+```
+
+We can visually look at the confidence interval of our coefficients. In the following plot, the red line shows the cutoff for the confidence interval for our AR1, MA1, and MA2 coefficients, given by [Wilk's theorem](https://en.wikipedia.org/wiki/Likelihood-ratio_test#Distribution:_Wilks.27s_theorem).
+
+```{r, echo=F, warning=F, message=F, fig.width=10, fig.height=3}
+par(mfrow=c(1,3))
+N = 500
+ar1 = seq(from=0.83,to=0.99,length=N)
+ma1 = seq(from=-0.35,to=0.1,length=N)
+ma2 = seq(from=-0.4,to=0.1,length=N)
+
+profile_loglik = rep(NA,N)
+for(i in 1:N){
+   profile_loglik[i] = logLik(arima(price_res,order=c(1,0,2), fixed=c(ar1[i],NA,NA,NA)))
+}
+plot(profile_loglik~ar1,ty="l", ylab="Profile Log Likelihood", xlab="AR1 Coefficient", main="Likelihood Profile of AR1 Parameter")
+max_ll = max(profile_loglik) 
+abline(h = max_ll - 1.92, lty = 2, col = 'red')
+
+profile_loglik = rep(NA,N)
+for(i in 1:N){
+   profile_loglik[i] = logLik(arima(price_res,order=c(1,0,2), fixed=c(NA,ma1[i],NA,NA)))
+}
+plot(profile_loglik~ma1,ty="l", ylab="Profile Log Likelihood", xlab="MA1 Coefficient", main="Likelihood Profile of MA1 Parameter")
+max_ll = max(profile_loglik) 
+abline(h = max_ll - 1.92, lty = 2, col = 'red')
+
+profile_loglik = rep(NA,N)
+for(i in 1:N){
+   profile_loglik[i] = logLik(arima(price_res,order=c(1,0,2), fixed=c(NA,NA,ma2[i],NA)))
+}
+plot(profile_loglik~ma2,ty="l", ylab="Profile Log Likelihood", xlab="MA2 Coefficient", main="Likelihood Profile of MA2 Parameter")
+max_ll = max(profile_loglik) 
+abline(h = max_ll - 1.92, lty = 2, col = 'red')
+```
+
+The confidence intervals for our coefficients shows that the coefficient is mostly meaningful and fits our data well.
+
+Although from the ACF and periodogram of the residuals from the ARMA(1,2) model, the residuals are IID errors, these residuals do not follow a normal distribution, as shown in the qq plot below:
+
+```{r, echo=F, warning=F, message=F, fig.width=10, fig.height=5}
+par(mfrow=c(1,2))
+plot(price$Date, res_ar_res, type = 'l', xlab = 'Time', ylab = 'Residuals', main = 'Residuals of ARMA(1,2) model')
+qqnorm(res_ar_res)
+qqline(res_ar_res)
+```
+
+Specifically, there are three points with very low residuals. These data points correspond to the observations in 2004-06, 2008-01, and 2010-12. In these months, the average price of the license plates cannot be fully explained by the given information and our model. For example, in June 2004, the number of application greatly increased from 8114 to 19233, but the average price actually decreased from 34266 to 21001. More information is needed to better explain and predict these anomalies.
+
+On the other hand, even without the previous mentioned outliers, the residuals are still skewed from a normal distribution, meaning that some other analysis might be needed to further investigate the data.
+
+## Conclusions and Future Analysis
+
+We've found that a reasonable model for the average price of license plates in Shanghai from 2002 to 2018 is a linear model with ARMA errors. Specifically, the model is:
+
+$$(1 - 0.9259\mathrm{B})(X_n - 0.8092\mathrm{Issued}_n + 4481log(\mathrm{Applied}_n) + 313.8n - 17520) = (1-0.1353\mathrm{B}-0.1714\mathrm{B}^2)\epsilon_n$$
+where $n$ is the $n$th month, beginning with $n=1$ in January of 2002.
+
+It should be noted that the ARMA(1,0) model is also a good candidate for the data: 
+
+```{r, echo=F, warning=F, message=F}
+res_ar2 = arima(price_res, order=c(1,0,0))
+res_ar_res2 = res_ar2$residuals
+res_ar2
+```
+
+In this case, the specific model would be:
+$$(1 - 0.858\mathrm{B})(X_n - 0.8092\mathrm{Issued}_n + 4481log(\mathrm{Applied}_n) + 313.8n - 17520) = \epsilon_n$$
+
+```{r, echo=F, warning=F, message=F, fig.width=10}
+par(mfrow=c(1,2))
+acf(res_ar_res2, lag.max = 40, main = 'ACF of Residuals of ARMA(1,0)')
+spectrum(res_ar_res, span = c(3,5,3), main="Periodogram of Residuals of ARMA(1,0) model", xlab="Frequency, Cycles per Month")
+```
+
+The ACF plot and periodogram both indicate IID errors.
+
+We did not observe any seasonality in our data. However, some seasonality might lie in the numbers of the applications time series, as implied in the periodogram below:
+
+```{r, echo=F, warning=F, message=F}
+spectrum(price$Applied,spans=c(3,5,3), main="Smoothed periodogram of numbers of the applications", xlab="Frequency, Cycles per Month")
+```
+
+For future analysis, it would be valuable to investigate the numbers of applications as time series. This would also be useful when trying to predict the average price of the future. We can use the *stl* function in R to decompose our time series into seasonal, trend, and irregular components, as shown below:
+
+```{r, echo=F, warning=F, message=F}
+appliedts = ts(price$Applied, start=c(2002,1), end=c(2018,1), frequency=12)
+applied_decomp = stl(appliedts, s.window=7)
+plot(applied_decomp, main="STL Breakdown of Numbers of Applications Time Series")
+```
+
+The remainder includes the information after the seasonal and trend are removed from the data.
+
+## References
+
+[1] The time series data was retrieved from: https://www.kaggle.com/bogof666/shanghai-car-license-plate-auction-price
+\
+[2] https://ionides.github.io/531w18/
+\
+[3] http://worldpopulationreview.com/world-cities/shanghai-population/
+\
+[4] 6.5 STL decomposition. (n.d.). Retrieved March 10, 2016, from https://www.otexts.org/fpp/6/5
+
+
+
+
+
+
+
+
+
+
+
+
+
