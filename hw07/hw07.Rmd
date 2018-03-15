@@ -62,18 +62,18 @@ So that you can compile C code and dynamically link it into an R session, you wi
 2. Install and/or update relevant R packages. The file [packages.R](packages.R) contains a list of relevant R packages. This list does not include **pomp** itself, but all will be helpful if you want to re-run or modify the R code in the notes. Run the following, in R:
 ```
 update.packages()
-source("http://ionides.github.io/531w18/hw07/packages.R",echo=TRUE)
+source("https://ionides.github.io/531w18/hw07/packages.R",echo=TRUE)
 ```
 
 3. Install and test the **pomp** package by running [pompTest.R](pompTest.R)
 ```
-source("http://ionides.github.io/531w18/hw07/pompTest.R",echo=TRUE)
+source("https://ionides.github.io/531w18/hw07/pompTest.R",echo=TRUE)
 ```
 If you get the output `PompTest successful!` then **pomp** is working on your system. 
 If not, a likely possibility is that you do not have the necessary C compiler. 
 Try running [helloC.R](helloC.R):
 ```
-source("ionides.github.io/531w18/hw07/helloC.R",echo=TRUE)
+source("https://ionides.github.io/531w18/hw07/helloC.R",echo=TRUE)
 ```
 If this fails to give the "Hello!" message, you will need to follow the instructions below that correspond to your operating system. 
 Re-run this step after trying the following operating-system-dependent advice.
@@ -147,12 +147,12 @@ or some other error mentioning `gfortran` then it is likely that you do not have
 
 Please submit to Canvas an Rmd file addressing the following questions. Your Rmd file can read in the *Parus major* data from the internet, e.g., by
 ```
-dat <- read.csv("http://ionides.github.io/531w18/10/parus.csv")
+dat <- read.csv("https://ionides.github.io/531w18/10/parus.csv")
 ```
 
 ------------
 
-**<big>Question 7.1</big>**. Reformulating the Ricker model.
+### Question 7.1. Reformulating the Ricker model.
 
 The Ricker equation can be reparameterized so that the scaling of $P_n$ is explicit:
 \[
@@ -168,7 +168,7 @@ Try simulating from a few choices of the parameters, and present one simulation 
 
 ----------
 
-**<big>Question 7.2</big>**. Coding a new model.
+### Question 7.2. Coding a new model.
 
 Construct a pomp object for the *Parus major* data modeled using the stochastic Beverton-Holt model,
 \[
@@ -182,7 +182,7 @@ Assume the same measurement model as we used for the Ricker model. Try simulatin
 
 ----------
 
-**<big>Question 7.3</big>**. How long did this homework take?
+### Question 7.3. How long did this homework take?
 
 * This homework is conceptually quite simple, but involves overcoming various technical hurdles. 
 The hurdles may be overcome quite quickly, or could turn into a longer battle.
