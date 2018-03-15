@@ -213,14 +213,22 @@ install_github(&quot;kingaa/pomp&quot;)</code></pre></li>
 <div id="exercises" class="section level2">
 <h2>Exercises</h2>
 <p>Please submit to Canvas an Rmd file addressing the following questions. Your Rmd file can read in the <em>Parus major</em> data from the internet, e.g., by</p>
-<pre><code>dat &lt;- read.csv(&quot;http://ionides.github.io/531w16/notes11/parus.csv&quot;)</code></pre>
+<pre><code>dat &lt;- read.csv(&quot;http://ionides.github.io/531w18/10/parus.csv&quot;)</code></pre>
 <hr />
 <p><strong><big>Question 7.1</big></strong>. Reformulating the Ricker model.</p>
-<p>The Ricker equation can be reparameterized so that the scaling of <span class="math inline">\(P_n\)</span> is explicit: <span class="math display">\[P_{n+1} = r\,P_{n}\,\exp\left(-\frac{P_{n}}{k}\right).\]</span> Modify the <code>pomp</code> object created in the notes to reflect this reparameterization. Also, Modify the measurement model so that the data <span class="math inline">\({y_n^*}\)</span> is modeled as <span class="math display">\[Y_n |P_n \sim \mathrm{Negbin}(\phi\,P_n,\psi).\]</span> Here, <span class="math inline">\(\mathrm{Negbin}(\mu,\psi)\)</span> is the negative binomial distribution with mean <span class="math inline">\(\mu\)</span> and probability parameter <span class="math inline">\(\psi\)</span>, and therefore variance <span class="math inline">\(\mu/\psi\)</span>. This parameterization corresponds in R to <code>rbinom(...,mu,prob)</code>. See <code>?rnbinom</code> for documentation on the negative binomial distribution and <a href="http://cran.r-project.org/doc/manuals/r-release/R-exts.html#Distribution-functions">the R Extensions Manual section on distribution functions</a> for information on how to access these in C.</p>
+<p>The Ricker equation can be reparameterized so that the scaling of <span class="math inline">\(P_n\)</span> is explicit: <span class="math display">\[
+P_{n+1} = r\,P_{n}\,\exp\left(-\frac{P_{n}}{k}\right).
+\]</span> Modify the <code>pomp</code> object created in the notes to reflect this reparameterization. Also, Modify the measurement model so that the data <span class="math inline">\({y_n^*}\)</span> is modeled as <span class="math display">\[
+Y_n |P_n \sim \mathrm{Negbin}(\phi\,P_n,\psi).
+\]</span> Here, <span class="math inline">\(\mathrm{Negbin}(\mu,\psi)\)</span> is the negative binomial distribution with mean <span class="math inline">\(\mu\)</span> and probability parameter <span class="math inline">\(\psi\)</span>, and therefore variance <span class="math inline">\(\mu/\psi\)</span>. This parameterization corresponds in R to <code>rbinom(...,mu,prob)</code>. See <code>?rnbinom</code> for documentation on the negative binomial distribution and <a href="http://cran.r-project.org/doc/manuals/r-release/R-exts.html#Distribution-functions">the R Extensions Manual section on distribution functions</a> for information on how to access these in C.</p>
 <p>Try simulating from a few choices of the parameters, and present one simulation from a set of parameters that shows oscillatory behavior.</p>
 <hr />
 <p><strong><big>Question 7.2</big></strong>. Coding a new model.</p>
-<p>Construct a pomp object for the <em>Parus major</em> data and the stochastic Beverton-Holt model, <span class="math display">\[P_{n+1} = \frac{a\,P_n}{1+b\,P_n}\,\varepsilon_n,\]</span> where <span class="math inline">\(a\)</span> and <span class="math inline">\(b\)</span> are parameters and <span class="math display">\[\varepsilon_t \sim \mathrm{Lognormal}(-\tfrac{1}{2}\sigma^2,\sigma^2).\]</span> Assume the same measurement model as we used for the Ricker model. Try simulating from a few choices of the parameters. What are the similarities and differences between simulations you obtain from the Beverton-Holt model and those from the Ricker model? Present one simulation to support your comments.</p>
+<p>Construct a pomp object for the <em>Parus major</em> data modeled using the stochastic Beverton-Holt model, <span class="math display">\[
+P_{n+1} = \frac{a\,P_n}{1+b\,P_n}\,\varepsilon_n,
+\]</span> where <span class="math inline">\(a\)</span> and <span class="math inline">\(b\)</span> are parameters and <span class="math display">\[
+\varepsilon_t \sim \mathrm{Lognormal}(-\tfrac{1}{2}\sigma^2,\sigma^2).
+\]</span> Assume the same measurement model as we used for the Ricker model. Try simulating from a few choices of the parameters. What are the similarities and differences between simulations you obtain from the Beverton-Holt model and those from the Ricker model? Present one simulation to support your comments.</p>
 <hr />
 <p><strong><big>Question 7.3</big></strong>. How long did this homework take?</p>
 <ul>
