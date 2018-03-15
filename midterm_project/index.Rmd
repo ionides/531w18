@@ -9,7 +9,7 @@ csl: ecology.csl
 
 ------
 
-* Projects are posted anonymously below. Source code and data are available from [https://github.com/ionides/531w18/midterm_project](https://github.com/ionides/531w18/midterm_project).
+* Projects are posted anonymously below. Source code and data are available from [https://github.com/ionides/531w18/midterm_project](https://github.com/ionides/531w18/tree/master/midterm_project).
 
 * I will contact everyone to give you the opportunity to have your name attached to your project, if you like, after the course is over and the class grades are assigned.
 

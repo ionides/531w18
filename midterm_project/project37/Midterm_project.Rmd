@@ -128,4 +128,4 @@ Based on the 90-year data, we've come up with a ARIMA(2,0,3) model. As discussed
 
 [2] https://ionides.github.io/531w18/
 
-[3] R. Shumway and D. Stoffer ¡°Time Series Analysis and its Applications¡± 4th edition
+[3] R. Shumway and D. Stoffer ¡°Time Series Analysis and its Applications 4th edition
