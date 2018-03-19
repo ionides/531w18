@@ -614,7 +614,30 @@ plot(parus)
 ---
 
 
-### Add construction of the deterministic skeleton here
+### Adding in the deterministic skeleton
+
+We can add the Ricker model deterministic skeleton to the `parus` `pomp` object.
+Since the Ricker model is a discrete-time model, its skeleton is a map that takes $P_n$ to $P_{n+1}$ according to the Ricker model equation
+$$P_{n+1} = r\,P_{n}\,\exp(-P_{n}).$$
+We provide this to `pomp` in the form of a `Csnippet`, a little snippet of C code that performs the computation.
+```{r parus-skel-defn}
+skel <- Csnippet("DN = r*N*exp(-N);")
+```
+
+We then add this to the `pomp` object:
+```{r parus-add-skel}
+parus <- pomp(parus,skeleton=vectorfield(skel),statenames="N",paramnames="r")
+```
+Note that we have to inform **pomp** as to which of the variables we've referred to in `skel` is a state variable (`statenames`) and which is a parameter (`paramnames`).
+
+With just the skeleton defined, we are in a position to compute the trajectories of the deterministic skeleton at any point in parameter space.
+For example,
+```{r parus-first-traj,results='markup'}
+traj <- trajectory(parus,params=c(N.0=1,r=12),as.data.frame=TRUE)
+ggplot(data=traj,aes(x=time,y=N))+geom_line()
+```
+
+<br>
 
 -----
 

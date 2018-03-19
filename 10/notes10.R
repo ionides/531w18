@@ -102,6 +102,16 @@ parus <- pomp(dat,times="year",t0=1959)
 ## ----parus-plot1---------------------------------------------------------
 plot(parus)
 
+## ----parus-skel-defn-----------------------------------------------------
+skel <- Csnippet("DN = r*N*exp(-N);")
+
+## ----parus-add-skel------------------------------------------------------
+parus <- pomp(parus,skeleton=vectorfield(skel),statenames="N",paramnames="r")
+
+## ----parus-first-traj,results='markup'-----------------------------------
+traj <- trajectory(parus,params=c(N.0=1,r=12),as.data.frame=TRUE)
+ggplot(data=traj,aes(x=time,y=N))+geom_line()
+
 ## ----parus-sim-defn------------------------------------------------------
 stochStep <- Csnippet("
   e = rnorm(0,sigma);
