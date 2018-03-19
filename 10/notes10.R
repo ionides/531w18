@@ -106,11 +106,16 @@ plot(parus)
 skel <- Csnippet("DN = r*N*exp(-N);")
 
 ## ----parus-add-skel------------------------------------------------------
-parus <- pomp(parus,skeleton=vectorfield(skel),statenames="N",paramnames="r")
+parus <- pomp(parus,skeleton=map(skel),statenames="N",paramnames="r")
 
 ## ----parus-first-traj,results='markup'-----------------------------------
-traj <- trajectory(parus,params=c(N.0=1,r=12),as.data.frame=TRUE)
+traj <- trajectory(parus,params=c(N.0=1,r=12), as.data.frame=TRUE)
 ggplot(data=traj,aes(x=time,y=N))+geom_line()
+
+## ----parus-first-traj-vector,results='markup'----------------------------
+parus2 <- pomp(parus,skeleton=vectorfield(skel),statenames="N",paramnames="r")
+traj2 <- trajectory(parus2,params=c(N.0=1,r=12),as.data.frame=TRUE)
+ggplot(data=traj2,aes(x=time,y=N))+geom_line()
 
 ## ----parus-sim-defn------------------------------------------------------
 stochStep <- Csnippet("
