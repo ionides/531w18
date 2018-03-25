@@ -1,0 +1,174 @@
+---
+title: "STATS 531 HW3 solution"
+author: "Adapted from Zoe Rehnberg"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+```{r, include = FALSE}
+library(ggplot2)
+library(knitr)
+```
+
+The data consist of the low temperature from each January, ranging from 1900 to 2017, in Ann Arbor, MI. By looking only at temperatures from the same month each year, we have simplified our problem by eliminating seasonal fluctuation. However, this also reduces our available data. Additionally, the low temperature is not available for January 1955 (seen in the plot below). To deal with this issue, I will use the 1954 January temperature as a proxy for the missing 1955 value. This seems like a better option than simply removing the year 1955 from the data because that could interfere with the yearly variation we are interested in.
+
+```{r, echo = FALSE}
+
+temp.dat <- read.table(file="http://ionides.github.io/531w18/01/ann_arbor_weather.csv",header=TRUE)
+ggplot(data = temp.dat, aes(y = Low, x = Year)) + geom_path() + labs(y = "Temperature (degrees F)",
+                                                                     title = "January Low Temperatures in Ann Arbor")
+
+temp.use <- temp.dat$Low
+temp.use[56] <- temp.use[55]
+
+mean.low <- mean(temp.use)
+
+```
+
+This time series plot of the observed data shows wide variation in the January low temperatures across the years, ranging from below $-20^\circ F$ to almost $20^\circ F$. The data appear to fluctuate around the mean of $-2.65^\circ F$ without any obvious long-term patterns. Based on this, it seems reasonable to begin with a null hypothesis that a model with no trend is appropriate for the data. This analysis won't look at any models with trend, but that would be a logical next step.
+
+From the time series plot, it also seems possible that the variation in the data is increasing over time, especially from about 1980 to present. The change in variation, however, does not seem pronounced enough to preclude the use of a stationary autoregressive-moving average (ARMA) model.
+
+Therefore, I will start the analysis by fitting an ARMA(p,q) model of the form:
+
+$$ Y_n = \mu + \phi_1(Y_{n-1} - \mu) + \dots + \phi_p(Y_{n-p} - \mu) + \varepsilon_n + \psi_1\varepsilon_{n-1} + \dots + \psi_q\varepsilon_{n-q}$$
+where ${\{\varepsilon_n}\}$ is a white noise process with distribution $\mathcal{N}(0,\sigma^2)$. The parameters for this model are $\theta = (\phi_1, \dots, \phi_p, \psi_1, \dots, \psi_q, \mu, \sigma^2)$, representing the coefficients for the autoregressive part of the model, the coefficients for the moving average part of the model, the population mean, and the error variance. In this model, $\mu$ does not depend on time because we are assuming a model without trend. To determine the best values of p and q for this data, I will fit multiple ARMA(p,q) models with various values of p and q (shown below ranging from 0 to 4).
+
+As an initial method to compare these various ARMA models, I will consider their Akaike information criteria (AIC) values. Models with low values of the AIC indicate higher prediction precision, and therefore, better models in terms of predictive power. Though this is a somewhat informal method of model selection, it can be effective at eliminating models with very bad fits.
+
+```{r, echo = FALSE}
+aic.table <- function(data, P, Q){
+  table <- matrix(NA, (P+1), (Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+       table[p+1, q+1] <- arima(data, order = c(p, 0, q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "</b>", sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+temp.aic <- aic.table(temp.use, 4, 4)
+kable(temp.aic, digits = 2)
+
+```
+
+In the AIC table above, the lowest value is associated with an ARMA(0,0) model. This is a white noise model that assumes no temperature dependence between subsequent years. The ARMA(0,0) model is of the form $Y_n = \mu + \varepsilon_n$, where the ${\{\varepsilon_n}\}$ are as described above. Although the AIC table identifies this model as the most appropriate for the data, there is some climatological intuition indicating that there is dependence in temperature from one year to the next. Therefore, I will not restrict my analysis to the ARMA(0,0) model. In addition, I will look at some models that have a higher AIC, but that allow for the dependence we are interested in modeling, including the ARMA(0,1), ARMA(1,0), and ARMA(1,1).
+
+I fit these four models to the data and the results are listed in the table below. The first thing to notice is that all four models give similar estimates for the intercept, around $-2.65$, but that their standard error estimates differ. The first three models all have standard errors around $0.68$, but the ARMA(1,1) model has a higher standard error of about $0.87$.
+
+```{r, echo = F}
+
+arma.table <- function(data, R, orders){
+  table <- matrix(NA, R, 4)
+  for(r in 1:R){
+    arma.tmp <- arima(data, order = orders[[r]])
+    table[r, 1] <- round(arma.tmp$coef["intercept"],3)
+    table[r, 2] <- round(sqrt(arma.tmp$var.coef["intercept", "intercept"]),3)
+    table[r, 3] <- round(arma.tmp$coef["ar1"],3)
+if(is.na(table[r, 3])) table[r, 3] <- "--"
+    table[r, 4] <- round(arma.tmp$coef["ma1"],3)
+    if(is.na(table[r, 4])) table[r, 4] <- "--"
+}
+  dimnames(table) <- list(c("<b> ARMA(0, 0)", "<b> ARMA(0, 1)", "<b> ARMA(1, 0)", "<b> ARMA(1, 1)"), c("Intercept", "SE(Intercept)", "AR Coef.", "MA Coef."))
+  table
+}
+temp.armas <- arma.table(temp.use, R = 4, orders = list(c(0,0,0), c(0,0,1), c(1,0,0), c(1,0,1)))
+kable(temp.armas)
+
+
+arma00 <- arima(temp.use, order = c(0,0,0))
+arma01 <- arima(temp.use, order = c(0,0,1))
+arma10 <- arima(temp.use, order = c(1,0,0))
+arma11 <- arima(temp.use, order = c(1,0,1))
+```
+
+This seems to indicate that the ARMA(1,1) is more accurately capturing the dependence in the data than the other three models. Inadequately modeling dependence can result in artificially low standard errors for parameter estimates. These results indicate that the ARMA(1,1) is the better model to use, which is in opposition to the results of the AIC table above.
+
+Due to the results of the AIC table and these fitted values, I will continue to consider the ARMA(0,0) model and the ARMA(1,1). The other two models, ARMA(0,1) and ARMA(1,0) have coefficient estimates very close to zero and don't seem to be doing anything significantly different from the ARMA(0,0). The ARMA(0,0) model can be written as $Y_n = -2.653 + \varepsilon_n$, and the ARMA(1,1) model can be written as follows:
+
+$$\phi(B)(Y_n + 2.658) = \psi(B)\varepsilon_n$$
+
+where $B$ is the backshift operator, and $\phi(x)$ and $\psi(x)$ are the AR and MA polynomials, respectively. For this fitted model, these polynomials are defined as follows:
+$$\phi(x) = 1 - 0.83x \hspace{3cm} \psi(x) = 1 - 0.776x$$
+
+```{r, echo = FALSE}
+
+ar.root <- polyroot(c(1,-coef(arma11)["ar1"]))
+ma.root <- polyroot(c(1,-coef(arma11)["ma1"]))
+
+```
+
+Something to consider with the ARMA(1,1) model are the roots of the AR and MA polynomials, which can be used to check for causality and invertibility. The AR root is $1.21$ and the MA root is $-1.29$, both outside the unit circle. This indicates that the fitted model is both causal and invertible, two attractive qualities for a time series model. However, these roots are also relatively close in magnitude, which indicates the possibility of reducing the model to the ARMA(0,0). It's difficult to tell if these roots are close enough to approximately cancel, but it definitely seems like a possibility. This is another argument for using the ARMA(0,0) model over the ARMA(1,1).
+
+A final test that I will do is a more formal hypothesis test using Wilks' approximation. For this test, my null hypothesis corresponds to the ARMA(0,0) model, while my alternative corresponds to the ARMA(1,1). The approximation tells us:
+
+$$\Lambda = 2(\mathcal{l}_1 - \mathcal{l}_0) \approx \chi^2_{D_1-D_0}$$
+where $\mathcal{l}_i$ is the maximum log likelihood under hypothesis $H_i$ and $D_i$ is the number of parameters estimated under hypothesis $H_i$. We will reject the null hypothesis if $\Lambda$ is larger than the $\chi^2$ cutoff. When comparing ARMA(0,0) and ARMA(1,1), $\Lambda = 1.058$, which we can compare to the cutoff value of $5.99$ for a 95% significance level and 2 degrees of freedom. This tells us that we cannot reject our null hypothesis -- the ARMA(0,0) model is more appropriate for the data. Since this conclusion is supported both here, with the Wilks' approximate $\chi^2$ test, with the approximately canceling roots, and with the AIC, I will move forward with the white noise model.
+
+```{r, echo = F}
+cut <- qchisq(0.95, 2)
+lam <- 2*(arma11$loglik - arma00$loglik)
+
+```
+
+Since I have identified the ARMA(0,0) as the best model for the data, I need to check that the model assumptions are valid. First, I will look at the residuals of the fitted ARMA(0,0) model as a time series plot:
+
+```{r, echo = FALSE}
+plot(arma00$resid, ylab = "Residuals [ARMA(0,0)]")
+```
+
+The time series plot shows no striking patterns in the residuals, so I don't think there is anything too worrisome here. Next, we can look at the autocorrelation plot of the residuals. This will allow us to check our assumption that the errors $\{\varepsilon_n\}$ are uncorrelated. There is only one lag with significant autocorrelation (lag 15), while the rest may be considered sufficiently close to zero. While this may be the case, there are also some potentially non-negligible fluctuations in the autocorrelation that might be interesting to look into more carefully. Perhaps this indicates that a model with trend could be appropriate for this data.
+
+```{r, echo = FALSE}
+acf(arma00$residuals, main = "ACF: Residuals of ARMA(0,0)")
+
+```
+
+Finally, in fitting an ARMA model, we make the assumption that $\{\varepsilon_n\} \sim \mathcal{N}(0,\sigma^2)$ and we can check the normality assumption with a QQ-plot of the residuals. With the exception of a few points that deviate from the line, the residuals seem to be sufficiently normal to make this assumption valid.
+
+```{r, echo = FALSE}
+
+qqnorm(arma00$residuals[1:118], main = "QQ-Plot: Residuals of ARMA(0,0)")
+qqline(arma00$residuals[1:118])
+
+```
+
+Since the model fit seems to meet the assumptions, I can consider doing inference on the parameter estimate for $\mu$. The $\texttt{arima()}$ function in R uses the observed Fisher information to calculate standard errors for the coefficients. Those standard errors can then be used to construct approximate 95% confidence intervals for the parameter estimates. The confidence interval for the mean does not contain zero:
+
+$$[-2.653 - (1.96)(0.67), -2.653 - (1.96)(0.67)] = \textbf{[-3.9662, -1.3398]}$$
+
+As noted above, however, there was a possibility that the standard error from the ARMA(0,0) model ($0.67$) was artificially small. Therefore, I can check this confidence interval through simulations. Here is the distribution of the estimate for $\mu$ from 5,00 simulations:
+
+
+```{r, echo = FALSE}
+set.seed(34765)
+#' simulate B datasets
+B <- 5000
+
+#' set the parameter values to the fitted model
+inter <- coef(arma00)["intercept"]
+sig <- sqrt(arma00$sigma2)
+
+theta <- vector(mode = "numeric", length = B)
+for(j in 1:B){
+  #' simulate a sample of size 118 from the fitted ARMA(1,1) model
+   Y_j <- arima.sim(list(), n = length(temp.use), sd = sig) + inter
+   
+   #' fit a new ARMA(1,1) model to the simulated data and store the parameter estimates
+   theta[j] <- coef(arima(Y_j, order = c(0,0,0)))
+}
+
+```
+
+```{r, echo = FALSE}
+#' plot density of the estimated intercept
+ggplot(data = as.data.frame(theta), aes(x = theta)) + geom_density(bw = 0.075) + geom_vline(xintercept = -3.9662, linetype = "twodash") + geom_vline(xintercept = -1.3398, linetype = "twodash") + labs(x = "Intercept", y = "Density")
+```
+
+In this plot, the dashed vertical lines correspond to the upper and lower limits of the Fisher information confidence interval calculated above. From looking at this plot, the coverage of the confidence interval seems accurate, indicating that there are no problems with the Fisher information standard errors. I can further check the validity of the above confidence interval by looking at the profile log likelihood. Though not included here, this method also gives a confidence interveral comparable to the one constructed using the Fisher information standard errors. This lends more credibility to the above analysis.
+
+From this data exploration, it appears that the ARMA(0,0) model, a Gaussian white noise model, is most appropriate for the January low temperature data for Ann Arbor, MI. This is somewhat surprising, given the intuition that temperature might vary systematically from year to year. Further interesting work would be to consider models with trend to see if we can capture some gradual warming. It seems possible, however, that small changes (increases, fluctuations, etc.) could be difficult to detect with such little data on such a long time frame.
+
