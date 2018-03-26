@@ -92,15 +92,11 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 9. [Introduction to partially observed Markov process models](09/notes09.html). [(R script)](09/notes09.R)
 
-<!--
-10. [Case study: An association between unemployment and mortality?](10/notes10.html) [(R script)](notes10/notes10.R)
--->
-
 10. [Statistical methodology for nonlinear partially observed Markov process models](10/notes10.html). [(R script)](10/notes10.R)
 
-<!--
-12. [Dynamic models and their simulation by Euler’s method](notes12/notes12.html). [(R script)](notes12/notes12.R)
+11. [Dynamic models and their simulation by Euler’s method](11/notes11.html). [(R script)](11/notes11.R)
 
+<!--
 13. [Practical likelihood-based inference for POMP models](notes13/notes13.html). [(R script)](notes13/notes13.R)
 
 14. [POMP inference: other approaches complementing likelihood-based analysis](notes14/notes14.html). 
@@ -188,15 +184,12 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 
 ## Final project
 
-* Information to follow.
+* [Information](final_project/final_project_info.html)
 
 * You're welcome to browse previous final projects [available online](http://ionides.github.io/531w16/final_project/)
 
 <!--
 
-* [Information](final_project/final_project_info.html)
-
-* [Suggestions for project topics](final_project/project_ideas.html)
 
 * [Projects](final_project/index.html)
 

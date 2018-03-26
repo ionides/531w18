@@ -115,7 +115,7 @@ stopifnot(packageVersion("pomp")>="0.69-1")
 
 <big><big><big>Objectives</big></big></big>
 
-This tutorial develops a general class of dynamic models with particular relevance for biological systems.  We have the following goals:
+This chapter develops a general class of dynamic models with particular relevance for biological systems.  We have the following goals:
 
 1. Dynamic systems can often be represented in terms of _flows_ between _compartments_. We will develop the concept of a _compartment model_ for which we specify _rates_ for the flows between compartments.
 

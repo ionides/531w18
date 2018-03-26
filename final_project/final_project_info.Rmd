@@ -1,0 +1,117 @@
+---
+title: "Final project instructions"
+author: "STATS 531, Winter 2018"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+-----------
+
+
+#### Final project outline
+
+Find a time series dataset of your choice. Carry out a time series analysis, taking advantage of what we have learned in this course. It is expected that part of your project will involve a POMP analysis, taking advantage of the methods we have studied in the second half of this semester. 
+
+Although the POMP framework gives plenty of opportunity to develop and analyze relevant models, it involves some potential challenges which we will attempt to anticipate:
+
+1. A common goal of POMP analysis is to connect theory to data, but what if you don't know a theory for the system on which you have data? 
+
+    i. Sometimes, this can be addressed by choice of data. If possible, choose a dataset on a topic for which you know, or are willing to discover, some background theory.
+
+    ii. If you are fairly sure of the data you would like to analyze, but can't find any relevant theory, I'll be happy to help you work something out, in office hours or by email. If you want data from epidemiology or ecology, I can suggest options for you. For other interests, I may or may not have suggestions but can certainly help you look. Sites such as https://datadryad.org/ and https://figshare.com/ can be useful sources of data. Also, browsing https://ionides.github.io/531w16/final_project/index.html may give you ideas.
+
+    iii. An alternative way in which POMP models can arise is including time-varying parameters in a non-POMP model. 
+
+2. Computational considerations may prevent you analyzing as large a model, or as long a dataset, as you would ideally do. That is fine. Present a smaller, computationally feasible analysis and discuss possible extensions to  your analysis.
+
+
+To submit your project, write your report as an R markdown (Rmd) file.  Submit the report by midnight on Wednesday April 25 as a zip file containing an Rmd file and anything else necessary to allow the grader to render the Rmd file as an html document. Projects will be posted anonymously, with source code and data, **unless you request some or all of the project to remain confidential**. After grades are assigned, you will be invited to add your name back to your project if you choose.
+
+---------
+
+#### Choice of data
+
+ As for the midterm project, the time series should hopefully have at least 100 time points. You can have less, if your interests demand it. Shorter data needs additional care, since model diagnostics and asymptotic approximations become more delicate on small datasets. If your data are longer than, say, 1000 time points, you can subsample if you start having problems working with too much data. 
+
+Time series which you know how to connect to mechanistic hypotheses may be informative to analyze but are harder find online than what we needed for the midterm project. Therefore, I expect more of you to come asking for help identifying a suitable project. One approach to this is for you to spend some time looking online and thinking about what you might like to do, then send me an email with your current thoughts and we can meet in office hours or after class and discuss it further.
+
+------------
+
+#### Some comments on choice of data and data analysis goals
+
+* If you already have a dataset, or scientific topic, to motivate your time series final project, that is good. Otherwise, here are some ideas.
+
+* A standard approach for a final project is to take some previously published data, do your own time series analysis, and write it up by putting it in the context of the previously published analysis.
+
+* You can reproduce part of a previously published analysis, being careful to explain the relationship between what you have done and what was done previously. You should also think of some things to try that are not the same as what was done previously.
+
+* Depending on your choice of project, you may be in any of the following situations:
+
+    1. A **pomp** representation already exists for the POMP model you want to use.
+
+    2. Your task involves POMP models that are variations on an existing **pomp** representation.
+
+    3. Your analysis involves a POMP model which leads you to develop your own **pomp** representation.
+
+* If you develop a **pomp** representation of a POMP model for a new dataset, test it and demonstrate it, that is already a full project.
+
+* The more your model derives from previous work, the further you are expected to go in carrying out a thorough data analysis.
+
+
+----------
+
+#### Expectations for the report
+
+The report will be graded on the following categories.
+
+* Raising a question. You should explain some background to the data you chose, and give motivation for the reader to appreciate the purpose of your data analysis. 
+
+* Use of appropriate statistical methods.
+
+* Scholarship. Your report must make references where appropriate. The models and methods you use should be fully explained, either by references or within your report. When using a reference to point the reader to descriptions elsewhere, you should provide a brief summary in your own report to make it self-contained. Although you will be submitting your source code, you should not expect the reader to study it.
+
+* Reaching a conclusion. You should say what you have concluded, as well as describing things you might have liked to do that were beyond the scope of this midterm project.
+
+* Presentation of data analysis. Focus on a few, carefully explained and justified, figures, tables, statistics and hypothesis tests. You may want to try many things, but only write up evidence supporting how the data help you to get from your question to your conclusions. Including material that is of borderline relevance, or that is not fully explained, makes it harder for the reader to appreciate your analysis.
+
+----------
+
+#### Methodology not covered in class
+
+This class has focused on ARMA and POMP models, two related approaches to time domain analysis of time series. 
+
+Time series topics on which we will spend little or no time include frequency domain analysis of multivariate time series (Shumway and Stoffer, Chapter 7) and time-frequency domain analysis using wavelets (Shumway and Stoffer, Section 4.9). 
+
+If you decide that alternative approaches are particularly relevant for your data, you can use them in your project as a complementary approach to what we have covered in class. 
+
+------------
+
+#### Plagiarism
+
+If material is taken directly from another source, that source must be cited and the copied material clearly attributed to the source, for example by the use of quotation marks. Failing to do this is [plagiarism](https://en.wikipedia.org/wiki/Plagiarism) and will, at a minimum, result in zero credit for the scholarship category and the section of the report in which the plagiarism occurs. Further discussion of plagiarism can be found in [On Being a Scientist: A Guide to Responsible Conduct in Research: Third edition (2009)](http://www.nap.edu/catalog.php?record_id=12192), by <i>The National Academies Press</i>.
+Here is how the [Rackham Academic and Professional Integrity Policy](http://www.rackham.umich.edu/current-students/policies/academic-policies/section11#1132) describes plagiarism:
+
+> <b> 11.2.2 Plagiarism </b>
+>
+> Includes:
+>
+>    Representing the words, ideas, or work of others as one’s own in writing or presentations, and failing to give full and proper credit to the original source.
+>
+>    Failing to properly acknowledge and cite language from another source, including paraphrased text.
+>
+>    Failing to properly cite any ideas, images, technical work, creative content, or other material taken from published or unpublished sources in any medium, including online material or oral presentations, and including the author’s own previous work.
+
+
+
+--------
+
+
+
+ 
