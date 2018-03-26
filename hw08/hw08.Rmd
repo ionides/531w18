@@ -1,0 +1,26 @@
+---
+title: "Homework 8, due  Monday 4/2"
+author: "STATS 531, Winter 2018"
+output:
+  html_document:
+    theme: flatly
+---
+
+
+-----------
+
+
+This week your homework assignment is to make some progress on planning your final project.
+
+1. Read the [instructions](../final_project/final_project_info.html). 
+
+2. Browse the midterm projects at http://ionides.github.io/531w18/midterm_project. Pick two projects to read carefully. Think about how your project compares to these projects, in terms of (i) writing, (ii) statistical analysis, (iii) coding technique.
+
+3. Browse the STATS 531 W16 final projects at http://ionides.github.io/531w16/final_project. Pick two projects to read carefully. Two technical aspects to look for: (i) how the model is described, both mathematically and in software; (ii) how does the author deal with the computational demands, such as caching, parallelization on a single machine, or use of a cluster.
+
+4. Choose a dataset for your final project. 
+
+There is nothing to turn in at this time, but you will benefit from making preparatory progress on your final project.
+
+
+-----------
