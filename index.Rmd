@@ -96,9 +96,9 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 11. [Dynamic models and their simulation by Euler’s method](11/notes11.html). [(R script)](11/notes11.R)
 
-<!--
-13. [Practical likelihood-based inference for POMP models](notes13/notes13.html). [(R script)](notes13/notes13.R)
+12. [Practical likelihood-based inference for POMP models](12/notes12.html). [(R script)](12/notes12.R)
 
+<!--
 14. [POMP inference: other approaches complementing likelihood-based analysis](notes14/notes14.html). 
 
 15. [Case study: POMP modeling to investigate financial volatility](notes15/notes15.html). [(R script)](notes15/notes15.R)
