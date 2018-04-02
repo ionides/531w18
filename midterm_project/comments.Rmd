@@ -1,0 +1,36 @@
+---
+title: "Stats 531 (Winter 2018) <br>Comments on midterm projects"
+output:
+  html_document:
+      theme: flatly
+      toc: yes
+csl: ecology.csl
+---
+
+------
+
+* The midterm projects were impressive in diversity and quality.
+
+* Here are some of the most common faults, which can be avoided in the final project.
+
+1. **Bullet points**. These are appropriate in presentations, but are best avoided in reports. **Why?**
+
+2. **Code**. Generally, code should be copied into a report only when the specifics of coding are a topic of discussion. My notes are not the best role model for a report: I include plenty of code, in order to help discussion of the process of generating the analysis.
+
+3. **Fitted values**. The so-called fitted values for ARMA models are the one-step forecasts. 
+    
+    + These can look like a good match for the data even when the model has no predictive power beyond simply estimating the next data point using the current data point. 
+
+    + Usually, it is not interesting to note that a simple forecast (using the previous data point or the previous year at the same time) looks visually like a good match for the data.
+
+    + It may be more interesting to note whether the fitted model does substantially better than a trivial forecast.
+
+
+4. **Taking logs**. Remember to consider the possibility of transforming the data, usually a square root or log transform for non-negative data. 
+
+5. **Complex conjugate ARMA roots**. Several people noticed that roots had the form $a\pm bi$, which is not statistically interesting since it is just the form of complex roots of a quadratic.
+
+----------
+
+----------
+

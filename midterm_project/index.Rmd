@@ -13,6 +13,7 @@ csl: ecology.csl
 
 * I will contact everyone to give you the opportunity to have your name attached to your project, if you like, after the course is over and the class grades are assigned.
 
+* Some grading comments are at [comments.html](comments.html).
 
 ----------
 
