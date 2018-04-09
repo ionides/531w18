@@ -98,6 +98,8 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 12. [Practical likelihood-based inference for POMP models](12/notes12.html). [(R script)](12/notes12.R)
 
+13. [Time series models with covariates, and a case study of polio](13/notes13.html). [(R script)](13/notes13.R)
+
 <!--
 14. [POMP inference: other approaches complementing likelihood-based analysis](notes14/notes14.html). 
 
@@ -107,7 +109,6 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 17. [Forecasting and fitted values, with a case study of Ebola](notes17/notes17.html). [(R script)](notes17/notes17.R)
 
-18. [Time series models with covariates, and a case study of polio](notes18/notes18.html). [(R script)](notes18/notes18.R)
 
 19. [Concluding remarks](concluding_remarks/concluding_remarks.html)
 
