@@ -100,19 +100,9 @@ Unattributed copying from any source is plagiarism, and has potentially [serious
 
 13. [Time series models with covariates, and a case study of polio](13/notes13.html). [(R script)](13/notes13.R)
 
-<!--
-14. [POMP inference: other approaches complementing likelihood-based analysis](notes14/notes14.html). 
+14. [Case study: POMP modeling to investigate financial volatility](14/notes14.html). [(R script)](notes15/notes15.R)
 
-15. [Case study: POMP modeling to investigate financial volatility](notes15/notes15.html). [(R script)](notes15/notes15.R)
-
-16. [Using a Linux sever for POMP analysis](notes16/linux/linux.html). [Using the UM Flux Linux cluster](notes16/flux/flux.html).
-
-17. [Forecasting and fitted values, with a case study of Ebola](notes17/notes17.html). [(R script)](notes17/notes17.R)
-
-
-19. [Concluding remarks](concluding_remarks/concluding_remarks.html)
-
--->
+There are further POMP case studies, in a similar style, on [Ebola modeling](https://kingaa.github.io/sbied/ebola/ebola.html), [measles transmission](https://kingaa.github.io/sbied/measles/measles.html), and [dynamic variation in the rate of human sexual contacts](https://kingaa.github.io/sbied/contacts/contacts.html).
 
 --------
 
