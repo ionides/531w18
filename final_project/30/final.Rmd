@@ -1,0 +1,802 @@
+---
+title: "How Segmentation Affects Driving Motion Model Performance"
+author: "Stats 531 Final Project"
+date: "April 21, 2018"
+header-includes:
+   - \usepackage{amsmath}
+output: 
+  html_document: 
+    toc: true 
+    theme: flatly
+---
+------
+
+```{r knitr-opts,include=FALSE,cache=FALSE,purl=FALSE}
+# added to help debug
+require(pomp)
+require(astsa)
+require(knitr)
+prefix <- "intro"
+opts_chunk$set(
+  progress=TRUE,
+  cache=TRUE
+)
+RunLevel = 100; #Number of iterations we want Optim to use. 10 for small, 100 for larger
+```
+
+#1. Introduction
+Distracted driving has become increasingly common in recent years. In 2013, Kilbey counted 195,723 total number of casualties in road accidents just in the UK alone. Human failure or error has been implicated to be the cause of about 70% of accidents, while environmental factors and vehicular factors have been identified to be the cause of the remaining 30% of accidents. To date, researchers have been trying to tackle this issue based on two approaches. One is based on analyzing the *driver's* physical behavior while the other is based off analyzing the *vehicle's* real-time driving patterns. 
+
+Research based off analyzing the driver's physical behavior primarily involves the use of visual or auxiliary systems. For example, many approaches use camera-based sensors installed inside the vehicle to monitor the driver's eyes and issue warnings if an irregularity of eye movement or body posture was detected. However, these approaches require additional camera costs and can also be intrusive towards drivers making implementation of this approach in practice is still very limited. On the other hand, there are increasing research interests in analyzing real-time driving patterns by using available built-in sensors measuring vehicle kinematic data like speed, yaw/turn rate, and lane offset. These measured signals offer rich information to distinguish between normal and irregular driving behaviors. It is often reasonable to assume that most drivers may have their own normal driving patterns and a significant deviation from their normal behavior may reflect high probability of distracted behaviors. 
+
+This report aims to compare motion models created from kinematic signals. To be more specific, this report will compare how effectiveness of motion models created based on different methods of building the motion model. Details of this procedure follow.   
+
+#2. Background + Objective
+### 2.1 Motion/State-Space Models
+Motion models have been developed based on these kinematic signals to describe these normal behaviors. Motion models can be described to be state space models describing vehicle dynamic behavior--able to predict a vehicle's position in the future. We will describe motion models by first introducing the state space model framework. First we assume there is an underlying process described by
+$$x_t = \Phi x_{t-1}+w_t.$$
+Here $w_t\sim \text{iid N}_p(0,Q)$. Additionally, we assume the process starts with some initial vector $x_0\sim \text{iid N}_p(\mu_0,\Sigma_0)$. However we do not observe the state vector $x_t$ directly, but rather a linear transformed version of it with noise--namely the observation equation:
+$$y_t = A_tx_t+v_t$$
+where $A_t$ is the $q\times p$ measurement/observation matrix. Here $y_t\in \mathbb{R}^q$ and $v_t\sim \text{iid N}_p(\mu_0,R)$. To make the problem simpler, assume $x_0$, $w_t$, and $v_t$ to be uncorrelated. 
+
+Using this framework, we can then describe motion models. Motion models define $x_t$ to be the variables at time $t$ describing the state of the vehicle. In the case of this project, we are interested in a motion model that assumes the driver is driving at a constant acceleration (CA). We can rewrite the underlying process via kinematic equations: 
+$$
+\begin{bmatrix}
+p_{t,\text{long}}\\
+s_{t,\text{long}}\\
+a_{t,\text{long}}\\
+p_{t,\text{lat}}\\
+s_{t,\text{lat}}\\
+a_{t,\text{lat}}\\
+\end{bmatrix}
+=
+\begin{bmatrix}
+1&\Delta t&0.5(\Delta t)^2&0&0&0\\
+0&1&\Delta t&0&0&0\\
+0&0&1&0&0&0\\
+0&0&0&1&\Delta t&0.5(\Delta t)^2\\
+0&0&0&0&1&\Delta t\\
+0&0&0&0&0&1\\
+\end{bmatrix}
+\begin{bmatrix}
+p_{t-\Delta t,\text{long}}\\
+s_{t-\Delta t,\text{long}}\\
+a_{t-\Delta t,\text{long}}\\
+p_{t-\Delta t,\text{lat}}\\
+s_{t-\Delta t,\text{lat}}\\
+a_{t-\Delta t,\text{lat}}\\
+\end{bmatrix}+w_t
+$$
+where, in both lateral and longitudinal directions, $p$ represents the position of the vehicle, $s$ represents the speed (or more accurately the velocity) of the vehicle, and $a$ represents the acceleration of the vehicle. Hence under this framework, $\Phi$ is assumed to be known. However, given only longitudinal velocity, longitudinal acceleration, lateral position, and lateral speed, we note that position is unknown allowing us to describe the linear transformed observation equation as:
+$$
+\begin{bmatrix}
+s_{t,\text{long}}\\
+a_{t,\text{long}}\\
+p_{t,\text{lat}}\\
+s_{t,\text{lat}}\\
+\end{bmatrix}
+=
+\begin{bmatrix}
+0&1&0&0&0&0\\
+0&0&1&0&0&0\\
+0&0&0&1&0&0\\
+0&0&0&0&1&0\\
+\end{bmatrix}
+\begin{bmatrix}
+p_{t,\text{long}}\\
+s_{t,\text{long}}\\
+a_{t,\text{long}}\\
+p_{t,\text{lat}}\\
+s_{t,\text{lat}}\\
+a_{t,\text{lat}}\\
+\end{bmatrix}+v_t
+$$
+Hence we assume $A_t$ to also be known under this framework. As motion models are based on well known kinematic equations, it is understandable why motion models are used to describe normal driving behaviors. However the real challenge to motion models lies in estimating the unknown parameters $Q$ and $R$, but luckily Kalman Filtering techniques give us a way to estimate them.
+
+### 2.2 Motion Models and the Kalman Filter
+The aim of an analysis involving the above mentioned motion model is to produce estimators for the underlying unobserved state $x_t$, given data $y_{1:s}$. When $s<t$, the problem is called forecasting. When $s=t$, the problem is called filtering, and when $s>t$ the problem is called smoothing. The solutions to these problems are accomplished via the Kalman filter.
+
+Defining the following:
+$$x_t^s = E[x_t|y_{1:s}]$$
+$$P_{t_1,t_2}^s = E[(x_{t_1}-x_{t_1}^s)(x_{t_2}-x_{t_2}^s)^T]$$
+the Kalman filter gives the filtering and forecasting equations. The name comes from the fact that $x_t^t$ is a \textit{linear filter} of observations $y_{1:t}$; that is, $x_t^t = \sum_{s=1}^t B_s y_s$ for a suitably chosen matrix $B_s\in\mathbb{R}^{p\times q}$. The advantage of the Kalman filter is that it specifies how to update the filter from $x_{t-1}^{t-1}$ to $x_t^t$ once a new observation $y_t$ is obtained without having to reprocess the entire data set $y_{1:t}$. For the state space model
+$$x_t = \Phi x_{t-1}+w_t.$$
+$$y_t = A_tx_t+v_t$$
+where initial conditions $x_0^0 = \mu_0$ and $P_0^0 = \Sigma_0$, for $t = 1,\dots,n$, the Kalman filter can be described as the following:
+$$x_t^{t-1} = \Phi x_{t-1}^{t-1} , \ \text{Prediction step}$$
+$$P_t^{t-1} = \Phi P_{t-1}^{t-1}\Phi^T + Q, \ \text{Prediction step}$$
+with 
+$$x_t^t = x_t^{t-1} + K_t(y_t-A_tx_t^{t-1}), \ \text{Update the Filter}$$
+$$P_t^t = [I-K_tA_t]P_t^{t-1}, , \ \text{Update the Filter},$$
+where 
+$$K_t = P_t^{t-1}A^T_t[A_tP_t^{t-1}A^T_{t}+R]^{-1}$$
+is called the Kalman gain. Important byproducts of the filter are the innovations (prediction errors)
+$$\epsilon_t = y_t - E[y_t|y_{1:t-1}] = y_t-A_tx_t^{t-1}$$
+with the corresponding covariance matrices
+$$\Sigma_t = var(\epsilon_t) = var[A_t(x_t-x_t^{t-1})+v_t] = A_tP_t^{t-1}A^T_t + R$$
+for $t=1,\dots,n$. Here we assume $\Sigma_t$ to be positive definite which is guaranteed if $R$ is positive definite. This assumption is not necessary and may be relaxed.  
+
+The Kalman filter is important as it allows for a way to estimate the parameters $\Theta = \{Q,R\}$ that specify the state space model. 
+Assuming the initial state to be normal $x_0\sim N_p(\mu_0,\Sigma_0)$ as well as the errors to be uncorrelated and normal ($w_t\sim \text{iid N}_p(0,Q)$ and $v_t\sim \text{iid N}_p(0,R)$), we are able to solve for the parameters via Maximum Likelihood Estimation.
+
+In practice, it is usually computed using the innovations $\epsilon_1,\epsilon_2,\dots,\epsilon_n$ defined earlier as we can note that they are independent Gaussian random vectors with zero means and covariance matrices $\Sigma_t = A_tP_t^{t-1}A_t^T+R$. Hence, we may write a highly nonlinear and complicated negative log likelihood of unknown parameters as:
+$$-\ln L_Y(\Theta) = 0.5\sum_{t=1}^{n}\ln|\Sigma_t(\Theta)|+0.5\sum_{t=1}^{n}\epsilon_t(\Theta)^T\Sigma_t(\Theta)^{-1}\epsilon_t(\Theta).$$ 
+However, what is usually done is to fix $x_0$ and then develop a set of recursions for the log likelihood function and its first two derivatives. Then a Newton-Raphson algorithm can be used to successively update the parameter values until the negative of the log likelihood is minimized. Hence we now have a way of estimating our unknown parameters $\Theta = \{Q,R\}$ keeping in mind, of course, we must watch out for convergence issues when performing this procedure.
+
+### 2.3 Objective 
+So far we know how to model our vehicle via motion/state-space models and the procedure at which to estimate parameters. However, the parameter estimates given by Maximum Likelihood Estimation highly rely on the data we choose to input. Given the motion model of interest, it's easy to see that we need to select data where a driver has constant acceleration such as when the cruise control function is turned on; however, it is entirely possible that the driver may get distracted while driving with the cruise control turned *On*. The question that this report asks is: Can distractions during cruise control data segments hurt the parameter estimates given by Maximum Likelihood Estiamtion?     
+
+------
+
+#3. Data Overview
+The University of Michigan Transportation Research Institute (UMTRI) has gathered kinematic driving data and video data from drivers around southeast Michigan. These drivers were given vehicles with sensors recording *longitudinal speed*, *longitudinal acceleration*, *lane offset (lateral position)*, and *lateral speed* at a sampling rate of 10Hz. Additionally, video feed recorded inside the vehicle so researchers could mark down instances of distraction. Drivers were allowed to keep these vehicles for four weeks and allowed to do whatever they wanted with the vehicle. At the end of the four weeks, the vehicles were given back to UMTRI, and the data was stored for researchers to use. Most drivers simply drove their normal daily routines implying that UMTRI's stored dataset has many replications of realistic kinematic driving data on roads related to their daily routines. 
+
+Data was selected from a particular distracted driver who will not be disclosed due to privacy reasons. This particular driver had a portion of data where acceleration was fairly constant as can be seen in the figures below. 
+
+```{r data_overview,echo=FALSE,warning=FALSE}
+data = read.csv("event-16-IVBSS.csv")
+
+library(pracma)
+#layout(matrix(c(1,1,2,2,3,3,4,4), nrow = 4, ncol = 2, byrow = TRUE))
+
+Distraction = which(data$Distraction == 1)[[1]]
+
+Z = data$Speed
+plot(Z,xlab="Time (0.1 sec)", ylab="Long. Speed (m/s)")
+abline(v = Distraction,lty=2)
+
+Z = data$SpeedDotSmo
+plot(Z,xlab="Time (0.1 sec)", ylab="Long. Accel. (m/s^2)")
+abline(v = Distraction,lty=2)
+
+Z = data$LaneOffset
+plot(Z,xlab="Time (0.1 sec)", ylab="Lane Offset (m)")
+abline(v = Distraction,lty=2)
+
+Z = data$LateralSpeed
+plot(Z,xlab="Time (0.1 sec)", ylab="Lat. Speed. (m/s)")
+abline(v = Distraction,lty=2)
+
+```
+
+We can see the distraction at point [`r Distraction`] marked by the dashed verticle line.
+
+
+------
+
+------
+
+#4. Analysis
+### 4.1 Building the Motion Model based on the whole dataset
+Disregarding the distraction, it is possible to make build the motion model based on the whole dataset. Note: In this section, I will show R code in detail, as it is important to know the parameters and assumptions used to when making the motion model. However in the sections beyond this one, as I will use this same framework when building the models, I will exclude the details of the model building mentioned in this section.
+
+In order to build the motion model, we must define the known parameters to us: $A$, $\Phi$, $\Delta t$. These were shown above in Section 2.1, so to input them I used the code below. Here $\Delta t = 0.1$ as our data was sampled at 10Hz. Additional parameters we must estimate here are $\mu_0$ and $\Sigma_0$ also mentioned in Section 2.1. Estimation of these parameters were a little more difficult, but was done as follows: 
+
+* For the known values of $\mu_0$, the initial estimates were taken to be the average of the known observed values. However for the rest I estimated $p_{0,\text{long.}}=0$ as this seemed like a reasonable thing to do and $a_{0,\text{lat.}}=0$ as this was our assumption for the CA motion model. 
+* For $\Sigma_0$, all we know in regards to this is that the matrix is symmetric and I am assuming the Lateral and Longitudinal signals are independent of each other. Hence I initialized this matrix randomly and set the covariances between the latitude and longitudinal signals as 0. 
+
+Additionally, to help with convergence, I added $10^{-10}$ to all values to help the future optimization later with convergence issues.
+
+```{r Section_4_1, echo=TRUE, warning=FALSE,results="hide"}
+# Setup
+  y = data[,c("Speed","SpeedDotSmo","LaneOffset","LateralSpeed")]; num = nrow(y); input = rep(1,num)
+  
+  A = matrix( c(0,0,0,0,
+                 1,0,0,0,
+                 0,1,0,0,
+                 0,0,1,0,
+                 0,0,0,1,
+                 0,0,0,0), nrow=4, ncol=6)
+  A = A + 10^-10
+  At = array(A, dim=c(4,6,num))
+  Dt = 0.1 #Delta t
+  Phi = matrix(c(1,0,0,0,0,0,
+                 Dt,1,0,0,0,0,
+                 0.5*Dt^2,Dt,1,0,0,0,
+                 0,0,0,1,0,0,
+                 0,0,0,Dt,1,0,
+                 0,0,0,0.5*Dt^2,Dt,1),nrow = 6, ncol = 6)
+  Phi = Phi + 10^-10
+  #Can take the mean
+  mu0 = matrix(c(0,mean(y$Speed),mean(y$SpeedDotSmo),mean(y$LaneOffset),mean(y$LateralSpeed),0),nrow=6,ncol=1)
+  #Getting values for the initial covariance is tricky hence we randomize initial value
+  Sigma0 = matrix(rnorm(36),nrow = 6,ncol=6);
+    #If we assuming Lateral and Longitudinal Signals are independent of each other
+    for (i in 1:3){
+    Sigma0[i,c(4,5,6)] = 0}
+    end
+    for (j in 4:6){
+    Sigma0[j,c(1,2,3)] = 0}
+    end
+    Sigma0[lower.tri(Sigma0)] = t(Sigma0)[lower.tri(Sigma0)] #To make sure symmetric
+    Sigma0 = Sigma0 + 10^-10
+
+```
+
+The code following this text is where the optimization occurs. Here we performing Maximum Likelihood Estimation via minimizing the negative loglikelihood. This is being done via the optim() function in R. However to optimize we also must initialize our parameters $Q$ and $R$. As these matrices are also symmetric, I chose to randomize only the lower triangular values and using these values to make the matrix symmetric. Again, I add the very small number $10^{-10}$ to help aid optim() with convergence issues. The Kalman filter can be easily implemented via the Kfilter1 function and additionally it can output the negative loglikelihood as well.
+
+```{r,echo=TRUE,warning=FALSE}
+    # Function to Calculate Likelihood
+Linn = function(para){
+cQ = rand(6) #Temp holding
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = t(cQ)
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = cQ + 10^-10
+cR = rand(4) #Temp holding
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = t(cR)
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = cR + 10^-10
+kf = Kfilter1(num,y,At,mu0,Sigma0,Phi,Ups=0,Gam=0,cQ,cR,input=0)
+return(kf$like) }
+
+# Estimation
+Q0 = rnorm(sum(1:6))+ 10^-10
+R0 = rnorm(sum(1:4))+ 10^-10
+init.par = c(Q0,R0) # initial values of parameters
+(est = optim(init.par, Linn, NULL, method='BFGS', hessian=FALSE,
+control=list(trace=0,REPORT=1,maxit=RunLevel))) # output not shown
+```
+
+From the output above, we can see that the negative loglikelihood of the best parameter estimates given above is `r est$value` and can check to see optimizer convergence via the value `r est$converge` .If we are interested, we can easy extract the estimated $Q$ and $R$ matrices given by the optim() R optimizer (as can be seen below):
+
+```{r,echo=TRUE,warning=FALSE}
+# Display estimates
+Q = rand(6) #Temp holding
+Q[lower.tri(Q, diag=TRUE)] <- est$par[1:21]
+Q = t(Q)
+Q[lower.tri(Q, diag=TRUE)] <- est$par[1:21]
+Q
+R = rand(4) #Temp holding
+R[lower.tri(R, diag=TRUE)] <- est$par[22:31]
+R = t(R)
+R[lower.tri(R, diag=TRUE)] <- est$par[22:31]
+R
+```
+
+Finally, given the estimates, we can smooth based on the data to find the innovations (prediction errors) between the data $y$ and the estimated $\hat y$ based on the optimization's parameter estimates:
+
+```{r,echo=TRUE,warning=FALSE,results="hide"}
+# Smooth (first set parameters to their final estimates)
+ks = Ksmooth1(num,y,At,mu0,Sigma0,Phi,0,0,Q,R,0)
+
+innov = matrix(c(0,0,0,0),nrow = 4,ncol = 1)
+for (i in 1:dim(ks$xs)[3]){
+  x_hat = ks$xs[1:6,1,i]
+  y_hat = as.matrix(A)%*%as.matrix(x_hat)
+  zz = t(y[i,])-y_hat
+  innov = cbind(innov,zz)}
+end
+```
+
+And then plotting the innovations (shown below), it is easy to see that this motion model along with the estimated parameters appears to have very small innovation error with the exception of what appears to be three small segments of data.
+
+* The first poor innovation error appears in the beginning as can be seen in most of the innovation plots below. I believe this is due to the fact that we are essentially smoothing, and smoothing tends to be poor near the beginning and ends of data segments used to smooth. So although this poor innovation may appear bad, this is actually to be expected.
+* The second and third poor innovation error apears to be somewhere between times 400 and 600 as well as between times 800 and 1000. These can be seen clearly on the Longitudinal Speed, Longitudinal Acceleration, and Latne offset innovation graphs. The reason for the second innovation could be due to the distraction, but this is just a guess for the cause. The third innovation error has an unknown cause.
+
+```{r,echo=FALSE,warning=FALSE}
+# Plot
+plot(innov[1,], xlab="Time (0.1 sec)", ylab="Long. Speed Innovation (m/s)",col="black")
+abline(v = Distraction,lty=2)
+plot(innov[2,], xlab="Time (0.1 sec)", ylab="Long. Accel Innovation (m/s^2)",col="black")
+abline(v = Distraction,lty=2)
+plot(innov[3,], xlab="Time (0.1 sec)", ylab="Lane Offset Innovation (m)",col="black")
+abline(v = Distraction,lty=2)
+plot(innov[4,], xlab="Time (0.1 sec)", ylab="Lat. Speed Innovation (m/s)",col="black")
+abline(v = Distraction,lty=2)
+```
+
+
+
+### 4.2 Building the Motion Model based on Segmentation via the Distraction
+Although the results above may seem nice, our goal is to see if the introduction of distraction hurts the parameter estimates given by optimization procedure above. To test, this, we can create two different motion models by segmenting the data based on the point of distraction and compare the innovations given by the above procedure and this procedure. 
+
+Recall the distraction being at point [`r Distraction`]. Hence we will divide the data into two separate sub-datasets.
+```{r Section_4_2, echo=TRUE, warning=FALSE,results="hide"}
+# Setup
+  y2a = data[c(1:Distraction),c("Speed","SpeedDotSmo","LaneOffset","LateralSpeed")]; num2a = nrow(y2a); input = rep(1,num2a)
+  y2b = data[-c(1:Distraction),c("Speed","SpeedDotSmo","LaneOffset","LateralSpeed")]; num2b = nrow(y2b); input = rep(1,num2b)
+```
+
+
+After doing this, we can use the same procedure given in Section 4.1 on each sub-dataset. Then we obtain the following innovations below. We can see based on the innovations that when compared to the original signal, creating motion models based on the distracted segmentation actually doesn't seem to bring much improvment at all to the motion model. While this may interesting, this could be the result of the two previously mentioned anomalies. Not much can be said about this segmentation as of yet.
+
+```{r,echo = FALSE,warning = FALSE,results="hide"}
+  A = matrix( c(0,0,0,0,
+                 1,0,0,0,
+                 0,1,0,0,
+                 0,0,1,0,
+                 0,0,0,1,
+                 0,0,0,0), nrow=4, ncol=6)
+  A = A + 10^-10
+  At = array(A, dim=c(4,6,num))
+  Dt = 0.1 #Delta t
+  Phi = matrix(c(1,0,0,0,0,0,
+                 Dt,1,0,0,0,0,
+                 0.5*Dt^2,Dt,1,0,0,0,
+                 0,0,0,1,0,0,
+                 0,0,0,Dt,1,0,
+                 0,0,0,0.5*Dt^2,Dt,1),nrow = 6, ncol = 6)
+  Phi = Phi + 10^-10
+  #Can take the mean
+  mu0 = matrix(c(0,mean(y2a$Speed),mean(y2a$SpeedDotSmo),mean(y2a$LaneOffset),mean(y2a$LateralSpeed),0),nrow=6,ncol=1)
+  #Getting values for the initial covariance is tricky hence we randomize initial value
+  Sigma0 = matrix(rnorm(36),nrow = 6,ncol=6);
+    #If we assuming Lateral and Longitudinal Signals are independent of each other
+    for (i in 1:3){
+    Sigma0[i,c(4,5,6)] = 0}
+    end
+    for (j in 4:6){
+    Sigma0[j,c(1,2,3)] = 0}
+    end
+    Sigma0[lower.tri(Sigma0)] = t(Sigma0)[lower.tri(Sigma0)] #To make sure symmetric
+    Sigma0 = Sigma0 + 10^-10
+    
+# Function to Calculate Likelihood
+Linn = function(para){
+cQ = rand(6) #Temp holding
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = t(cQ)
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = cQ + 10^-10
+cR = rand(4) #Temp holding
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = t(cR)
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = cR + 10^-10
+kf = Kfilter1(num2a,y2a,At,mu0,Sigma0,Phi,Ups=0,Gam=0,cQ,cR,input=0)
+return(kf$like) }
+
+# Estimation
+Q0 = rnorm(sum(1:6))+ 10^-10
+R0 = rnorm(sum(1:4))+ 10^-10
+init.par = c(Q0,R0) # initial values of parameters
+(est = optim(init.par, Linn, NULL, method='BFGS', hessian=FALSE,
+control=list(trace=0,REPORT=1,maxit=RunLevel))) # output not shown
+
+# Display estimates
+Q2a = rand(6) #Temp holding
+Q2a[lower.tri(Q2a, diag=TRUE)] <- est$par[1:21]
+Q2a = t(Q2a)
+Q2a[lower.tri(Q2a, diag=TRUE)] <- est$par[1:21]
+R2a = rand(4) #Temp holding
+R2a[lower.tri(R2a, diag=TRUE)] <- est$par[22:31]
+R2a = t(R2a)
+R2a[lower.tri(R2a, diag=TRUE)] <- est$par[22:31]
+
+# Smooth (first set parameters to their final estimates)
+ks2a = Ksmooth1(num2a,y2a,At,mu0,Sigma0,Phi,0,0,Q2a,R2a,0)
+
+innov2a = matrix(c(0,0,0,0),nrow = 4,ncol = 1)
+for (i in 1:dim(ks2a$xs)[3]){
+  x_hat = ks2a$xs[1:6,1,i]
+  y_hat = as.matrix(A)%*%as.matrix(x_hat)
+  zz = t(y2a[i,])-y_hat
+  innov2a = cbind(innov2a,zz)}
+end
+
+```
+
+
+```{r,echo = FALSE, warning=FALSE, results="hide"}
+  A = matrix( c(0,0,0,0,
+                 1,0,0,0,
+                 0,1,0,0,
+                 0,0,1,0,
+                 0,0,0,1,
+                 0,0,0,0), nrow=4, ncol=6)
+  A = A + 10^-10
+  At = array(A, dim=c(4,6,num))
+  Dt = 0.1 #Delta t
+  Phi = matrix(c(1,0,0,0,0,0,
+                 Dt,1,0,0,0,0,
+                 0.5*Dt^2,Dt,1,0,0,0,
+                 0,0,0,1,0,0,
+                 0,0,0,Dt,1,0,
+                 0,0,0,0.5*Dt^2,Dt,1),nrow = 6, ncol = 6)
+  Phi = Phi + 10^-10
+  #Can take the mean
+  mu0 = matrix(c(0,mean(y2b$Speed),mean(y2b$SpeedDotSmo),mean(y2b$LaneOffset),mean(y2b$LateralSpeed),0),nrow=6,ncol=1)
+  #Getting values for the initial covariance is tricky hence we randomize initial value
+  Sigma0 = matrix(rnorm(36),nrow = 6,ncol=6);
+    #If we assuming Lateral and Longitudinal Signals are independent of each other
+    for (i in 1:3){
+    Sigma0[i,c(4,5,6)] = 0}
+    end
+    for (j in 4:6){
+    Sigma0[j,c(1,2,3)] = 0}
+    end
+    Sigma0[lower.tri(Sigma0)] = t(Sigma0)[lower.tri(Sigma0)] #To make sure symmetric
+    Sigma0 = Sigma0 + 10^-10
+    
+# Function to Calculate Likelihood
+Linn = function(para){
+cQ = rand(6) #Temp holding
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = t(cQ)
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = cQ + 10^-10
+cR = rand(4) #Temp holding
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = t(cR)
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = cR + 10^-10
+kf = Kfilter1(num2b,y2b,At,mu0,Sigma0,Phi,Ups=0,Gam=0,cQ,cR,input=0)
+return(kf$like) }
+
+# Estimation
+Q0 = rnorm(sum(1:6))+ 10^-10
+R0 = rnorm(sum(1:4))+ 10^-10
+init.par = c(Q0,R0) # initial values of parameters
+(est = optim(init.par, Linn, NULL, method='Nelder-Mead', hessian=FALSE,
+control=list(trace=0,REPORT=1,maxit=RunLevel))) # output not shown
+
+# Display estimates
+Q2b = rand(6) #Temp holding
+Q2b[lower.tri(Q2b, diag=TRUE)] <- est$par[1:21]
+Q2b = t(Q2b)
+Q2b[lower.tri(Q2b, diag=TRUE)] <- est$par[1:21]
+R2b = rand(4) #Temp holding
+R2b[lower.tri(R2b, diag=TRUE)] <- est$par[22:31]
+R2b = t(R2b)
+R2b[lower.tri(R2b, diag=TRUE)] <- est$par[22:31]
+
+# Smooth (first set parameters to their final estimates)
+ks2b = Ksmooth1(num2b,y2b,At,mu0,Sigma0,Phi,0,0,Q2b,R2b,0)
+
+innov2b = matrix(c(0,0,0,0),nrow = 4,ncol = 1)
+for (i in 1:dim(ks2b$xs)[3]){
+  x_hat = ks2b$xs[1:6,1,i]
+  y_hat = as.matrix(A)%*%as.matrix(x_hat)
+  zz = t(y2b[i,])-y_hat
+  innov2b = cbind(innov2b,zz)}
+end
+
+innov2 = cbind(innov2a,innov2b)
+# Plot
+plot(innov2[1,], xlab="Time (0.1 sec)", ylab="Long. Speed Innovation (m/s)", main="Innovation vs. Distraction Segmented Innovation",col="blue")
+points(innov[1,],col="black")
+legend("bottomright", inset=.05, c("Distracted Segmentation","Original"),col=c("blue", "black"),lty=1)
+abline(v = Distraction,lty=2)
+plot(innov2[2,], xlab="Time (0.1 sec)", ylab="Long. Accel Innovation (m/s^2)", main="Innovation vs. Distraction Segmented Innovation",col="blue")
+points(innov[2,],col="black")
+legend("bottomright", inset=.05, c("Distracted Segmentation","Original"),col=c("blue", "black"),lty=1)
+abline(v = Distraction,lty=2)
+plot(innov2[3,], xlab="Time (0.1 sec)", ylab="Lane Offset Innovation (m)", main="Innovation vs. Distraction Segmented Innovation",col="blue")
+points(innov[3,],col="black")
+legend("bottomright", inset=.05, c("Distracted Segmentation","Original"),col=c("blue", "black"),lty=1)
+abline(v = Distraction,lty=2)
+plot(innov2[4,], xlab="Time (0.1 sec)", ylab="Lat. Speed Innovation (m/s)", main="Innovation vs. Distraction Segmented Innovation",col="blue")
+points(innov[4,],col="black")
+legend("bottomright", inset=.05, c("Distracted Segmentation","Original"),col=c("blue", "black"),lty=1)
+abline(v = Distraction,lty=2)
+```
+
+
+
+### 4.3 Building the Motion Model based on E-CP3O Segmentation
+
+After showing that we can create motion models based on data segmented by the distraction, we may be interested in seeing if we can create a better motion model after segmentmenting some other way (assuming we do not know where the distraction lies). If we are interested in this, there actually exists change point detection algorithm known as Energy-Change Points via Probabilistic Pruning (E-CP3O) developed by James and Matteson in 2015. This non-parametric approach finds change points indicating a change in distribution between different sets of adjacent points. This is done by maximizing a goodness-of-fit metric measuring similarity between points within a set and differences between different sets. Assuming there are $T$ data points, the algorithm attempts to find a maximum of $k$ distinct change points represented by $0<\tau_1<\tau_2<\dots<\tau_k\leq T$ in the set $T={1,2,\dots,T}$. The problem can be formulated as
+$$\max_{\tau_1<\tau_2<\dots<\tau_k}  \sum_{i=1}^{k}G(S_i,S_{i+1})$$
+where $G(S_i,S_{i+1})$ is a goodness-of-fit measure calculated for two segments $S_i$ and $S_{i+1}$, and $S_i$ is the set of observations between change points $\tau_i$ and $\tau_{i+1}$. This method can be used on multidimensional data and can be solved easily via a dynamic programming approach. Matteson recommended using Szekely and Rizzo's (2013) energy statistic as the goodness-of-fit metric as it allowed the algorithm to be nonparametric. This energy statistic can be defined as
+$$G(F,G) = 2\mathbf{E}||X-Y||^\alpha-2\mathbf{E}||X-X'||^\alpha-\mathbf{E}||Y-Y'||^\alpha$$
+where $X\sim F$, $Y\sim G$, and $X'$ and $Y'$ are independent and identically distributed copies of $X$ and $Y$ respectively. This statistic allows for different settings of $\alpha\in (0,2]$. I will not get too into depth as to how to select $\alpha$ and $k$, but what I will highlight with this algorithm is it gives us an opportunity to separate the data based on our found change points. Applying this algorithm to our data with $k = 10$ and $\alpha = 1$, we see the data gets segmented as such via the change points found by the algorithm:
+
+```{r Section_4_3, echo = FALSE}
+library(ecp)
+K = 10
+changepointdata = data[,c("Speed","SpeedDotSmo","LaneOffset","LateralSpeed")]
+m1<-e.cp3o_delta(as.matrix(changepointdata), K, delta=15, alpha=1,  verbose=FALSE)
+Z = data$Speed
+plot(Z,xlab="Time (0.1 sec)", ylab="Long. Speed (m/s)")
+abline(v = m1$estimates)
+
+Z = data$SpeedDotSmo
+plot(Z,xlab="Time (0.1 sec)", ylab="Long. Accel. (m/s^2)")
+abline(v = m1$estimates)
+
+Z = data$LaneOffset
+plot(Z,xlab="Time (0.1 sec)", ylab="Lane Offset (m)")
+abline(v = m1$estimates)
+
+Z = data$LateralSpeed
+plot(Z,xlab="Time (0.1 sec)", ylab="Lat. Speed. (m/s)")
+abline(v = m1$estimates)
+```
+
+What is interesting is that by telling the algorithm that we believe 15 change points exist, the algorithm determines only 2 optimal change points by which to segment our data. The change points found by this algorithm are  [`r m1$estimates`] and are represented by the verticle lines above. Something interesting to notice is the distraction actually occured at `r Distraction`, implying that ECP3O is only off by `r abs(Distraction-m1$estimates[1])/10` seconds! Also intriguing is the fact that the change points found seem to indicate the regions of anomalies found in section 4.1. 
+
+Just like in the Section 4.2, we can divide the data into subsegments based on these change points:
+
+```{r Section_4_3_data, echo=TRUE, warning=FALSE,results="hide"}
+# Setup
+  y3a = data[c(1:m1$estimates[1]),c("Speed","SpeedDotSmo","LaneOffset","LateralSpeed")]; num3a = nrow(y3a); 
+  y3b = data[c((m1$estimates[1]+1):m1$estimates[2]),c("Speed","SpeedDotSmo","LaneOffset","LateralSpeed")]; num3b = nrow(y3b);
+  y3c = data[-c(1:m1$estimates[2]),c("Speed","SpeedDotSmo","LaneOffset","LateralSpeed")]; num3c = nrow(y3c);
+```
+
+After doing this, we can use the same procedure given in Section 4.1 on each sub-dataset and obtain the innovatioons represented by the plots below. We can see that using the ECP3O algorithm to build the motino models actually displays some improvements when compared to the original motion model based on no segmentation. We can see these improvements namely in the innovation plots of Longitudinal Speed, Longitudinal Acceleration, and Lateral Speed. Another thing of interest is by segmenting based on ECP3O, the innovation plot of the Lane Offset Signal appears to be very poor compard ot the original motion model. There were no errors in the code looking at this graph, so one can maybe conclude that the optimizer did not consider Lane Offset to be of utmost importance when minimizing the negative loglikelihood based on the ECP3O segmentation.
+
+```{r,echo = FALSE,warning = FALSE,results="hide"}
+  A = matrix( c(0,0,0,0,
+                 1,0,0,0,
+                 0,1,0,0,
+                 0,0,1,0,
+                 0,0,0,1,
+                 0,0,0,0), nrow=4, ncol=6)
+  A = A + 10^-10
+  At = array(A, dim=c(4,6,num))
+  Dt = 0.1 #Delta t
+  Phi = matrix(c(1,0,0,0,0,0,
+                 Dt,1,0,0,0,0,
+                 0.5*Dt^2,Dt,1,0,0,0,
+                 0,0,0,1,0,0,
+                 0,0,0,Dt,1,0,
+                 0,0,0,0.5*Dt^2,Dt,1),nrow = 6, ncol = 6)
+  Phi = Phi + 10^-10
+  #Can take the mean
+  mu0 = matrix(c(0,mean(y3a$Speed),mean(y3a$SpeedDotSmo),mean(y3a$LaneOffset),mean(y3a$LateralSpeed),0),nrow=6,ncol=1)
+  #Getting values for the initial covariance is tricky hence we randomize initial value
+  Sigma0 = matrix(rnorm(36),nrow = 6,ncol=6);
+    #If we assuming Lateral and Longitudinal Signals are independent of each other
+    for (i in 1:3){
+    Sigma0[i,c(4,5,6)] = 0}
+    end
+    for (j in 4:6){
+    Sigma0[j,c(1,2,3)] = 0}
+    end
+    Sigma0[lower.tri(Sigma0)] = t(Sigma0)[lower.tri(Sigma0)] #To make sure symmetric
+    Sigma0 = Sigma0 + 10^-10
+    
+# Function to Calculate Likelihood
+Linn = function(para){
+cQ = rand(6) #Temp holding
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = t(cQ)
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = cQ + 10^-10
+cR = rand(4) #Temp holding
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = t(cR)
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = cR + 10^-10
+kf = Kfilter1(num3a,y3a,At,mu0,Sigma0,Phi,Ups=0,Gam=0,cQ,cR,input=0)
+return(kf$like) }
+
+# Estimation
+Q0 = rnorm(sum(1:6))+ 10^-10
+R0 = rnorm(sum(1:4))+ 10^-10
+init.par = c(Q0,R0) # initial values of parameters
+(est = optim(init.par, Linn, NULL, method='BFGS', hessian=FALSE,
+control=list(trace=0,REPORT=1,maxit=RunLevel))) # output not shown
+
+# Display estimates
+Q3a = rand(6) #Temp holding
+Q3a[lower.tri(Q3a, diag=TRUE)] <- est$par[1:21]
+Q3a = t(Q3a)
+Q3a[lower.tri(Q3a, diag=TRUE)] <- est$par[1:21]
+R3a = rand(4) #Temp holding
+R3a[lower.tri(R3a, diag=TRUE)] <- est$par[22:31]
+R3a = t(R3a)
+R3a[lower.tri(R3a, diag=TRUE)] <- est$par[22:31]
+
+# Smooth (first set parameters to their final estimates)
+ks3a = Ksmooth1(num3a,y3a,At,mu0,Sigma0,Phi,0,0,Q3a,R3a,0)
+
+innov3a = matrix(c(0,0,0,0),nrow = 4,ncol = 1)
+for (i in 1:dim(ks3a$xs)[3]){
+  x_hat = ks3a$xs[1:6,1,i]
+  y_hat = as.matrix(A)%*%as.matrix(x_hat)
+  zz = t(y3a[i,])-y_hat
+  innov3a = cbind(innov3a,zz)}
+end
+
+```
+
+```{r,echo = FALSE,warning = FALSE,results="hide"}
+  A = matrix( c(0,0,0,0,
+                 1,0,0,0,
+                 0,1,0,0,
+                 0,0,1,0,
+                 0,0,0,1,
+                 0,0,0,0), nrow=4, ncol=6)
+  A = A + 10^-10
+  At = array(A, dim=c(4,6,num))
+  Dt = 0.1 #Delta t
+  Phi = matrix(c(1,0,0,0,0,0,
+                 Dt,1,0,0,0,0,
+                 0.5*Dt^2,Dt,1,0,0,0,
+                 0,0,0,1,0,0,
+                 0,0,0,Dt,1,0,
+                 0,0,0,0.5*Dt^2,Dt,1),nrow = 6, ncol = 6)
+  Phi = Phi + 10^-10
+  #Can take the mean
+  mu0 = matrix(c(0,mean(y3b$Speed),mean(y3b$SpeedDotSmo),mean(y3b$LaneOffset),mean(y3b$LateralSpeed),0),nrow=6,ncol=1)
+  #Getting values for the initial covariance is tricky hence we randomize initial value
+  Sigma0 = matrix(rnorm(36),nrow = 6,ncol=6);
+    #If we assuming Lateral and Longitudinal Signals are independent of each other
+    for (i in 1:3){
+    Sigma0[i,c(4,5,6)] = 0}
+    end
+    for (j in 4:6){
+    Sigma0[j,c(1,2,3)] = 0}
+    end
+    Sigma0[lower.tri(Sigma0)] = t(Sigma0)[lower.tri(Sigma0)] #To make sure symmetric
+    Sigma0 = Sigma0 + 10^-10
+    
+# Function to Calculate Likelihood
+Linn = function(para){
+cQ = rand(6) #Temp holding
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = t(cQ)
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = cQ + 10^-10
+cR = rand(4) #Temp holding
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = t(cR)
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = cR + 10^-10
+kf = Kfilter1(num3b,y3b,At,mu0,Sigma0,Phi,Ups=0,Gam=0,cQ,cR,input=0)
+return(kf$like) }
+
+# Estimation
+Q0 = rnorm(sum(1:6))+ 10^-10
+R0 = rnorm(sum(1:4))+ 10^-10
+init.par = c(Q0,R0) # initial values of parameters
+(est = optim(init.par, Linn, NULL, method='BFGS', hessian=FALSE,
+control=list(trace=0,REPORT=1,maxit=RunLevel))) # output not shown
+
+# Display estimates
+Q3b = rand(6) #Temp holding
+Q3b[lower.tri(Q3b, diag=TRUE)] <- est$par[1:21]
+Q3b = t(Q3b)
+Q3b[lower.tri(Q3b, diag=TRUE)] <- est$par[1:21]
+R3b = rand(4) #Temp holding
+R3b[lower.tri(R3b, diag=TRUE)] <- est$par[22:31]
+R3b = t(R3b)
+R3b[lower.tri(R3b, diag=TRUE)] <- est$par[22:31]
+
+# Smooth (first set parameters to their final estimates)
+ks3b = Ksmooth1(num3b,y3b,At,mu0,Sigma0,Phi,0,0,Q3b,R3b,0)
+
+innov3b = matrix(c(0,0,0,0),nrow = 4,ncol = 1)
+for (i in 1:dim(ks3b$xs)[3]){
+  x_hat = ks3b$xs[1:6,1,i]
+  y_hat = as.matrix(A)%*%as.matrix(x_hat)
+  zz = t(y3b[i,])-y_hat
+  innov3b = cbind(innov3b,zz)}
+end
+
+```
+
+```{r,echo = FALSE,warning = FALSE,results="hide"}
+  A = matrix( c(0,0,0,0,
+                 1,0,0,0,
+                 0,1,0,0,
+                 0,0,1,0,
+                 0,0,0,1,
+                 0,0,0,0), nrow=4, ncol=6)
+  A = A + 10^-10
+  At = array(A, dim=c(4,6,num))
+  Dt = 0.1 #Delta t
+  Phi = matrix(c(1,0,0,0,0,0,
+                 Dt,1,0,0,0,0,
+                 0.5*Dt^2,Dt,1,0,0,0,
+                 0,0,0,1,0,0,
+                 0,0,0,Dt,1,0,
+                 0,0,0,0.5*Dt^2,Dt,1),nrow = 6, ncol = 6)
+  Phi = Phi + 10^-10
+  #Can take the mean
+  mu0 = matrix(c(0,mean(y3c$Speed),mean(y3c$SpeedDotSmo),mean(y3c$LaneOffset),mean(y3c$LateralSpeed),0),nrow=6,ncol=1)
+  #Getting values for the initial covariance is tricky hence we randomize initial value
+  Sigma0 = matrix(rnorm(36),nrow = 6,ncol=6);
+    #If we assuming Lateral and Longitudinal Signals are independent of each other
+    for (i in 1:3){
+    Sigma0[i,c(4,5,6)] = 0}
+    end
+    for (j in 4:6){
+    Sigma0[j,c(1,2,3)] = 0}
+    end
+    Sigma0[lower.tri(Sigma0)] = t(Sigma0)[lower.tri(Sigma0)] #To make sure symmetric
+    Sigma0 = Sigma0 + 10^-10
+    
+# Function to Calculate Likelihood
+Linn = function(para){
+cQ = rand(6) #Temp holding
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = t(cQ)
+cQ[lower.tri(cQ, diag=TRUE)] <- para[1:21]
+cQ = cQ + 10^-10
+cR = rand(4) #Temp holding
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = t(cR)
+cR[lower.tri(cR, diag=TRUE)] <- para[22:31]
+cR = cR + 10^-10
+kf = Kfilter1(num3c,y3c,At,mu0,Sigma0,Phi,Ups=0,Gam=0,cQ,cR,input=0)
+return(kf$like) }
+
+# Estimation
+Q0 = rnorm(sum(1:6))+ 10^-10
+R0 = rnorm(sum(1:4))+ 10^-10
+init.par = c(Q0,R0) # initial values of parameters
+(est = optim(init.par, Linn, NULL, method='BFGS', hessian=FALSE,
+control=list(trace=0,REPORT=1,maxit=RunLevel))) # output not shown
+
+# Display estimates
+Q3c = rand(6) #Temp holding
+Q3c[lower.tri(Q3c, diag=TRUE)] <- est$par[1:21]
+Q3c = t(Q3c)
+Q3c[lower.tri(Q3c, diag=TRUE)] <- est$par[1:21]
+R3c = rand(4) #Temp holding
+R3c[lower.tri(R3c, diag=TRUE)] <- est$par[22:31]
+R3c = t(R3c)
+R3c[lower.tri(R3c, diag=TRUE)] <- est$par[22:31]
+
+# Smooth (first set parameters to their final estimates)
+ks3c = Ksmooth1(num3c,y3c,At,mu0,Sigma0,Phi,0,0,Q3c,R3c,0)
+
+innov3c = matrix(c(0,0,0,0),nrow = 4,ncol = 1)
+for (i in 1:dim(ks3c$xs)[3]){
+  x_hat = ks3c$xs[1:6,1,i]
+  y_hat = as.matrix(A)%*%as.matrix(x_hat)
+  zz = t(y3c[i,])-y_hat
+  innov3c = cbind(innov3c,zz)}
+end
+
+innov3 = cbind(innov3a,innov3b,innov3c)
+# Plot
+plot(innov[1,], xlab="Time (0.1 sec)", ylab="Long. Speed Innovation (m/s)",main="Innovation vs. ECP3O Segmented Innovation",col="black")
+points(innov3[1,],col="red")
+legend("bottomright", inset=.05, c("ECP3O Segmentation","Original"),col=c("red", "black"),lty=1)
+abline(v = m1$estimates)
+plot(innov[2,], xlab="Time (0.1 sec)", ylab="Long. Accel Innovation (m/s^2)",main="Innovation vs. ECP3O Segmented Innovation",col="black")
+points(innov3[2,],col="red")
+legend("bottomright", inset=.05, c("ECP3O Segmentation","Original"),col=c("red", "black"),lty=1)
+abline(v = m1$estimates)
+plot(innov[3,], xlab="Time (0.1 sec)", ylab="Lane Offset Innovation (m)",main="Innovation vs. ECP3O Segmented Innovation",col="black")
+points(innov3[3,],col="red")
+legend("bottomright", inset=.05, c("ECP3O Segmentation","Original"),col=c("red", "black"),lty=1)
+abline(v = m1$estimates)
+plot(innov[4,], xlab="Time (0.1 sec)", ylab="Lat. Speed Innovation (m/s)",main="Innovation vs. ECP3O Segmented Innovation",col="black")
+points(innov3[4,],col="red")
+legend("bottomright", inset=.05, c("ECP3O Segmentation","Original"),col=c("red", "black"),lty=1)
+abline(v = m1$estimates)
+
+# Plot
+plot(innov2[1,], xlab="Time (0.1 sec)", ylab="Long. Speed Innovation (m/s)",main="Innovation vs. ECP3O Segmented Innovation",col="blue")
+points(innov3[1,],col="red")
+legend("bottomright", inset=.05, c("ECP3O Segmentation","Distracted Segmentation"),col=c("red", "blue"),lty=1)
+abline(v = m1$estimates)
+plot(innov2[2,], xlab="Time (0.1 sec)", ylab="Long. Accel Innovation (m/s^2)",main="Innovation vs. ECP3O Segmented Innovation",col="blue")
+points(innov3[2,],col="red")
+legend("bottomright", inset=.05, c("ECP3O Segmentation","Distracted Segmentation"),col=c("red", "blue"),lty=1)
+abline(v = m1$estimates)
+plot(innov2[3,], xlab="Time (0.1 sec)", ylab="Lane Offset Innovation (m)",main="Innovation vs. ECP3O Segmented Innovation",col="blue")
+points(innov3[3,],col="red")
+legend("bottomright", inset=.05, c("ECP3O Segmentation","Distracted Segmentation"),col=c("red", "blue"),lty=1)
+abline(v = m1$estimates)
+plot(innov2[4,], xlab="Time (0.1 sec)", ylab="Lat. Speed Innovation (m/s)",main="Innovation vs. ECP3O Segmented Innovation",col="blue")
+points(innov3[4,],col="red")
+legend("bottomright", inset=.05, c("ECP3O Segmentation","Distracted Segmentation"),col=c("red", "blue"),lty=1)
+abline(v = m1$estimates)
+```
+
+#5. Discussion
+Constant Acceleration motion models were created in three different manners using data where a distraction was present. The first was created without any data segmention at all. The second was created by segmenting on the distraction point. The third was created by segmenting using the ECP3O algorithm.
+
+The hypothesis of this report was that by segmenting data based on abnormalities, one could create better motion models. Given the results found in this report, it is a little difficult to say that this can one hundred percent be concluded. There is evidence that segmenting based on abnormalities can lead to better motion models as 3 out of 4 innovation signals appears to have less innovation error; however the last plot's innovation error (that being the Lane Offset signal's) still remains as warning that this hypothesis may or may not be true. Future work could be done to compare total innovation error or rather the 95% quantile of innovation error (to take into account the weakness of smoothing around beginning and ends of data), as this report was simply an exploration. However it should be noted that this report only considered one case of data from one particular driver. Hence future work could also consider more segments of data where this model applies as well as segments from other drivers to see if the results of segmenting based on ECP3O is statistically better than building a motion model with no segmentation at all. 
+
+------
+
+------
+
+
+#6. References
+
+* Sun, Rui, Washington Yotto Ochieng, and Shaojun Feng. "An integrated solution for lane level irregular driving detection on highways." Transportation Research Part C: Emerging Technologies 56 (2015): 61-79
+* James, Nicholas A., and David S. Matteson. "Change Points via Probabilistically Pruned Objectives." arXiv preprint arXiv:1505.04302 (2015).
+* Szkely, Gbor J., and Maria L. Rizzo. "Energy statistics: A class of statistics based on distances." Journal of statistical planning and inference 143.8 (2013): 1249-1272.
+*  R. Shumway and D. Stoffer "Time Series Analysis and its Applications" 4th edition. A pdf is available using the UM Library's Springer subscription.
+* https://ionides.github.io/531w18/
+

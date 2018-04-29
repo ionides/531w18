@@ -1,0 +1,234 @@
+---
+title: "Modeling Crisis Call Volume in Ann Arbor"
+date: "April 25, 2018"
+output: 
+  html_document:
+    theme: simplex
+    toc: true
+bibliography: "C:/Users/nseew/Documents/Mendeley/bibtex/STATS531.bib"
+---
+
+<style type="text/css">
+body {
+  font-size:14px;
+  color:black;
+  background-color:white;
+}
+</style>
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+library(pomp)
+library(doParallel)
+```
+
+```{r cluster}
+nodefile <- Sys.getenv("PBS_NODEFILE")
+# Check for Flux and create cluster appropriately
+if (nodefile != "") {
+  hostlist <- read.table(nodefile, skip = 1, header = FALSE)
+  clus <- makeCluster(c(as.character(hostlist$V1)))
+} else {
+  ncore <- detectCores()
+  clus <- makeCluster(ncore)
+}
+registerDoParallel(clus)
+mcopts <- list(preschedule=FALSE,set.seed=TRUE)
+```
+
+```{r data, include = F}
+load("ozone.RData")
+ozone2 <- subset(ozone, select = c("day", "calls"))
+# ozonets <- ts(ozone2$calls)
+```
+
+**Note:** I ran into some major problems with `dmeas` that I was unable to successfully troubleshoot. This is not at all my best work; I'm rather embarrassed, and I apologize.
+
+## Introduction
+[Ozone House](http://ozonehouse.org/) is a youth crisis center based in Ann Arbor, MI, which offers a variety of services for "at-risk" and homeless youth, including a 24/7 telephone hotline. As a non-profit, the organization is highly dependent on grants and donations, as well as the work of volunteers. On average, the center receives over 2100 calls to the crisis hotline annually. Because the individuals staffing the hotline are largely volunteers, and because daily call volume can be highly variable, the center has an interest in developing a predictive model for the number of calls they might expect to receive in one day.
+
+In general, a crisis is a temporary "disruption in what might be called a steady state" [@Dixon1974], which is suggestive of a modeling strategy which we describe below.
+
+## Data and Modeling
+Data on daily crisis calls was collected by Ozone House from January 1, 2009 through December 31, 2016. The number of calls per day is plotted below.
+
+```{r ozonePlot, fig.width = 8.5, fig.height = 5}
+plot(ozone$calls ~ ozone$date, type = "l",
+     xlab = "Date", ylab = "Number of Calls")
+```
+
+Data are missing from August 13, 2008 to January 1, 2009. The data appear to be consistent with a mean-stationary model. 
+
+The data are well-suited for a POMP model which incorporates latent dynamics, as there is no way to determine the "features" of the call before the call is "observed". Furthermore, Ozone House does not collect any identifying or demographic information aside from the caller's age, which may only be given as a range (e.g., over 21). 
+
+We construct a compartment model to describe a mechanism by which calls to the Ozone House crisis line might arise. This is based primarily in crisis theory, as described by @Dixon1974. We seek to model a latent process underlying call volume which we can then use to make predictions. Since crises proceed in stages, can increase in severity over time, each stage is associated with different help-seeking behaviors, and individuals may experience multiple crises over their lifetimes, we implement an SIRS-type model. 
+
+An infectious disease-style model can be appropriate for this data because adolescents tend to engage in "group-think", although they are more likely to seek help for others than they are to seek help for themselves [@Raviv2000]. Furthermore, discussions with Ozone House staff suggest that, at least anecdotally, call volume tends to ebb and flow, consistent with the notion that individuals who experience and seek help for crises may lead others to engage in similar behavior. Allowing individuals to become susceptible again after a period of "recovery" reflects the fact that individuals may experience multiple crises. We do not model population dynamics like birth and death, and we assume that the stochasticity within the model is purely demographic.
+
+In particular, we model the transitions between states as binomial random variables such that the rates of transition are exponential. If we define $dN_{AB}$ to denote the number of transitions from compartment A to B in some small time period $dt$, our model is parameterized as follows:
+\begin{align*}
+  dN_{SI} &\sim \mathrm{Binomial}(S, 1-e^{-\beta \cdot (I / N) \cdot dt })
+  dN_{SI} &\sim \mathrm{Binomial}(S, 1-e^{-\eta \cdot dt })
+  dN_{SI} &\sim \mathrm{Binomial}(S, 1-e^{-\theta \cdot dt }).
+\end{align*}
+Note that individuals enter the recovered compartment and transition back into the susceptible compartment at constant rates parameterized by $\eta$ and $\theta$, respectively.
+
+```{r sirs}
+sirs_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+  double dN_IR = rbinom(I,1-exp(-Eta * dt));
+  double dN_RS = rbinom(R,1-exp(-Theta * dt));
+  S += dN_RS - dN_SI;
+  I += dN_SI - dN_IR;
+  R += dN_IR - dN_RS;
+  H += dN_IR;
+")
+
+sirs_init <- Csnippet("
+  S = N - 30;
+  I = 30;
+  R = 0;
+  H = 0;
+")
+
+sirs_fromEstimationScale <- "
+  TBeta = exp(Beta);
+  TEta = exp(Eta);
+  TTheta = exp(Theta);
+  Trho = expit(rho);
+"
+sirs_toEstimationScale <- "
+  TBeta = log(Beta);
+  TEta = log(Eta);
+  TTheta = log(Theta);
+  Trho = logit(rho);
+"
+
+dmeas <- Csnippet("if (ISNA(calls)) {
+                    lik = (give_log) ? 0 : 1;
+                  } else {
+                    lik = dbinom(calls,H,rho,give_log);
+                  }")
+rmeas <- Csnippet("calls = rbinom(H, rho);")
+
+sirs <- pomp(ozone2, time = "day", t0 = 0,
+             rprocess = euler.sim(sirs_step, delta.t = 1/4),
+             rmeasure = rmeas,
+             dmeasure = dmeas,
+             initializer = sirs_init,
+             paramnames = c("N", "Beta", "Eta", "Theta", "rho"), 
+             statenames = c("S", "I", "R", "H"),
+             fromEstimationScale = Csnippet(sirs_fromEstimationScale),
+             toEstimationScale = Csnippet(sirs_toEstimationScale),
+             zeronames = "H")
+```
+
+We model call volume as arising from a Binomial distribution. Assuming that the hotline call is effective for the individual and leads them to move into the recovered state (the R compartment), we view call volume as a subset of the individuals moving into R at each timepoint. Therefore, we model the call volume at time $t$, $C(t)$, as
+\[
+  C_{t} \sim \mathrm{Binomial}\left(H(t) - H(t-1), \rho\right),
+\]
+where $H(t)$ is the number of transitions from I to R observed in the interval $[0, t)$. This model for $C(t)$ captures the notion that only a subset of individuals experiencing crises at any given time will utilize the hotline [@Gould2006,@Curtis2010].
+
+### Simulations
+We conduct a number of simulations to explore the parameter space defined above. Since, on average, Ozone House received approximately 300 calls per year, and @Gould2006 estimated that 5.6% of adolescents in the Detroit area had used a crisis hotline, we will guess that our population size is approximately 5400 individuals.
+
+```{r sims}
+set.seed(1001)
+sims1 <- simulate(sirs, params = c(Beta = 2.3, Eta = .05, rho = .02,
+                                   Theta = .7, N = 5400),
+                  nsim = 10, as = TRUE, include = F)
+plot(ozone2$calls ~ ozone2$day, type = "l",
+     xlab = "Days since 1/1/2009", ylab = "Number of Calls")
+with(subset(sims1, sim == 1), lines(calls ~ time, col = "#EB6864"))
+```
+
+The simulated data shown above in red, superimposed on the original time series, seem to capture the "spikyness" of the observed call volumes, though the simulation seems to slightly overestimate the variablility in the data, particularly at earlier times. We implement an iterated filtering algorithm to estimate parameters.
+
+### Estimation
+
+```{r localSearch, cache = T}
+run_level <- 1
+switch(run_level,
+       {sirs_Np=100; sirs_Nmif=10; sirs_Neval=5; sirs_Nglobal=10; sirs_Nlocal=10},
+       {sirs_Np=20000; sirs_Nmif=100; sirs_Neval=10; sirs_Nglobal=10; sirs_Nlocal=10},
+       {sirs_Np=60000; sirs_Nmif=300; sirs_Neval=10; sirs_Nglobal=100; sirs_Nlocal=20}
+)
+
+sirs_rw.sd <- .02
+sirs_cooling.fraction.50 <- .4
+
+stew(file = sprintf("box_eval-%d.rda", run_level), {
+  t_global <- system.time({
+    mifs_local <- foreach(i=1:sirs_Nglobal, .packages = "pomp", .combine = c,
+                          .export = ls(envir = .GlobalEnv),
+                           .options.multicore=mcopts) %dopar%
+      mif2(sirs,
+           start = c(Beta = 1, Eta = 1.01, rho = .056, Theta = .15, N = 5400),
+           Np = sirs_Np,
+           Nmif = sirs_Nmif,
+           cooling.type = "geometric",
+           cooling.fraction.50 = sirs_cooling.fraction.50,
+           transform = T,
+           rw.sd = rw.sd(Beta = sirs_rw.sd,
+                         Eta = sirs_rw.sd,
+                         rho = sirs_rw.sd,
+                         Theta = sirs_rw.sd))
+  })
+}, seed = 897546543, kind = "L'Ecuyer")
+```
+
+```{r globalSearch, cache = T}
+# sirs_box = rbind(Beta = c(.01, 10),
+#                  Eta = c(.01, 10),
+#                  Theta = c(.01, 10),
+#                  rho = c(.0001, .15))
+# 
+# stew(file=sprintf("box_eval-Global-%d.rda",run_level),{
+# 
+#   t_global <- system.time({
+#     mifs_global <- foreach(i=1:sirs_Nglobal,.packages='pomp', .combine=c, .export = ls(envir = .GlobalEnv),
+#                            .options.multicore=mcopts) %dopar%
+#       mif2(
+#       mifs_local[[1]],
+#       start=c(apply(sirs_box,1,function(x) exp(runif(1,log(x[1]),log(x[2])))),N=5400)
+#     )
+#   })
+# },seed=4454564, kind="L'Ecuyer")
+# 
+# stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+#   t_global_eval <- system.time({
+#     liks_global <- foreach(i=1:sirs_Nglobal,.packages='pomp',
+#                            .export = ls(envir = .GlobalEnv),
+#                            .combine=rbind, .options.multicore=mcopts) %dopar% {
+#       evals <- replicate(sirs_Neval, logLik(pfilter(sirs,params=coef(mifs_global[[i]]),Np=sirs_Np)))
+#       logmeanexp(evals, se=TRUE)
+#     }
+#   })
+# },seed=58481351,kind="L'Ecuyer")
+# 
+# results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+# summary(results_global$logLik,digits=5)
+```
+
+## ARMA Modeling
+We also implement more classical time-domain models for comparison. Here, we explore ARMA($p$, $q$) models for the log-transformed time series. Below is a table of AIC values for different values of $p$ and $q$.
+
+```{r janCasesARMA, cache = T}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+callAIC <- aic_table(ts(log(ozone2$calls)), 7, 7)
+kable(callAIC, digits=2)
+```
+
+AIC seems to decrease as both $p$ and $q$ increase; furthermore, changes in AIC are much larger than the expected jumps of $\pm 2$, suggesting poor numerical stability. 
+
+## References

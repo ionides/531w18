@@ -169,11 +169,6 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 
 * You're welcome to browse previous final projects [available online](http://ionides.github.io/531w16/final_project/)
 
-<!--
-
-
 * [Projects](final_project/index.html)
-
--->
 
 ---------

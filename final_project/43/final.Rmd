@@ -1,0 +1,382 @@
+---
+title: "Donation behavior: is the donor alive or dead? Governing the observed number of donors making a donation each month"
+output: 
+  html_document:
+    theme: flatly
+    toc: TRUE
+bibliography: donation.bib
+--- 
+## 0 Submission details
+
+I used a dataset from a large charity in Europe. Due to non-disclosure agreement, I could not include any data for the submission of this project, and would prefer that this work not be posted online. 
+
+## 1 Introudction 
+
+Donation behavior has been of keen academic interest in marketing. In particular, many of the works in customer relationship management (CRM) literature focused on donor-charity relationship. Donor-charity relationship is most often considered as a non-contractual relationship in the literature. By non-contractual relationship, researchers refer to the relationship between a firm and its customers where the termination of relationship is not observed by the firm. Take an extreme example, suppose a donor who has been giving for years dies, hence stopping any giving thereafter. This, to the charity, would simply appear as a long period of non-giving. Charities can infer whether the donor is active or inactive based on their giving histories, but cannot be 100% sure whether a donor has decided to permanently stop giving because they do not fully observe their donors' latent interests. 
+
+This nature of donor-charity relationship makes it natural to assume that there is a latent state which governs donation behaviors, and thus suitable for POMP analysis.
+
+For example, @fader2010customer proposed BG-BB (Beta-geometric - Beta-binomial) model by making the following assumptions: 
+
+  * Each discrete time $t$ is a donation opportunity. 
+  * At each donation opportunity, an individual donor gives with probability $p$, and each donation occasion are independent. 
+  * The donation rate of $p$ is distributed across population according to Beta($\alpha, \beta$) distribution (i.e., $p \sim$ Beta($\alpha, \beta$)). 
+  * An individual donor can go permanently inactive after each donation opportunity, which they refer to as 'death'. Therefore, this death process follows geometric distribution with parameter $q$. 
+  * The probability that governs the death process $q$ is distributed across population according to Beta($\gamma, \delta$) distribution (i.e., $q \sim$ Beta($\gamma, \delta$)). 
+  * The donation process and death process are independent. 
+
+They show that the model prediction succssesfully traces the trajectory of donation behaviors using summary variables that describe frequency (how many times one gave) and recency (when the last transaction) of donation, and how many donation opportunities the donors had. 
+
+Whereas @fader2010customer assumed that the likelihood of turning permanently inactive was independent at each period (geometric), @netzer2008hidden used Hidden Markov Model to model giving history to one's alma mater of a large university. The hidden states were the underlying states of alumnus/alumna, which people transitioned across at each period (discrete $t$), which then governed the decision at each period of whether to give or not. 
+
+However, unlike the panel data structure employed by @netzer2008hidden and @fader2010customer (to be precise, @fader2010customer summarized history on an indivdidual level and aggregated the summary variables across population - but this still requires panel data to construct), often researchers may face a situation where the only available data is aggregated, monthly-level data on donation histories. With such aggregated dataset, it would be much more difficult to infer the heterogeneity across donors, which is often of significant interest to marketers, necessarily restricting the complexity of the model. 
+
+We can test some of the assumptions made in the previously mentioned works. For example, it is not clear whether assuming $p$ and $q$ in @fader2010customer is reasonable. It is possible that people who are more likely to donate while alive are less likely to drop out from the donor pool. 
+
+In this project, I would like to suggest a POMP model of donation behavior on an aggregate level for such cases. It is a simplified version of @fader2010customer, where heterogeneity is ignored. However, the data requirement is much less severe than the panel data, and the result provides a good fit despite its simplicity, suggesting the usefulness of the simplified model. 
+
+
+## 2 Data
+
+The data comes from a large charity in Europe, which has individual-level donation history on a daily level. I aggregated the data in the following manner: 
+
+First, I focused on people who joined at the same month. As briefly explained above, donors tend to drop out over time; that is, their interest in the cause and in giving to the charity declines over time, eventually entering the so-called 'death' state. Therefore, if we include people joining at different time periods, there would be different dynamics of different cohorts are overlaid, making it difficult to identify the dynamic patterns at each cohort-level. Combining all cohorts, I expect that an established charity would have relatively stable amount and count of donation every month, masking the dyanmics within cohorts. I focus on a cohort who first gave in July, 1998, 91 donors for which we have 205 months of history. 
+
+Second, I counted the number of people who gave at a particular month, instead of the count of donations. This is to focus on the active vs. inactive (death) states of donors. Furthermore, because 98.16% of all observations were either 0 or 1, with maximum donation counts per month being 5 (1 out of 18655 observations). 
+
+```{r load packages, echo = F, message= F, error=F}
+
+require(plyr)
+require(dplyr)
+require(ggplot2)
+require(pomp)
+require(foreach)
+require(doParallel)
+require(DiagrammeR)
+
+```
+
+Here, I show the time plot for the number of giving donors for each month. 
+
+```{r donation time plot, echo = F}
+
+load("~/Dropbox/Michigan/2018Winter/STATS531/final_project/monthly_count_donors.rda")
+monthly <- monthly %>% mutate(month = 0:204) %>% select(-t) %>% 
+  rename(G = ndonors.donated)
+
+ggplot(monthly, aes(x = month, y = G)) + 
+  geom_line() + 
+  ggtitle("Time plot of donors who made a donation in month t") + 
+  theme_bw() + ylab("No. donors who made a donation")
+
+```
+
+At time 0, which is the timing at which people joined the charity for the first time, everybody (all 91 donors in the cohort) made a donation. As clearly shown in the above plot, donors are dropping out, leading to fewer and fewer donations per month over time. In the following section, I propose a POMP model for this setting. 
+
+## 3 POMP Model
+
+As described above, previous research has conceptually modeled the customer-firm relationship as having discrete states, which then governs the behaviors of interest, such as transactions, usage, as well as donations. @fader2010customer assumed that there are two latent states: alive vs. dead (from the firm's point of view). @netzer2008hidden found that there were three states: active vs. occasional vs. dormant. In both cases, the dead/dormant state was assumed to be an absorbing state, so that once a donor reaches that state, they were no longer dynamic. 
+
+### 3.1 Process model
+Similar to SIR model dealth with in class, I suggest that we could model the process as a compartment model with two underlying states: namely, alive vs. dead states. Both @fader2010customer and @netzer2008hidden employs discrete time framework, which is not an extreme assumption for many marketing settings, and especially for donation settings because of the low frequency of giving in this context. However, customer relationship has been modeled in a continuous time framework (@schmittlein1987counting, @fader2005counting), and it is not unreasonable to imagine people over time gradually lose interest in the charity and stop giving. Hence, following Note 11, I model donor-charity relationship as a compartment model with continuous-time framework.  
+
+
+```{r ad-diagram,echo=FALSE,cache=FALSE,purl=FALSE, message=F}
+
+
+DiagrammeR("graph LR; A(A) --> D(D);",
+           height=200,width=500)
+```
+
+where 
+$$\begin{gather} A= \text{Alive/active} \\
+D = \text{Dead} \end{gather}$$
+
+Moreover, the constant flow rate is modeled as 
+
+$$\mu_{AD} = q \text{, where } q\in[0,1]$$
+Because we are modeling a fixed cohort, there's no inflow or outflow. This means that $N = A+D$ is always constant at 91 people. 
+
+$$\begin{gather} A(t) &= A(0) - N_{AD}(t) \\
+D(t) &= D(0) +  N_{AD}(t) \end{gather}$$
+
+
+
+### 3.2 Measurement model
+
+Conditional on that a donor is alive, following previous work (@fader2010customer, @netzer2008hidden), I model the data as 
+$$ G_t \sim Binomial(A, p) $$ where $D_t$ refers to the number of donations made at $t$. 
+
+
+## 4 Analysis
+
+### 4.1 Constructing POMP object
+
+```{r pomp create}
+
+AD_rprocess <- "
+      double dN_AD = rbinom(A, 1-exp(-q*dt));
+      A -= dN_AD;
+      D += dN_AD;  
+      "
+
+AD_init <- "
+    A = 91;
+    D = 0;
+"
+
+AD_dmeas <- "
+  lik = dbinom(G, A, p+1e-6, give_log);
+"
+AD_rmeas <- "
+  G = rbinom(A, p);
+"
+
+
+AD_fromEstimationScale <- "
+ Tp = expit(p);
+ Tq = expit(q);
+"
+
+AD_toEstimationScale <- "
+ Tp = logit(p);
+ Tq = logit(q);
+"
+
+AD_statenames <- c("A", "D")
+AD_paramnames <- c("p", "q")
+AD_obsnames <- "G"
+
+ad_pomp <- pomp(monthly, time = "month", t0 = 0, 
+                  rprocess = euler.sim(step.fun = Csnippet(AD_rprocess), delta.t = 1/4),
+                  initializer = Csnippet(AD_init), 
+                  paramnames = AD_paramnames,
+                  statenames = AD_statenames,
+                  obsnames = AD_obsnames,
+                  fromEstimationScale = Csnippet(AD_fromEstimationScale),
+                  toEstimationScale = Csnippet(AD_toEstimationScale),
+                  dmeasure = Csnippet(AD_dmeas), rmeasure = Csnippet(AD_rmeas))
+
+
+```
+
+### 4.2 Simulation
+
+Here, I do a simple simulation of how the pomp object is doing before going into a deeper analysis. A priori, it is not very clear what are good ballpark estimates of the parameter values $p$ and $q$. Since we have a relatively simple model, we can explore the values to get a good estimate. 
+
+```{r simulation of pomp object, cache = T}
+
+set.seed(2018)
+sim <- NULL 
+for(p in seq(0.1, 0.9, by = 0.2)){
+  for(q in c(0.2, 0.1, 0.05, 0.01, 0.005)){
+    sim = rbind(sim, cbind(simulate(ad_pomp, params = c(p = p, q = q), 
+               nsim = 10, as = T, include = T)[ , c("time", "G", "sim")], 
+               p = p, q = q))
+  }
+}
+
+ggplot(sim, aes(x = time, y = G, group = sim, color = sim=="data")) +
+      geom_line() + guides(color = F) + facet_grid(p ~ q) + 
+      labs(y = "No. of Donations per Month", 
+      title = "Simulated Number of Donations per Month (vs. observed)")
+
+```
+
+From the simulations, we can infer that $p$ values ranging from $[0.5, 0.9]$ and $q$ values ranging $[0.005, 0.01]$ would be a good ballpark estimate of the parameter values. 
+
+
+### 4.3 Explore the likelihood space
+
+```{r cluster setup}
+
+set.seed(2018,kind="L'Ecuyer")
+cl <- makeCluster(2)
+registerDoParallel(cl)
+
+mcopts <- list(set.seed=TRUE)
+
+```
+
+Because we have two parameters of interest, $p$ and $q$, we can visualize the likelihood space on a plane 
+```{r likelihood space, message= F, error=F, cache = T, warning=F}
+
+gridPQ <- expand.grid(p = seq(0.5, 0.8, length = 30), 
+                      q = seq(0.015, 0.001, length = 30))
+
+foreach(theta = iter(gridPQ, "row"), 
+        .combine = rbind, .inorder = F, .options.multicore = mcopts, 
+        .packages = c("pomp")) %dopar% {
+          pfilter(ad_pomp, params = unlist(theta), Np = 500) -> pf
+          theta$logLik <- logLik(pf)
+          theta
+        } -> gridPQ
+
+pq <- mutate(gridPQ, logLik = ifelse(logLik > max(logLik) -100, logLik, NA))
+
+ggplot(data = pq, aes(x = p, y =q, z = logLik, fill = logLik)) + 
+  geom_tile(color = NA) + geom_contour(color = 'black', bindwidth = 3) + 
+  scale_fill_gradient() + labs(x = "p", y = "q")
+
+```
+
+```{r maximizing value, echo = F}
+temppq <- pq %>% filter(!is.na(logLik))
+maximizingPQ <- temppq[temppq$logLik == max(temppq$logLik), c("p", "q")]
+
+```
+
+From the loglikelihood plane, $p \approx 0.73$ and $q \approx 0.005$ seems to maximize log likelihood of the model. Next, based on this, we do global search of the likelihood surface using randomized starting values. 
+
+### 4.4 Fit proposed POMP model
+```{r stew, cache = T, message= F}
+
+run_level <- 6
+switch(run_level,
+       {ad_Np=100; ad_Nmif=10; ad_Neval=10; ad_Nglobal=10; ad_Nlocal=10}, 
+       {ad_Np=1000; ad_Nmif=100; ad_Neval=10; ad_Nglobal=10; ad_Nlocal=10}, 
+       {ad_Np=5000; ad_Nmif=100; ad_Neval=10; ad_Nglobal=10; ad_Nlocal=10}, 
+       {ad_Np=10000; ad_Nmif=100; ad_Neval=10; ad_Nglobal=10; ad_Nlocal=10}, 
+       {ad_Np=10000; ad_Nmif=200; ad_Neval=10; ad_Nglobal=10; ad_Nlocal=10}, 
+       {ad_Np=20000; ad_Nmif=200; ad_Neval=10; ad_Nglobal=50; ad_Nlocal=10}
+)
+
+
+ad_box <- rbind(
+  p = c(0.4, 0.9), 
+  q = c(0.003, 0.05)
+)
+
+ad.cooling.fraction50 = 0.5
+prw.sd = 0.005
+qrw.sd = 0.0001
+ad.start = c(p = 0.7, q = 0.005)
+
+stew(file = sprintf("box_eval-%d.rda", run_level), {
+  t_global <- system.time({
+    mifs_global <- foreach(i = 1:ad_Nglobal, .packages = 'pomp', .export = ls(globalenv()), 
+                           .combine = c, .options.multicore = mcopts) %dopar% {
+          mif2(ad_pomp, 
+               start = ad.start, Np = ad_Np, Nmif = ad_Nmif, 
+               cooling.type = "geometric", cooling.fraction.50 = ad.cooling.fraction50, 
+               transform = TRUE, 
+               rw.sd = rw.sd(
+                 p = prw.sd,
+                 q = qrw.sd
+               ))}
+          })}, seed = 22156498, kind = "L'Ecuyer")
+
+# t_global
+   #  user   system  elapsed 
+   # 9.292   15.351 1545.457 
+
+# evaluate likelihood 
+stew(file = sprintf("lik_global_eval-%d.rda", run_level), {
+  t_global_eval <- system.time({
+    liks_global <- foreach(i = 1:ad_Nglobal, .packages = 'pomp', .export = ls(globalenv()), 
+                           .combine = rbind, .options.multicore = mcopts) %dopar% {
+    evals <- replicate(ad_Neval, 
+      logLik(pfilter(ad_pomp, params = coef(mifs_global[[i]]), Np = ad_Np)))
+    logmeanexp(evals, se = T)}
+  })
+}, seed = 3349478, kind = "L'Ecuyer")
+
+# t_global_eval
+  #  user  system elapsed 
+  # 0.286   0.487  50.733 
+
+```
+
+### 4.5 Diagnostics
+```{r likelihood summary}
+
+results_global <- data.frame(logLik = liks_global[ , 1],
+                             logLik_se = liks_global[ , 2], 
+                             t(sapply(mifs_global, coef)))
+
+summary(results_global$logLik, digits = 5)
+
+```
+* As can be seen from the results on the likelihood, evaluation of the likelihood gives maximum log-likelihood of `r round(max(results_global$logLik), 3)`, with a standard error of `r round(sd(results_global$logLik), 2)`. Also, the difference between maximum and minimum values is `r round(max(results_global$logLik) - min(results_global$logLik), 3)` log-units, suggesting a stable statistic of the maximum log-likelihood.  
+
+```{r pairwise plot}
+
+pairs(~logLik + p + q, data = subset(results_global, logLik > max(logLik) -250))
+
+```
+
+* Optimization from diverse starting points seem to converge to comparable likelihoods, suggesting good convergence. Moreover, as assumed in the model, we do not observe clear correlational pattern between parameter values $p$ and $q$. 
+* $p$ ranges from `r round(min(results_global$p), 3)` and  `r round(max(results_global$p), 3)`, and $q$ ranges from `r round(min(results_global$q), 4)` and `r round(max(results_global$q), 4)`. 
+
+
+```{r}
+plot(mifs_global)
+```
+
+
+* Lastly, diagnostic plots reveal that effective sample sizes are large enough at the minimum of 4,000. Convergence plot shows that log-likelihood converges at around 100th iteration, and values of $p$ also at around 150th iteration. On the other hand, $q$ seems to show less convergence, but close look at it shows that the difference between maximum and minimum value of $q$ at 150th iteration is less than 0.0002, suggesting that it is very likely to have converged. 
+
+* From these diagnostics, the model seems to have converged successfully. Moreover, we also get (partial) support for the assumption that the probability of donating ($p$) and the probability of death at each time interval (or the rate of death $q$) are independent. The values of $p$ and $q$ are approximately 0.73 and 0.005. 
+
+## 5 Conclusion
+
+* I simplified the models of @fader2010customer and @netzer2008hidden to a POMP model two latent state model without heterogeneity. The two latent states represent alive vs. dead states often employed in the CRM literature. In the alive state, people can either choose to give or not whereas once a donor is in the dead state, s/he is considered to have permanently lost interest in the charity, and won't come back. The IF2 algorithm seems to have successfully converged, and the model seems to be a good description of donor-charity relationship, despite its simplicity and lack of heterogeneity. 
+
+* The advantage of having a two-parameter model is that because we could visualize the parameter space on $[0, 1] \times [0, 1]$ space, we could easily narrow down what would be a good parameter space to refine the estimates. 
+
+* There could be multiple extensions; first, states could be extended; for example, there could be, similar to @netzer2008hidden, three states. However, it is not clear to me, a priori, whether a model with three states - active/occasional/dead state could be identified, especially without individual level data. Secondly, although not present in this dataset, there are many charities that run campaigns which does not necessarily require donations (e.g., petitions to save the Arctic region). It would be interesting to model the multivariate measurement model for donations and such activities. 
+
+
+## Appendix: Direct Data Simulation from Behavioral Models (using estimaed parameters)
+
+In the appendix, I directly simulate data from the behavioral assumptions, using estimated parameters.  
+
+
+```{r data simulation}
+
+set.seed(1210)
+
+N = 91; q = 0.005; p = 0.73; nper = 205
+
+death.time <- data.frame(d.time = (rgeom(91, q)-1))
+
+ggplot(death.time, aes(d.time)) + 
+  geom_histogram(color = "black", fill = "white") + 
+  theme_bw() + labs(title = "Distribution for Time of Death", x = "Days")
+
+donation <- rbinom(nper*N, 1, p)
+
+dat <- data.frame(donation, d.time = rep(death.time$d.time, each = nper), 
+                  t = rep(0:204, N)) %>%
+  mutate(donation = ifelse(t == 0, 1, donation))
+dat <- dat %>% mutate(number = rep(1:N, each = nper))
+dat <- dat %>% mutate(time.after.death = ifelse(t > d.time, 1, 0),
+                      donation = ifelse(time.after.death == 0, donation, 0)) %>% 
+  arrange(d.time, number) %>% select(donation, t)
+
+grouped_data <- dat %>% group_by(t) %>% 
+  mutate(nDonation_at_t = sum(donation)) %>% select(-donation) %>% unique() %>%
+  mutate(sim = "sim")
+
+monthly <- monthly %>% rename(nDonation_at_t = G, 
+                              t = month) %>% mutate(sim = "data")
+
+combined_data = bind_rows(grouped_data, monthly)
+ggplot(combined_data, 
+       aes(x = t, y = nDonation_at_t, group = sim, color = sim)) +
+  geom_line() + labs(title = "Simulated vs. Data using estimated parameter values", 
+                     y = "No. of Donations made")
+
+```
+
+* Simulated data according to the assumptions of the model and the esitmated parameters closely traces the original data, suggesting the appropriateness of the model as well as the validity of the estimates. 
+
+----
+
+
+## References
+
+Ionides, Edward 2018, Stats531W18, Notes
+King, Aaron A. [Getting started with pomp](https://kingaa.github.io/pomp/vignettes/getting_started.html)
+
+

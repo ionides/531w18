@@ -1,0 +1,507 @@
+---
+title: "The Ebola Epidemic of 2014-2016: Sierra Leone"
+subtitle: "STATS 531 Final Project"
+date: "April 25, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, echo = FALSE, message = FALSE}
+# PRELIMINARIES
+# set up packages
+require(pomp)
+stopifnot(packageVersion("pomp") >= "0.75-1")
+require(ggplot2)
+require(doParallel)
+library(plyr)
+library(dplyr)
+
+# set up the parallelization
+cores <- 3 
+registerDoParallel(cores)
+mcopts <- list(set.seed = TRUE)
+
+# set working directory for flux:
+# setwd('/afs/umich.edu/user/z/r/zrehnber/STATS531/final/')
+
+```
+
+```{r, echo = F}
+# GET THE DATA SET UP
+eb.dat <- read.csv(file = "/Users/zoerehnberg/Documents/UMich - Second Year/STATS 531/final/final_ZoeRehnberg/ebola.csv", header = T, stringsAsFactors = FALSE, colClasses = c(Date = "Date"))
+
+case.dat <- subset(eb.dat, eb.dat$Indicator == "Number of confirmed Ebola cases in the last 21 days" & eb.dat$Country == "Sierra Leone")
+case.dat <- case.dat[order(case.dat$Date),]
+case.dat$day <- as.numeric(case.dat$Date - case.dat$Date[1] + 1)
+
+use.dat <- case.dat[1:54,4:5]
+colnames(use.dat)[1] <- "C"
+```
+
+# **Introduction**
+
+**Background**
+
+In the spring of 2014, West African communities, and specifically those in the nations of Guinea, Liberia, and Sierra Leone, were struck by the beginning of an Ebola epidemic that would last more than a year and cause over 11,000 total deaths [1]. In the small, coastal nation of Sierra Leone, there were over 14,000 confirmed cases of Ebola and almost 4,000 deaths in less than two years [4]. Due to the rural nature of the country and the lack of health infrastructure, however, there were certainly more cases and deaths than were officially recorded.
+
+An extremely dangerous virus, Ebola is transmitted from animal to human and from human to human through direct contact with or ingestion of bodily fluids from an infected individual. Once someone has been infected by the Ebola virus, they go through an incubation period where they show no symptoms and are not contagious; this period can last anywhere from 2 to 21 days. The symptoms of Ebola are often mistaken for those of other tropical diseases such as malaria or typhoid, making it very difficult to diagnose and control. Another important factor in the spread of Ebola are burial rituals, many of which require close contact with the deceased, whose body can still contain the virus and pass it on [3]. Because of these factors, and the insufficient healthcare infrastructure in many West African communities, Ebola spread rampantly and wreaked havoc for many months
+
+**Motivating Question**
+
+Many different people are interested in modeling the course of an epidemic in order to gain an understanding of how a disease like Ebola travels through a population. By accurately modeling what happened in Sierra Leone from 2014 through 2016, we can have a better idea of the length of the incubation period, the length of the infectious period, and the rate at which cases are reported/confirmed, all of which would be useful for healthcare workers and policy makers the next time an Ebola epidemic hits. The goal of this analysis, then, is to try to find a model that accurately captures some of these characteristics of the Sierra Leone Ebola epidemic.
+
+It would also be interesting to see how well a model for the Sierra Leone epidemic can generalize to the portions of the epidemic that took place in Guinea and Liberia. A model is much more useful if it can extend accurately to new data sources.
+
+# **Data Exploration**
+
+The data I will be using for this analysis consist of the number of confirmed Ebola cases in Sierra Leone from the end of August 2014 through the end of December 2015 [6]. The data is provided on an approximately weekly basis and is labeled as the number of confirmed Ebola cases in the last 21 days. This format makes the data a little more complicated to work with (weekly reports with information from the past three weeks means cases are counted multiple times), but I will discuss the modeling choices that I made later in this report.
+
+```{r, echo = F}
+ggplot(data = case.dat, aes(x = Date, y = value)) + geom_point() + geom_path() + labs(x = "", y = "Cases", title = "Number of Confirmed Ebola Cases in Sierra Leone")
+```
+
+As seen above, this data source misses the very beginning of the epidemic in Sierra Leone, but seems to capture the majority of the epidmic's course very well. The maximum number of Ebola cases confirmed in the previous three weeks was 1,455 and the minimum was 0, which can be seen at the very end of the epidemic in late 2015. When fitting models, I actually removed the last 5 observations in the dataset due to the gaps in reporting that can be seen in the plot above. Additionally, these values were all zeros and removing them decreases the size of the time series without losing any information -- even without those observations, we see the epidemic has effectively ended by the end of 2015. After removing these points, the data contains 54 observations.
+
+```{r}
+#summary(use.dat$C)
+```
+
+# **Model Fitting**
+
+**Setting Up the Model**
+
+When choosing an appropriate model for this data, I initially wanted to use a basic $\textrm{SEIR}$ model, that would contain one compartment for each portion of the population: the susceptibles, the incubators (infected, but not yet infectious), the infectious, and the recovered/removed. When working with this model, however, it became clear that adding more compartments would make the model fit the data better. Specifically, I needed to alter how I modeled the incubation stage of Ebola.
+
+As mentioned above, the data is reported on an approximately weekly schedule, but the incubation period can last up to three weeks. This indicated that modeling the incubation period as three separate compartments could be more effective than just using one. Therefore, I am using the following compartment model for these data:
+
+$$ S \longrightarrow E_1 \longrightarrow E_2 \longrightarrow E_3 \longrightarrow I \longrightarrow R$$
+
+The $\textrm{S}$ compartment contains the susceptible population, $\textrm{E}_1$ through $\textrm{E}_3$ contain the people who have been infected but are not yet contagious, $\textrm{I}$ contains those who are actively infectious, and $\textrm{R}$ contains those who are no longer infectious. The $\textrm{R}$ compartment consists of both recovered individuals and those who have died from Ebola and have already been buried. Folks who are dead, but not yet buried will still be in the $\textrm{I}$ compartment since Ebola is frequently passed during burial rituals.
+
+Since the time frame for the Ebola epidemic is so short, I felt that it was reasonable to consider the population size fixed and not model births into the system. Additionally, there is the potential that the antibodies in the blood of recovered individuals make them immune to re-contracting Ebola, so I did not return them to the susceptible pool [2].
+
+The observed data, $C(t)$, is the number of cases of Ebola that were confirmed in the last three weeks. Since this number doesn't correspond directly to one of the compartments in the model, there are multiple ways to think about how to model the observed count. The first method I tried was to model $C(t)$ as the number of people who moved from $\textrm{E}_3$ to $\textrm{I}$ since the last observation; these are the newly infectious individuals. This method suffers, however, from the problem of individuals being triple counted, and the models I built using this assumption failed to capture the structure of the data well.
+
+The second method that I used, and the one that I will report in this analysis, is to model $C(t)$ as the number of people who are infectious at time $t$. In other words, this is the number of individuals in the $\textrm{I}$ compartment. With this setup, it makes sense that individuals are counted in the $C(t)$ variable for multiple weeks. After symptoms have begun, infected individuals typically die six to sixteen days later or begin to recover seven to fourteen days later [2]. Additionally, neither death nor the beginning of recovery indicate that the individual is no longer infectious -- some recovered patients still retain the virus in bodily fluids, and many infections are passed through burial rituals after death. Therefore, a length of three weeks for the infectious period is not unreasonable. Modeling $C(t)$ in this way provided a model much more consistent with the data than others that I tried.
+
+**The Model**
+
+Now that the setup of the compartments and the handling of the observed data has been decided, it is time to outline the specific model structure that I used.
+
+*Process model:*
+
+The state variables $\textrm{S}$, $\textrm{E}_1$ through $\textrm{E}_3$, $\textrm{I}$, and $\textrm{R}$ are modeled as follows:
+
+\begin{eqnarray} 
+S(t + \delta) &=& S(t) - N_{SE_1}(\delta) \hspace{.5 cm} \textrm{where } N_{SE_1} \sim bin(S(t), 1-e^{-\beta \frac{I(t)}{N}\delta}) \\
+
+E_1(t + \delta) &=& E_1(t) + N_{SE_1}(\delta) - N_{E_1E_2}(\delta) \hspace{.5 cm} \textrm{ where } N_{E_1E_2} \sim bin(E_1(t), 1-e^{-\mu_{EE}\delta}) \\
+
+E_2(t + \delta) &=& E_2(t) + N_{E_1E_2}(\delta) - N_{E_2E_3}(\delta) \hspace{.5 cm} \textrm{ where } N_{E_2E_3} \sim bin(E_2(t), 1-e^{-\mu_{EE}\delta}) \\
+
+E_3(t + \delta) &=& E_3(t) + N_{E_2E_3}(\delta) - N_{E_3I}(\delta) \hspace{.5 cm} \textrm{ where } N_{E_3I} \sim bin(E_3(t), 1-e^{-\mu_{EI}\delta}) \\
+
+I(t + \delta) &=& I(t) + N_{E_3I}(\delta) - N_{IR}(\delta) \hspace{.5 cm} \textrm{ where } N_{IR} \sim bin(I(t), 1-e^{-\mu_{IR}\delta}) \\
+
+R(t + \delta) &=& R(t) + N_{IR}(\delta) \\
+
+\end{eqnarray}
+
+In these equations, the quantities of the form $N_{ij}(\delta)$ indicate the number of individuals who moved from compartment $i$ to compartment $j$ in a time step of length $\delta$. These equations come from using Euler's method for the $\textrm{SEIR}$ model outlined above. I chose to use a binomial approximation with exponential probabilities because they seemed to work best with the data.
+
+The parameter $\beta$ represents the contact rate, or how likely it is for a susceptible to become infected when in contact with  an infected individual. The parameter $N$ corresponds to the total size of the population. I decided to use $\mu_{EE}$ as the rate of moving from $\textrm{E}_1$ to $\textrm{E}_2$ and the rate of moving from $\textrm{E}_2$ to $\textrm{E}_3$. Since I am using three compartments for the incubation stage, it seems reasonable to assume that the rate of moving across those compartments should be constant. Finally, I used $\mu_{EI}$ and $\mu_{IR}$ to model the rate of moving from $\textrm{E}_3$ to $\textrm{I}$ and from $\textrm{I}$ to $\textrm{R}$, respectively.
+
+*Measurement model:*
+
+At time $t_n$, we observe the number of Ebola cases that were confirmed in the last three weeks, which is denoted as $C_n$. A case of Ebola will likely not be confirmed until the infected individual begins to show symptoms, which coincides with the beginning of the infectious period. Additionally, the number of confirmed cases will not be the same as the number of actual cases, since not everyone will go to the doctor when sick. Therefore, the observed data (number of reported cases in the past three weeks) given the total number of infectious people will be modeled as follows:
+
+$$ C_n|I(t_n) \sim Neg Bin( \mu = \rho I(t_n), \sigma^2 = \rho I(t_n) + \frac{(\rho I(t_n))^2}{a}) $$
+
+In this expression, $\rho$ is the reporting rate corresponding to what fraction of actual Ebola cases will be reported and confirmed, and $a$ is the dispersion parameter that controls the relationship between the mean and the variance of a negative binomial random variable. I chose to use a negative binomial distribution rather than a Poisson because it gives more freedom to better fit the model to the observed data.
+
+```{r, echo = F}
+
+# set up the state/parameter/observation names needed
+eb_statenames <- c("S", "E1","E2","E3", "I","R")
+eb_paramnames <- c("Beta","mu_EI","mu_IR","rho", "a", "mu_EE", "N")
+eb_obsnames <- "C"
+
+# set up the measurement model
+eb_dmeasure <- "lik = dnbinom_mu(C, a, rho*I, give_log);"
+eb_rmeasure <- "C = rnbinom_mu(a, rho*I);"
+
+# set up the process model
+eb_rprocess <- "
+  double t1 = rbinom(S, 1-exp(-Beta*I/N*dt));
+  double t2 = rbinom(E1, 1-exp(-mu_EE*dt));
+  double t3 = rbinom(E2, 1-exp(-mu_EE*dt));
+  double t4 = rbinom(E3, 1-exp(-mu_EI*dt));
+  double t5 = rbinom(I, 1-exp(-mu_IR*dt));
+
+  S -= t1;
+  E1 += t1 - t2;
+  E2 += t2 - t3;
+  E3 += t3 - t4;
+  I += t4 - t5;
+  R += t5;"
+
+# set up the changes to and from the log scale
+eb_fromEstimationScale <- "
+ TBeta = exp(Beta);
+ Tmu_EI = exp(mu_EI);
+ Tmu_IR = exp(mu_IR);
+ Tmu_EE = exp(mu_EE);
+ Trho = expit(rho);
+ TN = exp(N);
+ Ta = exp(a);"
+
+eb_toEstimationScale <- "
+ TBeta = log(Beta);
+ Tmu_EI = log(mu_EI);
+ Tmu_IR = log(mu_IR);
+ Tmu_EE = log(mu_EE);
+Trho = logit(rho);
+TN = log(N);
+ Ta = log(a);"
+
+# really not sure about how to intialize the compartments
+eb_initializer <- "
+ S = nearbyint(N - 500);
+//S = nearbyint(23000);
+ E1 = 100;
+ E2 = 100;
+ E3 = 100;
+ I = 200;
+ R = 0;"
+
+```
+
+```{r, echo = F}
+eb.pomp <- pomp(data = use.dat, times = "day", t0 = -6, rprocess = euler.sim(step.fun = Csnippet(eb_rprocess),
+                                                                                  delta.t = 1/7),
+                rmeasure = Csnippet(eb_rmeasure), dmeasure = Csnippet(eb_dmeasure),
+                fromEstimationScale = Csnippet(eb_fromEstimationScale), toEstimationScale = Csnippet(eb_toEstimationScale),
+                obsnames = eb_obsnames, statenames = eb_statenames, paramnames = eb_paramnames,
+                initializer = Csnippet(eb_initializer))
+#plot(eb.pomp)
+
+```
+
+```{r, include = FALSE}
+# try an initial simulation
+
+set.seed(3467)
+sims <- simulate(eb.pomp, params = c(Beta = 0.1, mu_EI = 1/4, mu_IR = 1/24, rho = 0.7, a = 3, mu_EE = 1/6, N = 23500),
+                 nsim = 10, as.data.frame = TRUE, include.data = TRUE)
+
+ggplot(sims, aes(x = time, y = C, group = sim, color = sim == "data")) + geom_line() + guides(color = FALSE) + labs(x = "Days", y = "Cases", title )
+
+```
+
+```{r, echo = F}
+run_level <- 2
+switch(run_level,
+       {eb_Np = 100; eb_Nmif = 10; eb_Neval = 10; eb_Nglobal = 10; eb_Nlocal = 10}, 
+       {eb_Np = 20000; eb_Nmif = 100; eb_Neval = 10; eb_Nglobal = 10; eb_Nlocal = 10},
+       {eb_Np = 40000; eb_Nmif = 200; eb_Neval = 10; eb_Nglobal = 50; eb_Nlocal = 20}
+)
+```
+
+
+```{r, echo = F, include = FALSE}
+# read in parameter values from previous computations
+eb.params <- c(Beta = 0.1, mu_EI = 1/8, mu_IR = 1/21, rho = 0.7, a = 10, mu_EE = 1/6, N = 23500)
+
+# DO REGULAR PARTICLE FILTERING TO MAKE SURE IT'S WORKING CORRECTLY
+# this gives us a likelihood estimate and the SE at the MLE
+set.seed(3467542, kind = "L'Ecuyer")
+
+stew(file = sprintf("pf-%d.rda", run_level),{
+  t_pf <- system.time(
+  pf <- foreach(i = 1:20, .packages = 'pomp', .options.multicore = mcopts) %dopar%
+    try(pfilter(eb.pomp, params = eb.params, Np = eb_Np)))
+  },
+  seed = 345876340, kind = "L'Ecuyer")
+
+(lik.pf <- logmeanexp(sapply(pf, logLik), se = TRUE))
+
+```
+
+**Model Refinement and Parameter Estimation**
+
+```{r, echo = F}
+# setting parameters for the perturbations in iterated filtering
+#
+# 
+eb.rw.sd <- 0.02
+eb.cooling.fraction.50 <- 0.5
+
+eb.box <- rbind(Beta = c(0.09, 1), mu_EI = c(0.009, 0.09), mu_IR = c(0.008, 0.05), rho = c(0, 1), a = c(0.1, 20), mu_EE = c(0.1,0.3))
+N.box <- seq(20000,50000, by = 1)
+stew(file = sprintf("box_eval-%d.rda", run_level),{
+  t_global <- system.time({
+    mifs_global <- foreach(i = 1:eb_Nglobal, .packages = 'pomp', .combine = c, .options.multicore = mcopts) %dopar%
+      mif2(eb.pomp, start = c(apply(eb.box, 1, function(x) runif(1, x[1], x[2])),N = sample(N.box, size = 1)),
+           Np = eb_Np, Nmif = eb_Nmif, cooling.type = "geometric", cooling.fraction.50 = eb.cooling.fraction.50,
+           transform = TRUE, rw.sd = rw.sd(Beta = eb.rw.sd, mu_EI = eb.rw.sd, mu_IR = eb.rw.sd, rho = eb.rw.sd,
+                                          N = eb.rw.sd, a = eb.rw.sd, mu_EE = eb.rw.sd))
+    })
+  }, seed = 127043374, kind = "L'Ecuyer")
+
+stew(file = sprintf("lik_global_eval-%d.rda", run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i = 1:eb_Nglobal,.packages = 'pomp', .combine = rbind, .options.multicore = mcopts) %dopar% {
+      evals <- replicate(eb_Neval, logLik(pfilter(eb.pomp, params = coef(mifs_global[[i]]), Np = eb_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+}, seed = 44415592, kind = "L'Ecuyer")
+
+results_global <- data.frame(logLik = liks_global[,1], logLik_se = liks_global[,2], t(sapply(mifs_global, coef)))
+
+#pairs(~logLik + Beta + mu_EI + mu_IR + rho + N + a + mu_EE, data = subset(results_global, logLik > max(logLik) - 250))
+
+tmp.mle <- results_global[which.max(results_global$logLik),eb_paramnames]
+tmp.mle <- c(Beta = as.numeric(tmp.mle[1]), mu_EI = as.numeric(tmp.mle[2]), mu_IR = as.numeric(tmp.mle[3]),
+             rho = as.numeric(tmp.mle[4]), N = as.numeric(tmp.mle[7]), a = as.numeric(tmp.mle[5]),
+             mu_EE = as.numeric(tmp.mle[6]))
+```
+
+
+After setting up the model, the next step is to begin fitting it to the observed data. To do this, I began by running a few simulations to see what range of parameter values was appropriate for the data. After finding what I thought were reasonable starting values, I performed a global search for the maximum likelihood estimate with random initializations using iterated filtering. Here is a summary of the likelihood estimates that this procedure produced:
+
+```{r, comment = ""}
+summary(results_global$logLik, digits = 5)
+```
+
+The maximum likelihood obtained by this global search is $-262.1$ with a corresponding standard error of $0.0771$. The parameter estimates that give this maximum likelihood are:
+
+```{r, comment = ""}
+glo.mle <- tmp.mle[c("Beta", "mu_EE", "mu_EI", "mu_IR", "rho", "N", "a")]
+print(zapsmall(glo.mle, digits = 8))
+```
+
+To make sure that the modeling was working as anticipated, I used these parameter estimates to simulate data that I could compare to the actually observed data. Ten of these simulations are plotted below in red, while the observed data is plotted in blue. From this plot, it appears that my global search found parameter estimates that fit the behavior of the data quite well.
+
+```{r, echo = F}
+sims <- simulate(eb.pomp, params = tmp.mle,
+                 nsim = 10, as.data.frame = TRUE, include.data = TRUE)
+
+ggplot(sims, aes(x = time, y = C, group = sim, color = sim == "data")) + geom_line() + guides(color = FALSE) + labs(x = "Days", y = "Cases", title = "Simulated Data", subtitle = "(from global search MLE)")
+
+```
+
+```{r, echo = F}
+# USE ITERATED FILTERING TO DO A LOCAL SEARCH OF THE LIKELIHOOD AROUND THE MLE
+
+# run mif2 around the MLE
+stew(file = sprintf("local_search-%d.rda", run_level), {
+  t_local <- system.time({
+    mifs_local <- foreach(i = 1:eb_Nlocal, .packages = 'pomp', .combine = c, .options.multicore = mcopts) %dopar%  {
+      mif2(mifs_global[[1]], start = tmp.mle, Np = eb_Np, Nmif = eb_Nmif)
+    }
+    })
+  }, seed = 900242057, kind = "L'Ecuyer")
+
+```
+
+```{r, echo = F}
+stew(file = sprintf("lik_local-%d.rda", run_level), {
+    t_local_eval <- system.time({
+    liks_local <- foreach(i = 1:eb_Nlocal, .packages = 'pomp', .combine = rbind) %dopar% {
+      evals <- replicate(eb_Neval, logLik(pfilter(eb.pomp, params = coef(mifs_local[[i]]), Np = eb_Np)))
+      logmeanexp(evals, se = TRUE)}})}, seed = 900242057, kind = "L'Ecuyer")
+
+results_local <- data.frame(logLik = liks_local[,1], logLik_se = liks_local[,2], t(sapply(mifs_local, coef)))
+
+better.mle <- results_local[which.max(results_local$logLik),eb_paramnames]
+better.mle <- c(Beta = as.numeric(better.mle[1]), mu_EI = as.numeric(better.mle[2]), mu_IR = as.numeric(better.mle[3]),
+             rho = as.numeric(better.mle[4]), N = as.numeric(better.mle[7]), a = as.numeric(better.mle[5]),
+             mu_EE = as.numeric(better.mle[6]))
+```
+
+After locating this MLE when doing a wide, global search and finding that it models the data pretty well, I refined my methods to look for an estimate with even higher likelihood. For this, I again used iterated filtering, but started the algorithm at the global MLE each time, to search in the neighborhood of that estimate. Here is a summary of the likelihood estimates that this localized search produced:
+
+```{r, comment = ""}
+summary(results_local$logLik, digits = 5)
+```
+
+The maximum likelihood obtained by this local search is $-252.9$ with a corresponding standard error of $0.1365$; this increases the likelihood by about 10 over the previous best parameter estimates. The parameter estimates that give this maximum likelihood are as follows:
+
+```{r, comment = ""}
+lo.mle <- better.mle[c("Beta", "mu_EE", "mu_EI", "mu_IR", "rho", "N", "a")]
+print(zapsmall(lo.mle, digits = 8))
+```
+
+When comparing these parameter estimates to those found by the global search, we find that they are quite different. This seems to indicate that perhaps the global search that I performed above wasn't able to actually explore the parameter space as well as I had hoped. I will adress some of the limitations of the searches that I did below.
+
+After obtaining the MLE from the local search, I again did some simulations to look at the structure of the data that are produced from these parameter estimates. The results of 10 simulations are plotted below, with the observed data in blue.
+
+```{r, echo = F}
+set.seed(52234354)
+sims <- simulate(eb.pomp, params = better.mle,
+                 nsim = 10, as.data.frame = TRUE, include.data = TRUE)
+
+ggplot(sims, aes(x = time, y = C, group = sim, color = sim == "data")) + geom_line() + guides(color = FALSE) + labs(x = "Days", y = "Cases", title = "Simulated Data", subtitle = "(from local search MLE)")
+
+```
+
+This plot seems to indicate that the parameter estimates do produce data that is similar in shape to the observed epidemic data. The main difference seems to be the height of the peak (the maximum number of confirmed Ebola cases), which is higher in all simulations than in the actual data. This might indicate that the estimate of the reporting rate parameter $\rho$ is too high. Indeed, I was surprised to get an estimated reporting rate as high as 91% for this epidemic.
+
+**Interpretation of Parameters**
+
+When trying to interpret parameter estimates, there were a couple of interesting features that can be seen in the plots below. The first thing to notice is the relationship between the estimates of $\beta$ and $\mu_{IR}$, which have a clear linear relationship; as the estimate for $\beta$ increases, the estimate for $\mu_{IR}$ also increases. They are also on a very similar scale. This seems to indicate that the flow of individuals into the incubation and infectious compartments is roughly equal to the flow out, which doesn't seem like an unreasonable result.
+
+The other interesting aspect of this plot is that the estimate of $\mu_{EE}$ that gives the maximum likelihood is much higher than the other estimates for that parameter (above 10 vs. about 3-5). I'm not sure if this is something that should be concerning, but it is something to keep in mind when interpreting these parameter estimates. For example, an estimate of 3 for $\mu_{EE}$ indicates a time of about 2.5 to 3 days spent in each of the first two incubation compartments, while an estimate of 10 for $\mu_{EE}$ indicates a time of less than one day. The first estimate fits much better with domain knowledge about the length of the incubation period, so I think this parameter estimate would be something to look into more carefully.
+
+```{r}
+pairs(~logLik + Beta + mu_IR + mu_EE, data = subset(results_local, logLik > max(logLik) - 250))
+```
+
+Another parameter estimate to consider is that of $a$, which is the dispersion parameter for the negative binomial measurement model. I used a negative binomial model so that the mean and variance were not constrained to be equal, and $a$ is the parameter that controls the relationship between mean and variance. The estimate of $932.84$ for $a$, however, is very large and indicates that an approximately equal mean and variance is appropriate. Therefore, maybe a Poisson measurement model would be a simpler model that is good for the data and would be something to look into.
+
+I can also look at the rate parameters $\mu_{EE}$, $\mu_{EI}$, and $\mu_{IR}$ to get an idea of how long individuals stay in each phase of the disease. As mentioned above, I am somewhat concerned about the estimate of $\mu_{EE}$, but by using this value and the one for $\mu_{EI}$, I can estimate that a patient spends about 6 days in the incubation stage of the disease. This is a little low, but seems not totally inconsistent with the domain knowledge about Ebola. From the estimate of $\mu_{IR}$, we can estimate people are infectious for about two weeks, which fits very well with what is known about Ebola.
+
+Finally, I want to discuss the treatment of $N$, the parameter controlling the total population size. Since the population of Sierra Leone during the epidemic is known (about 6.1 million [4]), I could have used that as a fixed value in the model. However, it didn't make sense to me that everyone in the country was equally susceptible to Ebola, or even that everyone was susceptible at all. What I mean is that there are some regions of the country or communities where no one was exposed to the virus, so they were highly unlikely to get sick. To deal with this, I could have fixed $N$ to be 6.1 million and then had a very low $\beta$ value, or I could have left $N$ as a parameter and let the data determine the best value for it. I chose the latter, which definitely had consequences for the interpretability of the modeling results. With the final parameter estimate of $N = 485,000$ it appears that only about 8% of the population was susceptible at the time. I'm not sure if this makes sense in the context of the epidemic, and this is a modeling choice that should be investigated further.
+
+# **Model Diagnostics**
+
+**Goodness of Fit**
+
+In order to test model goodness of fit, I looked at diagnostic plots for the final local iterated filtering search that I did above. This is the search that resulted in my maximum likelihood estimate of $-252.9$. When looking at these plots, there are some concerning patterns, but also some easy (though time consuming) fixes. In the top plot, we see that effective sample size doesn't drop too low -- the lowestvalues seem to be about $2,000$. However, there is a lot of oscillation in the effective sample size, meaning it drops to those lower values frequently. Additionally, we see not great convergencve for most of the parameters. The likelihood seems to be flattening out, indicating that we have found a local maximum, but the parameter estimates seem to be spreading out from their original starting point and not stabilizing.
+
+```{r}
+plot(mifs_local)
+```
+
+Diagnostic plots that look like this indicate that the iterated filtering needs to be run with more particles and for more iterations. Unfortunately, I was not able to access the amount of computational power that was needed to run the iterated filtering at the optimal algorithmic parameter values. However, the results that I got from the model fitting I was able to do are promising enough to convince me that this was a good model to fit to the data and that a little more time and power would give good final results.
+
+I also attempted to look at the profile likelihood for some of the parameters, but had little success with the amount of computing time available to me. Using more particles and more starting values would have allowed me to get an idea of the likelihood structure for parameters of interest and do inference about the parameter estimates. This is definitely something that should be done in the future, with more time and more available computing power.
+
+```{r, echo = F, include = FALSE}
+# set up a box that specifies the starting points for profile likelihood
+len <- 50
+nprof <- 50
+Np.3 <- 2000
+eb_profilebox <- profileDesign(mu_IR = seq(0.09, 0.1, length.out = len), lower = c(Beta = 0.1, mu_EI = 0.8, mu_EE = 5, rho = 0.6, N = 450000, a = 900), upper = c(Beta = 1, mu_EI = 2, mu_EE = 15, rho = 1, N = 600000, a = 1000), nprof = nprof)
+
+# do iterated filtering at each of the len*nprof starting values
+stew(file = sprintf("box_eval_profile-%d.rda", len), {
+  t_profile <- system.time({
+    mifs_profile <- foreach(i = 1:(len*nprof), .packages = 'pomp', .combine = rbind, .options.multicore = mcopts) %dopar%{
+      
+      mif.out <- mif2(mifs_global[[1]], start = c(unlist(eb_profilebox[i,])), Np = Np.3, Nmif = Nmif.3,
+                      rw.sd = rw.sd(Beta = eb.rw.sd, mu_EI = eb.rw.sd, rho = eb.rw.sd,
+                                          N = eb.rw.sd, a = eb.rw.sd, mu_EE = eb.rw.sd))
+      
+      evals.profile <- replicate(10, logLik(pfilter(mif.out, Np = Np.3)))
+      
+      loglik.profile <- logmeanexp(evals.profile, se = TRUE)
+      
+      data.frame(as.list(coef(mif.out)), loglik = loglik.profile[1], loglik.se = loglik.profile[2])
+      }
+    })
+  }, seed = 1270401374, kind = "L'Ecuyer")
+
+# select the parameter values with the ten largest likelihoods for each value of beta
+pars <- mifs_profile %>% 
+  ddply(~ mu_IR, subset, rank(-loglik) <= 10) %>%
+  subset(select = eb_paramnames)
+
+# do iterated filtering again, at each of the len*10 starting values
+stew(file = sprintf("box_eval_profile_again-%d.rda", len),{
+  
+  t_profile_2 <- system.time({
+    mifs_profile_2 <- foreach(i = 1:(nrow(pars)), .packages = 'pomp', .combine = rbind, .options.multicore = mcopts) %dopar%{
+      mif.out_2 <- mif2(mifs_global[[1]], start = unlist(pars[i,]), Np = Np.3, Nmif = Nmif.3,
+                        rw.sd = rw.sd(Beta = eb.rw.sd, mu_EI = eb.rw.sd, rho = eb.rw.sd,
+                                          N = eb.rw.sd, a = eb.rw.sd, mu_EE = eb.rw.sd))
+      
+      evals.profile_2 <- sapply(replicate(10, pfilter(mif.out_2, Np = Np.3)), logLik)
+      
+      loglik.profile_2 <- logmeanexp(evals.profile_2, se = TRUE)  
+
+      data.frame(as.list(coef(mif.out_2)), loglik = loglik.profile_2[1], loglik.se = loglik.profile_2[2])
+    }
+  })
+}, seed = 931129, kind = "L'Ecuyer")
+
+```
+
+```{r, echo = F, include = FALSE}
+
+mifs_profile_2 %<>%
+  mutate(mu_IR = exp(signif(log(mu_IR), 5))) %>%
+  ddply(~mu_IR, subset, rank(-loglik) <= 1)
+
+mle <- max(mifs_profile_2$loglik)
+cutoff <- mle - 1.92
+in.CI <- which(mifs_profile_2$loglik >= cutoff)
+low <- mifs_profile_2$mu_IR[min(in.CI)]
+high <- mifs_profile_2$mu_IR[max(in.CI)]
+
+
+ggplot(data = mifs_profile_2, aes(x = mu_IR, y = loglik)) + geom_point() + geom_path() + geom_vline(aes(xintercept = low), linetype = "dashed") + geom_vline(aes(xintercept = high), linetype = "dashed")
+
+
+```
+
+**Comparing to a Benchmark**
+
+```{r echo = FALSE, include = FALSE}
+library(knitr)
+ll.table <- function(data, P, Q){
+  table <- matrix(NA, (P+1), (Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1, q+1] <- arima(data, order = c(p, 0, q))$loglik
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "</b>", sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+temp.ll <- ll.table(use.dat$C, 3, 3)
+kable(temp.ll, digits = 2)
+
+```
+
+The compartment model that I used for this Ebola data is relatively complex and computationally intensive. To justify the use of such a model, I wanted to compare it to a linear Gaussian auto-regression moving-average (ARMA) model that is a basic approach to modeling time series. The best likelihood from an ARMA model came from the $\textrm{ARMA(3,3)}$ and was $-299.49$ when fitting 8 parameters. The $\textrm{SEIR}$ model fit above has 7 parameters and a maximum likelihood estimate of $-252.9$.  This gives me some confidence that the compartment model is doning something competitive with the data and perhaps gives more intuition about the nature of an Ebola epidemic.
+
+**Other Epidemic Data**
+
+A final goal that I had was to see if the model that was fit to the Sierra Leone data could be generalized to other sources of Ebola epidemic data. For example, the same type of data I used in this analysis is available for the Ebola epidemic in Guinea. From the plot below, we can see that the course of the epidemic in Guinea was similar to the one in Sierra Leone, though it appears to have taken longer to subside.
+
+```{r, echo = F}
+# GUINEA
+guinea.dat <- subset(eb.dat, eb.dat$Indicator == "Number of confirmed Ebola cases in the last 21 days" & eb.dat$Country == "Guinea")
+guinea.dat <- guinea.dat[order(guinea.dat$Date),]
+guinea.dat$day <- as.numeric(guinea.dat$Date - guinea.dat$Date[1] + 1)
+
+ggplot(data = guinea.dat, aes(x = Date, y = value)) + geom_point() + geom_path() + labs(x = "", y = "Cases", title = "Number of Confirmed Ebola Cases in Guinea")
+
+```
+
+Although I was not able to actually fit the same $\textrm{SEIR}$ model to this data, I believe that it would also do  reasonably well because the data behaves similarly to the Sierra Leone data. It would be interesting to fit the model and see how the parameter estimates change -- this would give an idea of how Ebola epidemics behave differently in different places.
+
+# **Conclusion and Future Analysis**
+
+First, it appears that an $\textrm{SEIR}$ model with the incubation compartment split into three separate compartments is a good model for Ebola epidemic data of the form used here (weekly case reports from the past three weeks). Although the model I fit would definitely have benefitted from longer run times and more computational power, it seems clear that this type of model fits the data well. In addition to simulations that produced data similar to the observed case counts, some of the parameter estimates also seemed to align with domain knowledge about the spread of Ebola.
+
+If I had more time and more computation power available to me, I would have liked to run the iterated filtering algorithms with more particles and more iterations to get better convergence and better results. I also would have liked to be able to look at profile confidence intervals to do some inference about the parameter estimates. It would also have been interesting to fit the $\textrm{SEIR}$ model to the Guinea Ebola epidmic and compare that to what happened in Sierra Leone. Finally, I would have liked to include separate compartments in the model for individuals who died and individuals who recovered from the disease. Unfortunately, I did not have enough data on the number of Ebola cases that resulted in death to fit this model.
+
+# **Sources**:
+
+[1] “Ebola (Ebola Virus Disease).” Centers for Disease Control and Prevention, Centers for Disease Control and Prevention, 22 June 2016, www.cdc.gov/vhf/ebola/outbreaks/2014-west-africa/index.html.
+
+[2] “Ebola Virus Disease.” Wikipedia, Wikimedia Foundation, 24 Apr. 2018, en.wikipedia.org/wiki/Ebola_virus_disease.
+
+[3] “Ebola Virus Disease.” World Health Organization, World Health Organization, www.who.int/mediacentre/factsheets/fs103/en/.
+
+[4] “Ebola Virus Epidemic in Sierra Leone.” Wikipedia, Wikimedia Foundation, 10 Apr. 2018, en.wikipedia.org/wiki/Ebola_virus_epidemic_in_Sierra_Leone.
+
+[5] King, A A, et al. Case Study: Forecasting Ebola. kingaa.github.io/sbied/ebola/ebola.html.
+
+[6] Larsen, Liam. Ebola Cases, 2014 to 2016 | Kaggle, 23 Apr. 2017, www.kaggle.com/kingburrito666/ebola-cases.

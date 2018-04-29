@@ -1,0 +1,429 @@
+---
+title: "Modeling Dengue Transmission via POMP"
+date: "4/25/2018"
+output: html_document
+bibliography: final.bib
+header-includes:
+   - \usepackage{amsthm}
+   - \usepackage{amsmath, mathtools, bm}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Circumstance)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(doParallel)
+circumstance()
+```
+
+# Introduction
+
+## Motivation and Background
+
+The dengue virus is a viral infection primarily transmitted between people via mosquitoes (in particular the Aedes aegypti) characterized by its ability to clinically manifest as a flu-like illness, and in more severe cases into, dengue hemorrhagic fever/ dengue shock syndrome (DHF/DSS). In severe cases, dengue infections require hospitalization and can be fatal. The World Health Organization estimates that around 500,000 cases of dengue require hospitalizations. Additionally, the case fatality rate ranges from 10-15% in certain countries and <1% in others [@gubl:2002].
+
+According to @gubl:1998 historical evidence suggests that there were relatively infrequent and isolated outbreaks of dengue fever (or a very similar disease) throughout time in places such as China, the French West Indies, and even in Philadelphia. However, the ecologic changes in Southeast asia caused by the onset and aftermath of WWII has created an environment for dengue to thrive increasing the frequency of dengue epidemic within the region since the post World War II times. Within Asia, Dengue has spread from Southeast Asian countries to neighboring countries such as India, Sri Lanka, the Maldives, and China as well as many Pacific islands. Growth has not been limited to Asia as dengue has spread globally, especially prominently in Latin America. The continental United States is also certainly at risk of a dengue epidemic. Every year there are a couple to a few thousand cases of dengue reported each year. Further, the Aedes aegypti, the primary vector of dengue can also be found in the Southern US. 
+
+An estimate by a recent study suggests that there are 390 million dengue infections per year [@bhat:etal:2013]. While the reasons for why dengue has been able to emerge (and reemerge) as a global health threat are complex and varied, researchers cited large population growth, uncontrolled urbanization, and air travel as major impetuses [@gubl:1998]. Even though the rate of population growth is declining, the world population is still growing rapidly. Additionally, in today's world urbanization and air travel are inevitable. All of this suggests that dengue will persist as a global problem. As stated earlier, severe cases of dengue (i.e., DHF and DSS) can be fatal, and the dangers of dengue are exacerbated by the fact that there exists no effective antiviral agents or licensed vaccines for dengue. Even still, timely detection and adequate medical care can drive fatality rates below 1% [@WHO].  
+
+For this reason, it is important to understand how dengue transmission works. If we are able to model the transmission of dengue we could better prepare for any potential outbreaks. Having knowledge of disease transmission could help us better allocate limited resources and attention to minimize the number of fatalities. Besides positively impacting the world from a public health standpoint, modeling dengue transmission could alleviate economic issues caused by dengue. There are not many studies that attempt to measure the economic burden of dengue, but from the few attempts to do so, one can safely estimate that in countries where dengue outbreaks have occurred, the financial burden is in the millions. For example, in Thailand, dengue related costs are estimated to be between \$31.5 and \$51.5 million dollars, and the estimate of the cost of just medical supplies from 1994 epidemic in Puerto Rico is $12 million [@gubl:2002].
+
+The biggest hurdle to developing an accurate model for dengue transmission is accounting for the fact that there are four different viral serotypes of dengue. Moreover, infection with one strand of dengue only provides immunity to that strand. In fact, not only is it common for someone who has been infected with one serotype of dengue to become infected with another, the second infection is often more severe [@roth:2011]. An appropriate model must take this into account.
+
+The aim of this project is to model the transmission of dengue via a partially observed markov process. In particular, we would like to be able to draw some sort of inference about the transmission rate which we will denote as $\beta$. And if there is any increased susceptibility in catching dengue after getting it once. We will denote this effect as $\gamma.$ How both $\beta$ and $\gamma$ enter into our model will be described later in the model description.
+
+## Data
+
+Specifically, we will be aiming to model dengue transmission using data concerning dengue cases in Iquitos, Peru. The data used in this project was provided by the National Oceanic and Atmospheric Association (NOAA) for Dengue Forecasting project competition. The data provides a weekly count of laboratory confirmed cases in Iquitos broken down by serotype from 2000 to 2009. Because of computational and time constraints, the data was subsetted to only include the two most recent flu seasons. Additionally, NOAA has provided population data by year which we will use to inform the demographic components of our model.
+
+```{r setup2, echo=FALSE}
+diseasedf <- read_csv("Data/Iquitos_Training_Data.csv", col_type = cols())
+
+dengue_data <- diseasedf %>% 
+  filter(season == "2007/2008" | season == "2008/2009") %>% 
+  select(total_cases)
+dengue_data$week <- 1:104
+colnames(dengue_data) <- c("cases", "week")
+
+popdf <- read_csv("Data/Iquitos_Population_Data.csv", col_type = cols()) %>% filter(Year > 2007, Year < 2011)
+pop <- popdf$Estimated_population[1]/1000
+popdiff <- popdf$Estimated_population[3] - popdf$Estimated_population[1]
+popgrowthrate <- popdiff/104
+
+run_level <- 2
+switch(run_level,
+       {dengue_Np=100; dengue_Nmif=10; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10; Nsim=50}, 
+       {dengue_Np=20000; dengue_Nmif=100; dengue_Neval=10; dengue_Nglobal=25; dengue_Nlocal=25; Nsim=100}, 
+       {dengue_Np=60000; dengue_Nmif=300; dengue_Neval=10; dengue_Nglobal=100; dengue_Nlocal=30; Nsim=500}
+)
+
+ggplot(data=dengue_data, aes(week, cases)) + geom_line()
+```
+
+The two year window of weekly laboratory confirmed dengue cases is displayed above. There seem to be periods where there are relatively low number of dengue cases and then sudden outbreaks where the count of cases increases sharply. 
+ 
+# SISIR Model
+
+## Model Description
+
+In order to account for the fact that recovering from one serotype of dengue only grants immunity to that particular serotype and that second infections are typical in endemic countries, we model dengue transmission using an SISIR model. That is instead of assuming that a recovered patient is immune to the disease, we assume that they are thrown into another susceptible state whereby after recovering from another infection they are finally immune to dengue. This assumption is based on the research of @gibb:etal:2007 who demonstrate that third and fourth incidences of dengue are very rare.
+
+![](SISIR_model.PNG)
+
+Regarding the model states, we let $S_1$ be the number of susceptible people in the population who have yet to contract dengue, $I_1$ the number of people infected with Dengue for the first time, $S_2$ the number of people who have recovered from dengue but are in risk of contracting it once again, $I_2$ the number of people infected with dengue for the second time, and lastly $R$ the number of people that have recovered from dengue twice. For the model parameters once again let $\beta$ be the contact rate, $\mu$ the rate the population increases (birth rate), $\sigma$ the rate of recovery, and $\kappa$ the reporting rate. We also introduce a new parameter $\gamma$ which represents the increased susceptibility to contracting dengue after receiving it once.
+
+We assume the number of cases that are reported and accounted for (i.e., the observed variable) follows the following measurement model:
+$$\text{Cases}(t) = \text{NB}(\psi, \kappa (I_1(t) + I_2(t)))$$
+using the same parametrization as before.
+
+The states of our model can be represented by the following set of equations
+\begin{align}
+  S_1(t) &= S_1(0) + B(t) - N_{S_1I_1}(t) \\
+  I_1(t) &= I_1(0) + N_{S_1I_1}(t) - N_{I_1S_2}(t) \\
+  S_2(t) &= S_2(0) + N_{I_1S_2}(t) - N_{S_2I_2}(t) \\
+  I_2(t) &= I_2(0) + N_{S_2I_2}(t) - N_{I_2R}(t) \\
+  R(t) &= R(0) + N_{I_2R}(t). 
+\end{align}
+
+Again, $N_{XY}$ represents the number of people who have moved from state $X$ to state $Y$ and $B(t)$ represents number of births at week $t$, a Poisson approximation is used to model $B(t) = \text{Poisson}[\mu dt]$, and each $N_{XY}$ is modeled using a Binomial approximation with exponential transition probabilities:
+\begin{align}
+  N_{S_1I_1}(t + \delta) &= N_{S_1I_1}(t) + \text{Binomial}\bigg[S_1(t), 1 - \exp\bigg\{-\beta \frac{I_1(t)+I_2(t)}{P} \delta \bigg\}\bigg] \\
+  N_{I_1S_2}(t + \delta) &= N_{I_1S_2}(t) + \text{Binomial}\bigg[I_1(t), 1 - \exp\bigg\{-\sigma \delta \bigg\}\bigg] \\
+  N_{S_2I_2}(t + \delta) &= N_{S_2I_2}(t) + \text{Binomial}\bigg[S_2(t), 1 - \exp\bigg\{-(\beta + \gamma) \frac{I_1(t)+I_2(t)}{P} \delta \bigg\}\bigg] \\
+  N_{I_2R}(t + \delta) &= N_{I_2R}(t) + \text{Binomial}\bigg[I_2(t), 1 - \exp\bigg\{-\sigma \delta \bigg\}\bigg] \\
+\end{align}
+where $P$ is the total population.
+
+In addition to run our model in POMP we have 3 other parameters. $P$ for the initial population size, $S1_0$ the proportion of the initial population that belongs in the latent state $S_1(0),$ $I1_0$ the proportion of the initial population that belongs in the latent state $I_1(0).$ To keep the model relatively simple we fix the initial proportion of the population in $S_2(0)$ and $I_2(0)$ at 0. After calculating what the initial count for each latent state is besides R, we take the initial number of people in state R as $P - S_1(0) - I_1(0).$
+
+## Implementation
+
+In this section we implement the model using $\tttext{R}.$ Much of the code is hidden, but can be found in the appendix.
+
+In order to initialize our SISIR model, we use a variety of sources to inform our parameter choices. In their paper, @reck:etal:2009 set their transmission coefficient $\beta = 400$ per year. Adjusting to our time scale of weeks we set $\beta = 7.692.$ Further, they give average duration of infection as $\frac{1}{\sigma} = 3.65$ days which gives us that $\sigma = 1.918$ 1/weeks. The population growth rate $\mu = 108.48$ is given by taking the population data from NOAA and calculating the average growth in population per week from 2007 to 2009. For $\kappa,$ we assume that the reporting rate of dengue must me very low which is reasonable given that all cases in our dataset had to be lab verified and that not everyone reports that they have had dengue. For $\gamma,$ we went with a conservative estimate implying that getting one infection makes you only slightly more susceptible for getting a second infection. As for $\psi$ and other population related initial values, we simply set them equal to $1, 0.25,$ and $0.01$ respectively as we lack intuition for these values and we assume that local and global likelihood maximization can improve our estimates.
+
+```{r sisir_init, echo=FALSE}
+dengue_statenames <- c("S1","I1","S2", "I2", "R")
+dengue_rp_names <- c("Beta", "gamma", "mu", "sigma", "psi", "kappa")
+dengue_ivp_names <- c("S1_0", "I1_0", "P")
+dengue_paramnames <- c(dengue_rp_names, dengue_ivp_names)
+dengue_obsnames <- "cases"
+
+dengue_dmeasure <- "
+lik = dnbinom_mu(cases, psi, kappa*(I1 + I2), give_log);
+"
+
+dengue_rmeasure <- "
+cases = rnbinom_mu(psi, kappa*(I1 + I2));
+"
+
+dengue_rprocess <- "
+double rate[5];
+double N = S1 + I1 + S2 + I2 + R;
+rate[0] = mu;     // births
+rate[1] = Beta * (I1+I2)/N;  // transmission 1
+rate[2] = sigma; // recovery from I1
+rate[3] = (Beta + gamma) * (I1+I2)/N;  // transmission 2
+rate[4] = sigma; // recovery from I2
+
+double t0 = rpois(rate[0] * dt);
+double t1 = rbinom(S1,1-exp(-rate[1]*dt));
+double t2 = rbinom(I1,1-exp(-rate[2]*dt));
+double t3 = rbinom(S2,1-exp(-rate[3]*dt));
+double t4 = rbinom(I2,1-exp(-rate[4]*dt));
+
+S1 += t0 - t1;
+I1 += t1 - t2;
+S2 += t2 - t3;
+I2 += t3 - t4;
+R += t4;
+"
+
+dengue_toEstimationScale <- Csnippet("
+  TBeta = log(Beta);
+  Tgamma = log(gamma);
+  Tmu = log(mu);
+  Tsigma = log(sigma);
+  Tpsi = log(psi);
+  Tkappa = logit(kappa);
+  TP = log(P);
+")
+
+dengue_fromEstimationScale <- Csnippet("
+  TBeta = exp(Beta);
+  Tgamma = exp(gamma);
+  Tmu = exp(mu);
+  Tsigma = exp(sigma);
+  Tpsi = exp(psi);
+  Tkappa = expit(kappa);
+  TP = exp(P);
+")
+
+dengue_initializer <- "
+S1=round(P*S1_0);
+I1=round(P*I1_0);
+S2=0;
+I2=0;
+R=P-S1-I1;
+"
+
+pop <- popdf$Estimated_population[1]/1000
+popdiff <- popdf$Estimated_population[3] - popdf$Estimated_population[1]
+popgrowthrate <- popdiff/104
+
+init.params <- c(Beta = 7.692, gamma = 0.5, mu = popgrowthrate, sigma = 1.917808, psi = 1, kappa = 0.05, 
+                 P = pop, S1_0 = 0.25, I1_0 = 0.01)
+
+sisir.mod <- pomp(
+  data=dengue_data,
+  times="week",
+  t0=1,
+  rprocess=euler.sim(step.fun = Csnippet(dengue_rprocess), delta.t=1),
+  rmeasure=Csnippet(dengue_rmeasure),
+  dmeasure=Csnippet(dengue_dmeasure),
+  obsnames = dengue_obsnames,
+  statenames=dengue_statenames,
+  paramnames=dengue_paramnames,
+  initializer=Csnippet(dengue_initializer),
+  toEstimationScale=dengue_toEstimationScale, 
+  fromEstimationScale=dengue_fromEstimationScale,
+  params = init.params
+)
+```
+
+```{r sisir_mod, include=FALSE}
+cores <- as.numeric(Sys.getenv('PBS_NP', unset='8'))  # The number of cores on this machine
+cl <- makeCluster(cores)
+registerDoParallel(cl)
+mcopts <- list(set.seed=TRUE)
+
+stew(file=sprintf("init_mle_est2.rda",run_level),{
+  t1 <- system.time(
+    pf1 <- foreach(i=1:20,.packages='pomp',
+                   .options.multicore=list(set.seed=TRUE), .export = c('dengue_Np', 'sisir.mod')) %dopar% try(
+                     pfilter(sisir.mod,Np=dengue_Np)
+                   )
+  )
+},seed=493536993,kind="L'Ecuyer")
+```
+
+
+```{r display1}
+(L1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+### Likelihood Maximization
+
+After creating a POMP model using the parameter values above, we get a likelihood estimate of -370.469. Although we had scientific reasoning and intuition behind most of our parameter values, this was not true for all our parameters. This means that we can probably improve on our parameter estimates. This can be accomplished using the iterated filtering algorithm developed by @ioni:etal:2014. 
+
+```{r local_max, include=FALSE}
+dengue_cooling.fraction.50 <- 0.5
+
+dengue_Beta.sd <- 0.02
+dengue_gamma.sd <- 0.02
+dengue_mu.sd <- 0.02
+dengue_sigma.sd <- 0.02
+dengue_psi.sd <- 0.02
+dengue_kappa.sd <- 0.01
+dengue_S1_0.sd <- 0.0001
+dengue_I1_0.sd <- 0.00005
+
+
+stew(sprintf("local_lik_max3.rda",run_level),{
+  t2 <- system.time({
+    m2 <- foreach(i=1:dengue_Nlocal,
+                  .packages='pomp', .combine=c,
+                  .options.multicore=list(set.seed=TRUE), 
+                  .export = c('sisir.mod', 'dengue_Np', 'dengue_Nmif', 'dengue_Neval', 'dengue_cooling.fraction.50',
+                              'dengue_Beta.sd', 'dengue_gamma.sd', 'dengue_mu.sd', 'dengue_sigma.sd', 'dengue_psi.sd', 
+                              'dengue_kappa.sd', 'dengue_S1_0.sd', 'dengue_I1_0.sd')) %dopar% try(
+                    mif2(sisir.mod,
+                         Np=dengue_Np,
+                         Nmif=dengue_Nmif,
+                         cooling.type="geometric",
+                         cooling.fraction.50=dengue_cooling.fraction.50,
+                         transform=TRUE,
+                         rw.sd=rw.sd(
+                           Beta=dengue_Beta.sd,
+                           gamma=dengue_gamma.sd,
+                           mu=dengue_mu.sd,
+                           sigma=dengue_sigma.sd,
+                           psi=dengue_psi.sd,
+                           kappa=dengue_kappa.sd,
+                           S1_0=dengue_S1_0.sd,
+                           I1_0=dengue_I1_0.sd
+                         )
+                    )
+                  )
+    
+    lik_m2 <- foreach(i=1:dengue_Nlocal,.packages='pomp',
+                      .combine=rbind,.options.multicore=list(set.seed=TRUE), 
+                      .export = c('sisir.mod', 'dengue_Neval', 'dengue_Np')) %dopar% 
+                      {
+                        logmeanexp(
+                          replicate(dengue_Neval,
+                                    logLik(pfilter(sisir.mod,params=coef(m2[[i]]),Np=dengue_Np))
+                          ),
+                          se=TRUE)
+                      }
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r2 <- data.frame(logLik=lik_m2[,1],logLik_se=lik_m2[,2],t(sapply(m2,coef)))
+if (run_level>1) 
+  write.table(r2,file="dengue_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+```
+
+```{r display2}
+summary(r2$logLik,digits=5)
+```
+
+After performing local maximization we see that we have increased the likelihood by a little over 60. 
+
+```{r scatter1, fig.width=7, fig.height=7}
+pairs(~logLik+Beta+gamma+kappa,data=r2)
+```
+
+The important thing to note from the plot is that the values of $\kappa$ are very large (all over 0.6). In reality, of course the reporting rate is nowhere near as large as the MLE value here. This also calls into question our other MLE estimates as well. Perhaps if we do a global likelihood maximization rather than local, we can get better MLE estimates.
+
+```{r global_max, include=FALSE}
+dengue_box <- rbind(
+  Beta <- c(0.001, 15),
+  gamma <- c(0, 5),
+  mu <- c(popgrowthrate - 10, popgrowthrate + 10),
+  sigma <- c(1.75, 2.25),
+  psi <- c(1, 1000),
+  kappa <- c(0, 0.2),
+  S1_0 <- c(0, 1),
+  I1_0 <- c(0.01, 0.02),
+  P <- c(pop, 10 * pop)
+)
+
+stew(file=sprintf("global_lik_max3.rda",run_level),{
+  t3 <- system.time({
+    m3 <- foreach(i=1:dengue_Nglobal,.packages='pomp',.combine=c,
+                  .options.multicore=list(set.seed=TRUE), 
+                  .export = c('dengue_box', 'dengue_Neval', 'dengue_Np', 'm2', 'dengue_paramnames')) %dopar%  
+      mif2(
+        m2[[1]],
+        start=setNames(apply(dengue_box,1,function(x)runif(1,x[1],x[2])), dengue_paramnames)
+      )
+    
+    lik_m3 <- foreach(i=1:dengue_Nglobal,.packages='pomp',.combine=rbind,
+                      .options.multicore=list(set.seed=TRUE), 
+                      .export=c('sisir.mod', 'dengue_Neval', 'dengue_Np')) %dopar% {
+                        set.seed(87932+i)
+                        logmeanexp(
+                          replicate(dengue_Neval,
+                                    logLik(pfilter(sisir.mod,params=coef(m3[[i]]),Np=dengue_Np))
+                          ), 
+                          se=TRUE)
+                      }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+
+r3 <- data.frame(logLik=lik_m3[,1],logLik_se=lik_m3[,2],t(sapply(m3,coef)))
+if(run_level>1) write.table(r3,file="dengue_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r3$logLik,digits=5)
+
+stopCluster(cl)
+```
+
+### Diagnostics
+
+Before we analyze our model, it is important to check our model diagnostics. To start we look at the first plot in series of plots below. The plot shows that except for a time point slightly above 80, the effective sample size is large. This indicates that there is no problem with the number of particles used for the iterated filtering algorithm.
+
+```{r diagnostics, echo=FALSE}
+plot(m3)
+```
+
+Next we look at the next series of plots to see whether our parameters have converged. The plots indicate that for the parameters $\gamma,$ $\Beta$, $\sigma$, and $\psi,$ after 100 iterations, the parameters have converged under most cases and the values seem to agree. For $\kappa,$ the values seemed have converged after 100 iterations, but there is more variance in the convergence point. 
+
+The only major concern that the diagnostic plots show is that the population parameter and the initial value parameters have either converged to all different values or do not seemed to have converged. This is probably due to the fact that these are the values for which we had the least intuition. Further, the random walk standard deviation had to very small for the initial value parameters as larger random walk standard deviations would lead to the particle filter failing due to an infinite likelihood. However, these parameters are not the parameters of interest for analysis, so we proceed with caution.
+
+### Analysis
+
+Next we want to check if our model could feasibly simulate the actual data. Taking the parameter values as those that maximize the likelihood we draw 10 simulations and compare the simulation data against the real data.
+
+```{r sims, echo = FALSE}
+mle.params <- unlist(r3[which.max(r3$logLik),-c(1,2)])
+sims <- simulate(sisir.mod,params=mle.params,nsim=10,
+                 as.data.frame=TRUE,include.data=TRUE, set.seed(150))
+ggplot(sims,mapping=aes(x=time,y=cases,group=sim,color=sim=="data"))+
+  geom_line()+guides(color=FALSE)
+```
+
+We see that for the most part, the simulations from the model look very similar to the actual data. This provides confidence that our model may be a good fit for the data.
+
+
+```{r display3, fig.width=7, fig.height=7}
+summary(r3$logLik,digits=5)
+pairs(~logLik+Beta+gamma+kappa,data=r3)
+```
+After performing a global likelihood maximization, a glance at the likelihood values shows that our global maximization does not seem to best our local likelihood maximization. However, a look at the scatterplot above also seems to indicate that global maximization has yielded different maximum likelihood estimates for our parameters. The values of $\beta$ that maximize likelihood are centered around 3 which is lower than our initial estimate. Our initial estimate was based on a model by @reck:etal:2009, they did not provide justification for why they chose $\beta = 7.692$ (on the scale of weeks). Perhaps the rate of transmission is lower than believed. Further we see that low values of $\gamma$ maximize the likelihood. This indicates that perhaps the difference in susceptibility to dengue is small.  Lastly, overall although the values of $\kappa$ that maximize likelihood are much smaller than the local maximiation, they still seem too large for reality. 
+
+## Limitations and Future Work
+
+There are two main limitations of the POMP model used in this project. First, as discussed above we lack the intuition concerning some of the parameter values namely the population and initial value parameters. Although we were provided population data on Iquitos, the population of Iquitos is different from the population size we are trying to model (i.e., the population that is at risk of dengue). Since dengue is endemic in Latin America, it is likely that a sizeable proportion of the population has already contracted dengue twice. Additionally, without further research it is impossible to pinpoint the proportion of the population that belongs in each state of the compartment model. Our model is very dependent on these parameters and because we did not have more information about dengue in Iquitos our inference is limited. If we were able to somehow get better estimates for the population and initial value parameters, we could adjust our model accordingly to get better results.
+
+Second, our SISIR is a simplification of the dynamics of the dengue and its serotypes. In reality, the transmission of dengue is not as simple as you can get dengue twice and then become immune as our model suggests. The situation is more nuanced: there are different sequences by which can contract different serotypes of dengue. Each sequence may be different from the others. A better model would take this into account.
+
+However, this is not to say that our model serves no purpose. Simple models can often act as building blocks or benchmarks for more complicated models. To build upon this project, someone could try to fit a POMP model with a compartment model that measures the count of each serotype of dengue and has several states that would be able to represent all combination of sequences that one could contract dengue (sequences of serotypes). 
+
+# Conclusion
+
+Although there are some concerns and limitations of our SISIR model, the simulations from the model seem to be a good fit for the actual data. The model suggests that the rate of transmission is lower than the one provided in the model created by @reck:etal:2009 and that there is a very small difference in risk of becoming infected between the two different susceptible populations. However, the problems with nonsensical parameter values ($\kappa$) and the population and initial value parameters call into question the validity of our parameter estimates. The model from this project should not be used as model for inference, but more as a baseline model from which one could compare a more complicated model.
+
+# Code Appendix
+
+```{r, ref.label='setup', eval=FALSE}
+
+```
+
+```{r, ref.label='setup2', eval=FALSE}
+
+```
+
+```{r, ref.label='sisir_init', eval=FALSE}
+
+```
+
+```{r, ref.label='sisir_mod', eval=FALSE}
+
+```
+
+```{r, ref.label='display1', eval=FALSE}
+
+```
+
+```{r, ref.label='local_max', eval=FALSE}
+
+```
+
+```{r, ref.label='display2', eval=FALSE}
+
+```
+
+```{r, ref.label='scatter', eval=FALSE}
+
+```
+
+```{r, ref.label='global_max', eval=FALSE}
+
+```
+
+```{r, ref.label='diagnostics', eval=FALSE}
+
+```
+
+```{r, ref.label='sims', eval=FALSE}
+
+```
+
+```{r, ref.label='display3', eval=FALSE}
+
+```
+# References

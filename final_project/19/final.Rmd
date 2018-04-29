@@ -1,0 +1,517 @@
+---
+title: "Analysis of SP500 Volatility"
+author: "Final Project"
+date: "4/20/2018"
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 5
+---
+
+### Introduction and Data Overview
+
+In financial world, people are always talking about risk. When it comes to risk, one can always find the word "volatility".    
+    
+In general, volatility is a statistical measure of the dispersion of returns for a given security or market index. It can either be measured by using the standard deviation or variance between returns from that same security or market index. Many financial models have their own different assumptions of volatility. In some models, volatility is treated as a constant, such like the famous Black-Schols model; sometimes, it is treated as a stochastic process.    
+    
+In this project, we'll do some analysis on SP500 index volatility.    
+    
+The daily data is downloaded directly from Yahoo finance with a time window from 2013 to 2018. During the whole analysis, the word return is defined as $R_{t}=log(x_{t})-log(x_{t-1})$. In finance, this is a general approach for two reasons. First, through log-transformation, we can reduce the differencing problems to some simple add and subtraction; second, log-return is a quite good approximation of return by linearization around zero.
+
+```{r, message=FALSE, include=FALSE}
+library(forecast)
+library(tseries)
+library(fGarch)
+library(ggplot2)
+require(pomp)
+require(devtools)
+require(plyr)
+require(reshape2)
+require(foreach)
+find_rtools()
+mydata_d = read.csv(file="C:/Users/Administrator/Desktop/courses/2018 winter/STATS 531/final/daily13_18.csv",header=TRUE)
+mydata_w = read.csv(file="C:/Users/Administrator/Desktop/courses/2018 winter/STATS 531/final/weekly05_18.csv",header=TRUE)
+dindex = mydata_d[,6]
+windex = mydata_w[,6]
+dreturn = diff(log(mydata_d[,6]))
+wreturn = diff(log(mydata_w[,6]))
+```
+
+### Data Analysis and First Step Model Choosing
+ 
+The original data are shown below. As can be observed, the log-return has a significant trait of "cluster of volatility". 
+ 
+```{r, echo=FALSE,fig.align='center'}
+par(mfrow = c(1,2))
+plot(dindex,type="l",main="SP500 index")
+plot(dreturn,type="l",main="SP500 log-return")
+```
+
+What follows is the best arima model chosen by AIC criteria.      
+
+```{r, echo=FALSE,fig.align='center'}
+arima1 = auto.arima(dreturn,ic="aic",start.p=0,start.q=0,seasonal=FALSE)
+par(mfrow=c(1,2))
+acf(arima1$residuals,main="Residual ACF of Best ARIMA ")
+acf((arima1$residuals)^2,main="Squared Residual ACF of Best ARIMA")
+```
+    
+Usually, a normal ARMA model is not suitable for this kind of data. Note that after fitting the model, though the correlation between returns no longer esist, the correlation between squared returns are still quite significant. That is, the magnitude of return still has a strong correlation, which is a major violation of ARMA assumption. To solve this problem, we'll go with a GARCH model.    
+    
+In general, we say a process $X=\{X_{n}\}$ is GARCH(p,q) if
+$$
+X_{n}=\mu_{n}+\sigma_{n}\epsilon_{n}
+$$
+where $\{\epsilon_{n}\}$ is an iid white noise process with mean 0 and variance of 1, and the model of $\sigma_{n}$ is
+$$
+\sigma_{n}^{2}=\alpha_{0}+\sum_{i=1}^{p}\beta_{i}\sigma_{n-i}^{2}+\sum_{j=1}^{q}\alpha_{j}\tilde{X}_{n-j}^{2}
+$$
+with 
+$$
+\tilde{X}_{n}=X_{n}-\mu_{n}
+$$
+Still, we pick our model based on AIC criteria.
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+aic_table = function(data,P,Q){
+  table <- matrix(NA,(P),(Q))
+  for(p in 1:P) {
+    for(q in 1:Q) {
+      temp = garch(data,order=c(p,q),coef=NULL,eps=NULL,itmax=200,grad=c("analytic"),trace=FALSE)
+      table[p,q] = length(temp$coef)*2 + temp$n.likeli*2
+    }
+  }
+  dimnames(table) = list(paste("<b> p",1:P, "</b>", sep=""),paste("q",1:Q,sep=""))
+  table
+}
+crash_AIC_table = aic_table(dreturn,4,4)
+require(knitr)
+kable(crash_AIC_table,digits=2)
+```
+
+The above table shows that GARCH(1,1) has the best fit. Therefore we proceed with it. The following result indicates that we have solved the probelm in fitting the data with "cluster of volatility".     
+
+```{r, include=FALSE}
+garch11 = garchFit(formula = ~garch(1,1),data=dreturn,cond.dist = c("norm"),include.mean = FALSE,trace=FALSE,algorithm = c("nlminb"))
+garch11@fit$matcoef
+```
+
+```{r, echo=FALSE,fig.align='center'}
+par(mfrow=c(2,2))
+plot(garch11@residuals/garch11@sigma.t,type="l",ylab="residuals",main="GARCH(1,1) normal residuals")
+qqnorm(garch11@residuals/garch11@sigma.t,main="GARCH(1,1) qq-plot")
+qqline(garch11@residuals/garch11@sigma.t)
+acf(garch11@residuals/garch11@sigma.t,main="residuals")
+acf((garch11@residuals/garch11@sigma.t)^2,main="squared residuals")
+```
+
+However, it's not hard to see from the qq-plot that the residuals are heavy-tailed, especially on left side, which violates the assumution of a GARCH model. Luckily, we can generalize the GARCH model with t-distributed residuals.    
+The following plots give us a much better result.
+
+```{r, include=FALSE}
+garch11t = garchFit(formula = ~garch(1,1),data=dreturn,cond.dist = c("std"),include.mean = FALSE,trace=FALSE,algorithm = c("nlminb"))
+garch11t@fit$matcoef
+```
+```{r, echo=FALSE,fig.align='center'}
+par(mfrow=c(2,2))
+plot(garch11t@residuals/garch11t@sigma.t,type="l",main="GARCH(1,1) with t-residuals",ylab="residuals")
+N=length(garch11t@residuals)
+quantv=(1/N)*seq(0.5,N-0.5,1)
+qqplot(qt(quantv,df = garch11t@fit$matcoef[4]),sort(garch11t@residuals/garch11t@sigma.t),main="t-residual qq-plot",ylab="Sample Quantiles",xlab="Theoretical Quantiles")
+abline(lm(quantile(garch11t@residuals/garch11t@sigma.t,c(0.25,0.75))~qt(c(0.25,0.75),garch11t@fit$matcoef[4])))
+acf(garch11t@residuals/garch11t@sigma.t,main="residuals")
+acf((garch11t@residuals/garch11t@sigma.t)^2,main="squared residuals")
+```
+
+### Model Revising
+
+During the above analysis, it's not hard to notice that even if we have taken heavy tail into consideration, the skewed problem is not solved yet. This phenomenon worth thinking.    
+Is this just bad luck, or a common problem?    
+It turns out to be the latter. In a GARCH model, we're assuming that good news, which corresponds to positive returns, and bad news, which corresponds to negative returns have the same effect on the market. This is not true in the real world. The history has proved for us, when there is a huge crash on market, people will go panic; however when there is a huge positive return (maybe caused by some good news), they just sit still. Wouldn't it be better if we can take this kind of human nature into our model?    
+For the rest of this project, I'll focus on two models that have this kind of assymetric residual distribution.    
+
+#### APARCH Model
+
+The first one is an APARCH model, which is a modifacation of GARCH model. Recall that in a GARCH model, we have
+$$
+\sigma_{n}^{2}=\alpha_{0}+\sum_{i=1}^{p}\beta_{i}\sigma_{n-i}^{2}+\sum_{j=1}^{q}\alpha_{j}\tilde{X}_{n-j}^{2}
+$$
+For an APARCH model, we simply replace $\tilde{X}_{n-j}$ with $|\tilde{X}_{n-j}|-\gamma_{j}\tilde{X}_{n-j}$, that is, extra leverage parameters $-1<\gamma_{i} <1$ are added, and for GARCH(1,1), it's simply $\gamma$.    
+The following results come from an APARCH(1,1) model.
+
+```{r, echo=TRUE}
+aparch11 = garchFit(formula = ~aparch(1,1),data=dreturn,cond.dist = c("std"),include.mean = FALSE,trace=FALSE,algorithm = c("nlminb"),include.shape = TRUE, include.delta = FALSE,leverage=TRUE)
+```
+
+
+
+```{r, echo=FALSE,fig.align='center'}
+par(mfrow=c(2,2))
+plot(aparch11@residuals/aparch11@sigma.t,type="l",main="APARCH(1,1) with t-residuals",ylab="residuals")
+N=length(aparch11@residuals)
+quantv2=(1/N)*seq(0.5,N-0.5,1)
+qqplot(qt(quantv2,df = aparch11@fit$matcoef[5]),sort((aparch11@residuals/aparch11@sigma.t)),main="APARCH with t-residuals qq-plot",ylab="Sample Quantiles",xlab="Theoretical Quantiles")
+abline(lm(quantile((aparch11@residuals/aparch11@sigma.t),c(0.25,0.75))~qt(c(0.25,0.75),aparch11@fit$matcoef[5])))
+acf((aparch11@residuals/aparch11@sigma.t),main="residuals")
+acf(((aparch11@residuals/aparch11@sigma.t))^2,main="squared residuals")
+```
+
+The final model coefficients are listed as follows.
+
+```{r}
+aparch11@fit$matcoef
+```
+
+The AIC statistics(basically AIC divided by sample points) provided by package "fGarch" are lower than before, indicating a better fit.
+
+```{r}
+cat("GARCH AIC statistics: ",garch11t@fit$ics[1],";  APARCH AIC statistics: ",aparch11@fit$ics[1])
+```
+
+#### POMP Model
+
+##### Model Explanation
+
+Next, we try a financial volatility POMP model with Asymmetric Leverage, which is adapted from Carles Bret¨®[5], but with much simpler assumption on the leverage parameter.    
+The model has the following form:
+
+$$
+Y_{n}=\exp(\frac{H_{n}}{2})\epsilon_{n}
+$$
+where $Y_{n}$ is the observable return on time n.
+$$
+H_{n}=\mu_{h}(1-\phi)+\phi H_{n-1} +\sigma_{\eta}\rho\epsilon_{n-1}\sqrt{1-\phi^{2}}+\sigma_{\eta}\sqrt{1-\phi^{2}}\sqrt{1-\rho^{2}}\omega_{n}
+$$
+where $H_{n}$ is the log-volatilty on time n, and $\{\epsilon_{n}\}$, $\{\omega_{n}\}$ are both standard Gaussian white noise.    
+For parameter $\phi$ and $\rho$, since volatility cannot be negative by definition, $\phi$ should be no larger than 1. $\rho$ is simply the leverage. If $\rho$ is positive, good news will have larger effects on volatility, and vise versa. Therefore, if this model is consistent with the previous APARCH model, we would expect an negative $\rho$, and this is exactly our purpose of using this model.       
+
+The following are the details of how the model is built. One thing need to be clarified is that some parameter transformations are used to satisfy some certain conditions:     
+(i) sigma is defined as exp(H/2) to ensure it never goes below zero.    
+(ii) The log transformation are used on sigma to extend the definition of sigma on the whole real line.    
+(iii) By definition we should bound $\phi$ by [0,1], hence a logistic scale is used.   
+(iv) Return is demeaned for simplicity of computation.
+
+```{r}
+sp500_statenames = c("H","Y_state")
+rp_names = c("mu_h","phi","sigma_eta","rho")
+ivp_names = c("H_0")
+sp500_paramnames = c(rp_names,ivp_names)
+sp500_covarnames = "covaryt"
+
+rproc1 = "
+double beta,omega;
+beta = Y_state*sigma_eta*sqrt(1-phi*phi);
+omega = rnorm(0,sigma_eta*sqrt(1-phi*phi)*sqrt(1-rho*rho));
+H = mu_h*(1-phi) + phi*H + beta*rho*exp(-H/2) + omega;
+"
+rproc2.sim = "
+Y_state = rnorm(0,exp(H/2));
+"
+rproc2.filt = "
+Y_state = covaryt;
+"
+sp500_initializer = "
+H = H_0;
+Y_state = rnorm(0,exp(H/2));
+"
+sp500_rmeasure = "
+y = Y_state;
+"
+sp500_dmeasure = "
+lik = dnorm(y,0,exp(H/2),give_log);
+"
+# To bound phi and rho by (0,1) and (-1,0)
+sp500_toEstimationScale = "
+Tsigma_eta = log(sigma_eta);
+Tphi = logit(phi);
+Trho = logit(-rho);
+"
+sp500_fromEstimationScale = "
+Tsigma_eta = exp(sigma_eta);
+Tphi = expit(phi);
+Trho = -expit(rho);
+"
+sp500_rproc.sim = paste(rproc1,rproc2.sim)
+sp500_rproc.filt = paste(rproc1,rproc2.filt)
+dreturn_dmean = dreturn - mean(dreturn)
+sp500_filt = pomp(data=data.frame(y=dreturn_dmean, time = 1:length(dreturn_dmean)),
+                 statenames = sp500_statenames,
+                 paramnames = sp500_paramnames,
+                 covarnames = sp500_covarnames,
+                 times = "time",
+                 t0=0,
+                 covar = data.frame(covaryt=c(0,dreturn_dmean),
+                                    time = 0:length(dreturn_dmean)),
+                 tcovar = "time",
+                 rmeasure = Csnippet(sp500_rmeasure),
+                 dmeasure = Csnippet(sp500_dmeasure),
+                 rprocess = discrete.time.sim(step.fun=Csnippet(sp500_rproc.filt),delta.t=1),
+                 initializer = Csnippet(sp500_initializer),
+                 toEstimationScale = Csnippet(sp500_toEstimationScale),
+                 fromEstimationScale = Csnippet(sp500_fromEstimationScale)
+                   )
+```
+
+The following is a simulation from the model; it's clear that the model captures the magnitude of return quite well.
+
+```{r, echo=FALSE,fig.align='center'}
+expit = function(real){1/(1+exp(-real))}
+logit = function(p.arg){log(p.arg/(1-p.arg))}
+params_test = c(
+  mu_h = -0.25,
+  phi = expit(3),
+  sigma_eta = exp(-0.07),
+  rho = -0.8,
+  H_0 = 0
+)
+sim1.sim = pomp(sp500_filt,
+                statenames = sp500_statenames,
+                paramnames = sp500_paramnames,
+                covarnames = sp500_covarnames,
+                rprocess = discrete.time.sim(step.fun=Csnippet(sp500_rproc.sim),delta.t=1)
+                )
+sim1.sim = simulate(sim1.sim,seed=531531531,params=params_test)
+plot(dreturn_dmean,type="l",col="blue",ylim=c(-0.06,0.06),main="Observed Log Return vs Simulated Log Return")
+lines(sim1.sim@states[2,]/100,col="red",type="l")
+legend(0,0.06,c("Observed","Simulated"),lty=c(1,1),col=c("blue","red"))
+```
+```{r, include=FALSE}
+sim1.sim = pomp(sp500_filt,
+                statenames = sp500_statenames,
+                paramnames = sp500_paramnames,
+                covarnames = sp500_covarnames,
+                rprocess = discrete.time.sim(step.fun=Csnippet(sp500_rproc.filt),delta.t=1)
+                )
+```
+
+
+##### MIF for Maximum Likelihood
+
+Next, we carry out IF2 algorithm to find the likelihood along with the estimated range of $\rho$. After a few attempts, we generated the following box for starting values of each parameter.
+
+```{r}
+sp500_box <- rbind(
+  mu_h    =c(-10,10),
+  phi = c(0.55,0.85),
+  sigma_eta = c(0.005,1),
+  H_0 = c(-1,0),
+  rho = c(-0.99,-0.4)
+)
+```
+
+```{r, include=FALSE}
+run_level = 5
+switch(run_level,
+       {sp500_Np=3000; sp500_Nmif=10; sp500_Neval=10; sp500_Nglobal=2}, 
+       {sp500_Np=20; sp500_Nmif=50; sp500_Neval=10; sp500_Nglobal=20}, 
+       {sp500_Np=20; sp500_Nmif=100; sp500_Neval=10; sp500_Nglobal=10},
+       {sp500_Np=100; sp500_Nmif=200; sp500_Neval=10; sp500_Nglobal=10},
+       {sp500_Np=4500; sp500_Nmif=200; sp500_Neval=10; sp500_Nglobal=70}
+)
+require(doParallel)
+cores = 4   
+registerDoParallel(cores)
+
+set.seed(396658101,kind="L'Ecuyer")
+
+sp500_cooling.fraction.50 = 0.6
+sp500_rw.sd = 0.02
+sp500_rw.sd_rp_mu = 0.02
+sp500_rw.sd_rp_phi = 0.01
+sp500_rw.sd_rp_rho = 0.02
+sp500_rw.sd_rp_sigma = 0.01
+sp500_rw.sd_ivp = 0.02
+```
+
+```{r}
+export_1 = c("sp500_box","sp500_filt","sp500_Nmif","sp500_Np","sp500_rw.sd_rp_mu","sp500_rw.sd_rp_phi","sp500_rw.sd_rp_rho","sp500_rw.sd_rp_sigma","sp500_rw.sd_ivp","sp500_cooling.fraction.50","sp500_Neval","sp500_rw.sd")
+stew(file=sprintf("C:/Users/Administrator/Desktop/courses/2018 winter/STATS 531/final/result_level_%d.rda",run_level),{
+  t_global <- system.time({
+    mif_global <- foreach(i=1:sp500_Nglobal,.packages=c('pomp','base','devtools','plyr','reshape2'),.combine=c,
+                      .options.multicore=list(set.seed=TRUE),.export = export_1) %dopar%  
+      mif2(
+        sp500_filt,
+        start=apply(sp500_box,1,function(x)runif(1,x[1],x[2])),
+        Np=sp500_Np,
+        Nmif=sp500_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=sp500_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd = rw.sd(
+          mu_h      = sp500_rw.sd_rp_mu,
+          phi       = sp500_rw.sd_rp_phi,
+          rho       = sp500_rw.sd_rp_rho,
+          sigma_eta = sp500_rw.sd_rp_sigma,
+          H_0       = ivp(sp500_rw.sd_ivp)
+        )
+      )
+    
+    liks_global <- foreach(i=1:sp500_Nglobal,.packages=c('pomp','base','devtools','plyr','reshape2'),.combine=rbind,
+                     .options.multicore=list(set.seed=TRUE),.export = export_1) %dopar% {
+                       set.seed(2018531531)
+                       logmeanexp(
+                         replicate(sp500_Neval,
+                                   logLik(pfilter(sp500_filt,params=coef(mif_global[[i]]),Np=sp500_Np))
+                         ), 
+                         se=TRUE)
+                     }
+  })
+},seed=53112413,kind="L'Ecuyer")
+```
+
+```{r}
+results_1 <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mif_global,coef)))
+summary(results_1$logLik,digits=5)
+```
+
+```{r,fig.align='center'}
+plot(mif_global)
+```
+
+Through the above result, we have the following interpretations:
+(i) The likelihood converges quickly, with an estimated mean of 4489, and once it converged, it becomes very stable.    
+(ii) The parameters $\rho$ converges quite well, with a relative larger band centered at around -0.45.    
+(iii) The intial value $H_{0}$ is only the starting value of H, therefore making it a random process is actually redundant.      
+(iv) Some $\mu_{h}$ with large starting values (greater than -5) do not converge. This corresponds to the observation that some $\phi$ have values of almost 1. These together result in some quite large value of $\sigma_{\eta}$.    
+
+In general, the estimations of $\rho$ and $\phi$ are quite well. For further correction, the starting value of $\mu_{h}$ should be confined whitin certain interval. One thing that draws attention is that by observing the model definition, there should be no restriction on $\mu_{h}$, however the result indicates that there may be some unoberved restrictions or some common sence from real market that this model didn't take into cosideration.
+
+##### Confidence Interval 
+
+Next, we construct the confidence interval for $\rho$ using profile likelihood. First we need to creat a parameter box for $\rho$.
+
+```{r}
+It=20
+nprof=20
+profile.box <- profileDesign(  
+  rho = seq(-0.7,-0.2,length.out=It),
+  lower=c(mu_h=-10,phi=0.55,sigma_eta=0.005,H_0=-1),
+  upper=c(mu_h=-5,phi=0.85,sigma_eta=1,H_0=0),
+  nprof=nprof
+)
+```
+
+From each start point, we use mif2 to find the maximal likelihood and the correponding MLE. Since we need to find the profile likelihood of $\rho$, we need to fix it during the iterated filtering, therefore it is not random and does not move during the iteration.
+
+```{r}
+library(magrittr)
+export_2 = c("sp500_box","sp500_filt","sp500_Nmif","sp500_Np","sp500_rw.sd_rp_mu","sp500_rw.sd_rp_phi","sp500_rw.sd_rp_rho","sp500_rw.sd_rp_sigma","sp500_rw.sd_ivp","sp500_cooling.fraction.50","sp500_Neval","sp500_rw.sd","profile.box","mif_global")
+stew(file=sprintf("C:/Users/Administrator/Desktop/courses/2018 winter/STATS 531/final/pf_rho_1_%d.rda",It),{
+  t_global_4 <- system.time({
+      prof.llh<- foreach(i=1:(It*nprof),.packages=c('pomp','base','devtools','plyr','reshape2'),.combine=rbind,
+                      .options.multicore=list(set.seed=TRUE),.export=export_2) %dopar%{
+        # Find MLE
+        mif2(
+          mif_global[[1]],
+          start=c(unlist(profile.box[i,])),
+          Np=400,Nmif=30,
+          rw.sd=rw.sd(
+            mu_h      = sp500_rw.sd_rp_mu,
+            phi       = sp500_rw.sd_rp_phi,
+            sigma_eta = sp500_rw.sd_rp_sigma,
+            H_0       = ivp(sp500_rw.sd_ivp)
+          )
+        )->mifs_global_4
+        # evaluate llh
+        evals = replicate(10, logLik(pfilter(mifs_global_4,Np=400)))
+        ll=logmeanexp(evals, se=TRUE)        
+        
+        data.frame(as.list(coef(mifs_global_4)),
+                   loglik = ll[1],
+                   loglik.se = ll[2])
+      }
+  })
+},seed=931129,kind="L'Ecuyer")
+```
+
+We pick the MLEs which gives us the maximal 10 likelihood and do the iterated filtering again.
+
+```{r}
+library(magrittr)
+ prof.llh %>%
+   ddply(~rho,subset,rank(-loglik)<=10) %>%
+   subset(select=sp500_paramnames) -> pars
+
+export_3 = c("sp500_box","sp500_filt","sp500_Nmif","sp500_Np","sp500_rw.sd_rp_mu","sp500_rw.sd_rp_phi","sp500_rw.sd_rp_rho","sp500_rw.sd_rp_sigma","sp500_rw.sd_ivp","sp500_cooling.fraction.50","sp500_Neval","sp500_rw.sd","profile.box","mif_global","pars")
+
+stew(file=sprintf("C:/Users/Administrator/Desktop/courses/2018 winter/STATS 531/final/pf_rho_2_%d.rda",It),{
+  
+  t_global_5 <- system.time({
+    prof.llh<- foreach(i=1:(nrow(pars)),.packages=c('pomp','base','devtools','plyr','reshape2'), .combine=rbind, .options.multicore=list(set.seed=TRUE),.export=export_3) %dopar%{
+      # Find MLE
+      mif2(
+        mif_global[[1]],
+        start=unlist(pars[i,]),
+        Np=400,Nmif=30,
+        rw.sd=rw.sd(
+            mu_h      = sp500_rw.sd_rp_mu,
+            phi       = sp500_rw.sd_rp_phi,
+            sigma_eta = sp500_rw.sd_rp_sigma,
+            H_0       = ivp(sp500_rw.sd_ivp)
+        )
+      )->mifs_global_5
+      # evaluate llh 
+      pf= replicate(10,pfilter(mifs_global_5,Np=400))
+      evals=sapply(pf,logLik)
+      ll=logmeanexp(evals, se=TRUE)  
+      nfail=sapply(pf,getElement,"nfail")
+      
+      data.frame(as.list(coef(mifs_global_5)),
+                 loglik = ll[1],
+                 loglik.se = ll[2],
+                 nfail.max=max(nfail))
+    }
+  })
+},seed=931129,kind="L'Ecuyer")
+```
+
+```{r, echo=FALSE,fig.align='center'}
+prof.llh %<>%
+  subset(nfail.max==0) %>%
+  mutate(rho) %>%
+  ddply(~rho,subset,rank(-loglik)<=1)
+
+a=max(prof.llh$loglik)
+b=a-1.92
+CI=which(prof.llh$loglik>=b)
+c=prof.llh$rho[min(CI)]
+d=prof.llh$rho[max(CI)]
+
+
+prof.llh %>%
+  ggplot(aes(x=rho,y=loglik))+
+  geom_point()+
+  geom_smooth(method="loess")+
+  geom_hline(aes(yintercept=a),linetype="dashed")+
+  geom_hline(aes(yintercept=b),linetype="dashed")+
+  geom_vline(aes(xintercept=c),linetype="dashed")+
+  geom_vline(aes(xintercept=d),linetype="dashed")
+```
+
+The confidence interval has further convinced us that the leverage is negative and quite significant, hence our assumption was right and bad news have more effects on volatility.
+
+### Conclusion
+
+1. ARMA model is not a suitable candidate for fitting sp500 return data, or the analysis of volatility.    
+2. GARCH(1,1) model provides a quick estimation of volatility, but leaves some unsolved problems such a asymetric errors.    
+3. APARCH(1,1) model gives a quite accurate negative estimation of asymmetric leverage, which indicats that bad news influence the volatility more than good news.    
+4. Asymmetric leverage stochastic volatility POMP model is also a good way to estimate the leverage; besides, the confidence interval it generated through profile likelihood is more accurate than Fisher information based APARCH model summary.
+5. Both APARCH model and POMP model are both acceptable for the analysis of volatility, but POMP is much more time consuming. Hence the choice depends on the availablity of calculation power and how accurate one need the estimation to be.
+
+### Reference
+
+1. Yahoo Finance    
+https://finance.yahoo.com/
+
+2. Lecture Notes     
+https://ionides.github.io/531w18/
+
+3. Discrete-Time Stochastic Volatility Models and MCMC-Based Statistical
+Inference     
+http://sfb649.wiwi.hu-berlin.de/papers/pdf/SFB649DP2008-063.pdf
+
+4. APARCH model    
+http://mason.gmu.edu/~jgentle/csi779/14s/L09_Chapter4_14s.pdf
+
+5. Bret¨®, C. 2014. On idiosyncratic stochasticity of financial leverage effects. Statistics & Probability Letters 91:20¨C26.
+
+

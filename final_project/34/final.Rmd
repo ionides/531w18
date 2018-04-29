@@ -1,0 +1,449 @@
+---
+title: "Mixture Hidden Markov Model for Poverty Measurement using Longitudinal Data"
+output: html_notebook
+---
+```{r eval = TRUE, echo = FALSE, message=FALSE, warning=FALSE}
+library(plyr)
+library(reshape2)
+library(readxl)
+library(data.table)
+library(ggplot2)
+library(depmixS4)
+library(ggplot2)
+library(gridExtra)
+library(kableExtra)
+library(dplyr)
+library(data.table)
+library(MASS)
+library(zoo)
+library(xts)
+```
+
+```{r eval = FALSE, echo=FALSE}
+##CLEAN UP DATA
+PSID <- read_excel("C:/Users/Sandra/Desktop/U of Michigan/Work/PSID Excel/J241976.xlsx", #Change reference of file
+                                         col_types = c("skip", "skip", "skip", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "skip", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "skip", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "skip", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "skip", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "skip", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "skip", "numeric", "numeric",
+                                                       "numeric", "numeric", "numeric",
+                                                       "numeric", "numeric", "numeric"))
+
+PSID <- `colnames<-`(PSID, c("ReleaseNumber.2005", "TotalIncome.2005", "MaritalStatus.2005", "InterviewNum.2005", "SequenceNum.2005", "TypeofRecord.2005", "WhyNonresponsive.2005",
+                             "ReleaseNumber.2007", "TotalIncome.2007", "MaritalStatus.2007", "InterviewNum.2007", "SequenceNum.2007", "TypeofRecord.2007", "WhyNonresponsive.2007",
+                             "ReleaseNumber.2009", "TotalIncome.2009", "MaritalStatus.2009", "InterviewNum.2009", "SequenceNum.2009", "TypeofRecord.2009", "WhyNonresponsive.2009",
+                             "ReleaseNumber.2011", "TotalIncome.2011", "MaritalStatus.2011", "InterviewNum.2011", "SequenceNum.2011", "TypeofRecord.2011", "WhyNonresponsive.2011",
+                             "ReleaseNumber.2013", "TotalIncome.2013", "MaritalStatus.2013", "InterviewNum.2013", "SequenceNum.2013", "TypeofRecord.2013", "WhyNonresponsive.2013",
+                             "ReleaseNumber.2015", "TotalIncome.2015", "MaritalStatus.2015", "InterviewNum.2015", "SequenceNum.2015", "TypeofRecord.2015", "WhyNonresponsive.2015",
+                             "EmploymentStatus.2005", "EmploymentStatus.2007", "EmploymentStatus.2009", "EmploymentStatus.2011", "EmploymentStatus.2013", "EmploymentStatus.2015"))
+
+PSID2 <- read_excel("C:/Users/Sandra/Desktop/U of Michigan/Work/PSID Excel/J243911.xlsx") #Change reference
+
+PSID <- cbind(PSID, PSID2)
+
+#Convert to long format -- Move sex to beginning of dataframe first
+#x <- "Sex"
+PSID <- PSID[c(x, setdiff(names(PSID), x))]
+#PSID <- PSID[,2:79]
+PSID <- reshape(PSID[,2:79], dir = "long", varying = 1:78, sep = ".")
+#Remove all variables except covariates, ID and response
+PSID.pomp <- subset(PSID[,c("TotalIncome", "EmploymentStatus", "OwnOrRent", "Race",
+                            "Age", "YearsCompletedEducation", "id", "time", "InterviewNum", "SequenceNum")])
+
+PSID$Race <- ifelse(PSID$WifeRace1 == 1 & PSID$HeadRace1 == 1, 1,
+                    ifelse(PSID$WifeRace1 == 1 & PSID$HeadRace1 == 0, 1,
+                           ifelse(PSID$WifeRace1 == 0 & PSID$HeadRace1 == 1, 1,
+                                  ifelse(PSID$WifeRace1 == 2 & PSID$WifeRace1 == 2, 2,
+                                         ifelse(PSID$WifeRace1 == 2 & PSID$HeadRace1 == 0, 2,
+                                                ifelse(PSID$WifeRace1 == 0 & PSID$HeadRace1 == 2, 2,
+                                                       ifelse(PSID$WifeRace1 == 3 & PSID$HeadRace1 == 3, 3, 
+                                                              ifelse(PSID$WifeRace1 == 3 & PSID$HeadRace1 == 0, 3,
+                                                                     ifelse(PSID$WifeRace1 == 0 & PSID$HeadRace1 == 3, 3,
+                                                                            ifelse(PSID$WifeRace1 == 4 & PSID$HeadRace1 == 4, 4,
+                                                                                   ifelse(PSID$WifeRace1 == 4 & PSID$HeadRace1 == 0, 4,
+                                                                                          ifelse(PSID$WifeRace1 == 0 & PSID$HeadRace1 == 4, 4, 
+                                                                                                 ifelse(PSID$WifeRace1 == 5 & PSID$HeadRace1 == 5, 5,
+                                                                                                        ifelse(PSID$WifeRace1 == 5 & PSID$HeadRace1 == 0, 5,
+                                                                                                               ifelse(PSID$WifeRace1 == 0 & PSID$HeadRace1 == 5, 5, 0)))))))))))))))
+
+
+
+summary(PSID.pomp$TotalIncome)
+
+#Collapse by interview ID, year and income level. Since income level is the same across all R's in a 
+#household I am only using the unique value. Marital status is also the same. 
+PSID.pomp <- as.data.table(PSID.pomp)
+PSID.pomp <- PSID.pomp[, InterviewPersonNum := paste(InterviewNum,SequenceNum,sep = ".")]
+PSID.pomp <- PSID.pomp[, SequenceNum := NULL]
+
+#To observe latent states within the poor, I will subset the data using only households with incomes < median
+PSID.pomp <- subset(PSID.pomp, PSID.pomp$TotalIncome < median(PSID.pomp$TotalIncome, na.rm = TRUE))
+PSID.pomp <- na.omit(PSID.pomp)
+
+#Remove everyone with income loss. 
+PSID.pomp <- subset(PSID.pomp, PSID.pomp$TotalIncome >= 0)
+#Code no income as  0.1 instead of 0 for computations purposes
+PSID.pomp$TotalIncome <- ifelse(PSID.pomp$TotalIncome == 0, 0.1, 
+                                ifelse(PSID.pomp$TotalIncome <= 0, 0.1, PSID.pomp$TotalIncome))
+PSID.pomp$EmploymentStatus <- ifelse(PSID.pomp$EmploymentStatus == 1, 1, 
+                                     ifelse(PSID.pomp$EmploymentStatus == 2 | PSID.pomp$EmploymentStatus == 3 |
+                                              PSID.pomp$EmploymentStatus == 6, 2,
+                                            ifelse(PSID.pomp$EmploymentStatus == 4, 3, 0)))
+
+PSID.pomp$Race2 <- ifelse(PSID.pomp$Race == 1, 1, 0) #1 is white, non white 
+
+#Checking for ddistribution
+lognormal <- fitdistr(PSID.pomp$TotalIncome, "lognormal")
+gamma <- fitdistr(PSID.pomp$TotalIncome, "gamma")
+gaussian <- fitdistr(PSID.pomp$TotalIncome, "normal")
+weibull < fitdistr(PSID.pomp$TotalIncome, "weibull")
+# compare AICs
+AIC(lognormal)
+AIC(gaussian)
+#Normal distribution fits the model better. Weibull optimization failed, 
+#gamma algorithm hit a non-finite finite-difference value
+#CCF
+library(zoo)
+library(xts)
+PSID.pomp$time <- as.Date(as.yearmon(PSID.pomp$time))
+PSID.pomp$time <- as.Date(PSID.pomp$time, "%y%m%d")
+psid.ts <- xts(PSID.pomp, order.by=as.Date(PSID.pomp$time))
+inc <- xts(PSID.pomp$TotalIncome, order.by=as.Date(PSID.pomp$time))
+inc <- as.vector(inc)
+plot(inc)
+
+educ <- xts(PSID.pomp$YearsCompletedEducation, order.by=as.Date(PSID.pomp$time))
+educ <- as.vector(educ)
+ccf(educ, inc)
+
+race <- xts(PSID.pomp$Race2, order.by=as.Date(PSID.pomp$time))
+race <- as.vector(race)
+ccf(race, inc)
+
+age <- xts(PSID.pomp$Age, order.by=as.Date(PSID.pomp$time))
+age <- as.vector(age)
+ccf(age, inc)
+```
+
+Markov modelling presents an analytical framework for modeling state switching processes occuring with an individual or within a family unit using panel study longitudinal data. Income mobility and poverty switching dynamics particularly have generated some interest in the economics/social policy field. Similar to the analysis of Costa and Angelis, in this paper, I am trying to model the switching states of poverty. They postulate that there are two underlying poverty states; *transitionary* and *permenent*. I aim to discover these states using the data from the Panel Study of Income Dynamics run by the Institute of Social Research at the University of Michigan. 
+
+###The Data
+The panel study of income dynamics (PSID) is a long running longitudinal household survey which began in 1968. It studies a nationally representative sample of over 18000 individuals living in 5000 families in the United States. The design of the survey, interviewing both individuals and family units over time, presents an interesting opportunity to study poverty transition by family unit. The poverty proxy used in this analysis takes the median of the Total Income variable - similar to the process used by Costa and Angelis - and keeps only those indivials below the median level. I also use socio-economic indicators from the data as transition covariates in the HMM model. Specifically, the *age*, *employment status*, *years of education completed* and *race* variables. Costa and Angelis use the same covariates with the inclusion of *housing htatus*, *gender* and *geographical area*. Gender was not included in the HMM model in this analysis as this is an individual level variable that does not apply to the family as a unit of observation. Below is a break down of the specific variables used, transformations to the variables, as well as year of waves. 
+Years: For this analysis I have used 6 waves of the study, 2005, 2007, 2009, 2011, 2013 and 2015. After excluding families over the median level of income, and dropping observations with non-responses in any of the covariates, the number of observations in each wave are as follows.  
+
+| Year of study       | 2005  | 2007  | 2009  | 2011  | 2013  | 2015  |
+|---------------------|-------|-------|-------|-------|-------|-------|
+| No. of observations | 17033 | 15767 | 14324 | 14185 | 12857 | 11078 |  
+
+These numbers were inclded in the model to account for the cycles of the longitudinal dataset. 
+
+**Age:** This is a continuous variable from the dataset ranging from 3 - 40. Since the income level reported (see income) is by family level and not individual, all the age observations were preserved. Observations with 999 indicating a refusal to answer the question were coded as missing and excluded form the model.   
+
+**Employment Status:** This variable was derived using the 'Employment Status' sequence of questions. The data is coded as *Employed* if a responded answered `1 - Working Now`, *Unemployed* if the respondent answered `2 - Temporarily laid off`, `3 - Looking for work, unemployed`, `6 - Housewife`, coded Retired if the respondent answered `4 - Retired` and and coded *Other* for everything else.  
+
+**Years of Education Completed:** This is another continuous variable with years of education completed in lifetime of respondent. The range of this variable is 0 - 12 with 99 for respondents who refused to reply. All observtions with a response of 99 were coded as missing and dropped from the analysis. 
+
+**Race:** This variable was derived as the combination of two response variables from the data. The race of the head of household and the race of spouse. If the head and spouse have the same race, the family unit is coded as that race. If the head of household and spouse are of different races, the *Race* variable was coded as other. Due to the different combinations of races, more than 10, assigning dummy variables to all the mixed race families was not feasible. All the major race categories were preserved. 
+
+**Total Income:** Total household income in dollars reported by respondents. This income level is the same for all individuals in the household.  
+
+```{r eval = TRUE, echo = FALSE}
+d <- density(PSID.pomp$TotalIncome)
+  plot(d, type="n", main = "Density Plot Total Income")
+  polygon(d, col="grey", border="gray")
+
+plo <- ggplot(PSIDdat, aes(TotalIncome)) + geom_histogram(bins = 30)
+plo + facet_grid(time ~. ) + ggtitle("Reported income levels by year")
+```
+
+
+Model 
+For this analysis, I used a hidden markov model which is defined by the following: $$\begin{array}{l} f_{X_{0}}(x_0\params\theta), \ f_{X_{n}|X_{n-1}}(x_{n}\given x_{n-1}\params\theta), \ f_{Y_{n}|X_n}(y_{n}\given x_n\params\theta), \end{array}$$ for $n=1:N$
+Here I assume that family has a latent rate $X_i(t)$ of transitiong out or back into poverty states. Each data point $y_{ij}$ is the total income level for a family between time $t_{j-1}$ and $t_j$, where $i=1,\dots,85244$ and $j=1,\dots,6$. The unobserved poverty process  $\{X_i(t)\}$ is connected to the data through change in income for each family unit $i$ in number of reporting cycles $j$, which can be written as $$C_{ij}= \int_{t_{j-1}}^{t_j} X_i(t)\, dt,$$. [2]  
+A stochastic mixture model for gaussian distributed data was used to model $y_{ij}$ as a gaussian random variable with mean $\mu$ and variance $\sigma^2$. This model was chosen after examining the vizually density of the response variable and testing the fit of different distributions to the data and comparing AIC. The distributions tested were **lognormal**, **normal**, **weibull** and **gamma**. Only the **lognormal** and **gaussian** distributions could be fitted to the data, and Like the plot suggests, the data is best fit by a normal/gaussian model as it had the lower AIC of `1904573` compared to `2032992` with the lognormal. The Mixture Hidden Markov Model(MHMM) was selected for this analysis vs the Partially Observed Markov Model (POMP) because it allows for a continuous gaussian distributed response variable which a POMP does not.
+The possibility of a general dependence on $n$ includes the possibility that there is some covariate time series $z_{0:N}$ such that $$\begin{array}{lcl} f_{X_{0}}(x_0\params\theta)&=& f_{X_{0}}(x_0\params\theta,z_0) \ f_{X_{n}|X_{n-1}}(x_{n}\given x_{n-1}\params\theta) &=& f_{X_{n}|X_{n-1}}(x_{n}\given x_{n-1}\params\theta,z_n), \ f_{Y_{n}|X_n}(y_{n}\given x_n\params\theta) &=& f_{Y_{n}|X_n}(y_{n}\given x_n\params\theta,z_n), \end{array}$$ for $n=1:N$  
+To derive a multidimensional concept of poverty, the covariates **age**, **years of education**, **employment status** and **race** were included in the model as I hypothesized these soci-economic factors to have an effect on the transition of poverty states. To test this hypothesis, I ran a glm regression on the response variable **total income** using the covariates as independent variables (see analysis section). The regression Parameter estimation for the MHMM model was achieved by means of a variant of the EM procedure, forward-backward or Baum-Welch algorithm. 
+
+
+Analysis
+First, after using a glm regression to the hypothesis of a relationship between total income levels and the four independent variables, I found age, as well as employment status to be statistically significant. The difference income levels between white households compared to black and american indian households was also statistically significant. Note that these households are households below the median income levels overall. Years completed education is not significant but the model including it as a transition covariate performed better in terms of log likelihood, AIC and BIC values (Table 1).
+
+```{r eval=TRUE, echo = FALSE}
+##Setting up PSID.dat for models
+PSIDdat <- PSID.pomp
+PSIDdat$EmploymentStatus <- factor(PSIDdat$EmploymentStatus, 
+                                 levels = c(0,1,2,3),
+                                 labels = c("Other", "Employed", "Unemployed", "Retired"))
+PSIDdat$Race <- factor(PSIDdat$Race,
+                       levels = c(0, 1, 2, 3, 4, 5),
+                       labels = c("Other", "White", "Black/African-American", "American Indian", "Asian", "Native Hawaiian/Islander"))
+PSIDdat$OwnOrRent <- factor(PSIDdat$OwnOrRent,
+                         levels = c(1, 5, 8, 9),
+                         labels = c("Owns Home", "Rents", "Neither", "Other"))
+PSIDdat$Age <- ifelse(PSIDdat$Age == 999, NA, PSIDdat$Age)
+PSIDdat$YearsCompletedEducation <- ifelse(PSIDdat$YearsCompletedEducation == 99, NA, PSIDdat$YearsCompletedEducation)
+PSIDdat <- na.omit(PSIDdat)
+PSIDdat$time <- substring(PSIDdat$time,1, 4)
+PSIDdat$time <- as.numeric(PSIDdat$time)
+
+##Regression model
+PSIDdat <- within(PSIDdat, Race <- relevel(Race, ref=2))
+my.mod <- glm(log(TotalIncome) ~ Age + as.factor(EmploymentStatus) + as.factor(Race) + YearsCompletedEducation, data = PSIDdat)
+
+summary(my.mod)
+```
+I also examined the autocorrelation between the two continuous covariates and income levels using a CCF  plot of each and found evidence for autocorrelation at different lag periods.  
+
+```{r eval=TRUE, echo=FALSE}
+PSID.pomp$time <- as.Date(as.yearmon(PSID.pomp$time))
+PSID.pomp$time <- as.Date(PSID.pomp$time, "%y%m%d")
+
+inc <- xts(PSID.pomp$TotalIncome, order.by=as.Date(PSID.pomp$time))
+inc <- as.vector(inc)
+
+educ <- xts(PSID.pomp$YearsCompletedEducation, order.by=as.Date(PSID.pomp$time))
+educ <- as.vector(educ)
+ccf(educ, inc)
+
+age <- xts(PSID.pomp$Age, order.by=as.Date(PSID.pomp$time))
+age <- as.vector(age)
+ccf(age, inc)
+```
+The next step is to determing if the number of transitionary states; 2, hypothesized by Costa and Angelis is the optimal number of hidden/latent states present in my data. After running the model with number of states from 2-5, as well as with all the transition covariates, transition covariates except **years of education completed** and none of the covariates, we can examine the likelihood, AIC and BIC values to compare performance (see table 1). I also ran a multivariate response hidden markov model with **total income** as well as **employment status**, indicating in the model that this is a multinomial variable. We can see that the model with the best performace in terms of log likelihood, AIC and BIC is the 2 hidden state model, with 1 response and transition covariates **age** and **race**. 
+```{r eval = FALSE, echo = FALSE}
+##Models
+set.seed(1234)
+trst <- c(0.9, 0.1, 0, 0, 0.1, 0.9, 0, 0)
+psid.ghmm <- depmix(TotalIncome ~ 1, 
+                   data = PSIDdat, nstates = 2, instart = runif(2), 
+                   ntimes = c(17033, 15767, 14324, 14185, 12857, 11078),
+                   family = gaussian(),
+                   transition = ~ Race + Age + YearsCompletedEducation)
+
+fm <- fit(psid.ghmm, verbose = FALSE, emc=em.control(maxit = 500))
+summary(fm, which = "response")
+summary(fm, which = "transition")
+
+
+#Check other hidden state values
+  fmx <- fit(depmix(TotalIncome ~ 1, 
+                   data = PSIDdat, nstates = 3, instart = runif(3), 
+                   ntimes = c(17033, 15767, 14324, 14185, 12857, 11078),
+                   family = gaussian(),
+                   transition = ~ Race + Age + YearsCompletedEducation), verbose = FALSE, 
+          emc=em.control(maxit = 500))
+  
+  fmxx <- fit(depmix(TotalIncome ~ 1, 
+                    data = PSIDdat, nstates = 4, instart = runif(4), 
+                    ntimes = c(17033, 15767, 14324, 14185, 12857, 11078),
+                    family = gaussian(),
+                    transition = ~ Race + Age + YearsCompletedEducation), 
+              
+              verbose = FALSE, 
+             emc=em.control(maxit = 500))
+  
+
+  f <- fit(depmix(list(TotalIncome ~ 1, EmploymentStatus ~ 1),
+                     data = PSIDdat, nstates = 2, instart = runif(2), 
+                     ntimes = c(17033, 15767, 14324, 14185, 12857, 11078),
+                     family = list(gaussian(), multinomial("identity"))), 
+            verbose = FALSE, 
+            emc=em.control(maxit = 500))
+  
+  ff <- fit(depmix(TotalIncome ~ 1, 
+                   data = PSIDdat, nstates = 2, instart = runif(2), 
+                   ntimes = c(17033, 15767, 14324, 14185, 12857, 11078),
+                   family = gaussian(),
+                   transition = ~ Race + Age + YearsCompletedEducation + EmploymentStatus), 
+           verbose = FALSE, 
+            emc=em.control(maxit = 500))
+  
+  
+  fr <- fit(depmix(TotalIncome ~ 1,
+                   data = PSIDdat, nstates = 3, instart = runif(3), 
+                   ntimes = c(17033, 15767, 14324, 14185, 12857, 11078),
+                   family = gaussian()), 
+            verbose = FALSE, 
+            emc=em.control(maxit = 500))
+  
+  fe <- depmix(TotalIncome ~ 1, 
+               data = PSIDdat, nstates = 2, instart = runif(2), 
+               ntimes = c(17033, 15767, 14324, 14185, 12857, 11078),
+               family = gaussian(),
+               transition = ~ Race + Age)
+  
+  fe.fit <- fit(fe, verbose = FALSE, emc=em.control(maxit = 500))
+  
+  fee <- fit(depmix(TotalIncome ~ 1, 
+                   data = PSIDdat, nstates = 3, instart = runif(3), 
+                   ntimes = c(17033, 15767, 14324, 14185, 12857, 11078),
+                   family = gaussian(),
+                   transition = ~ Race + Age), 
+            verbose = FALSE, 
+            emc=em.control(maxit = 500))
+
+
+
+
+post <- posterior(fm)
+results <- cbind(PSIDdat, post[,1])
+setnames(results, "V2", "state")
+results$state <- factor(results$state, 
+                           levels = c(1,2),
+                        labels = c("State 1", "State 2"))
+
+res2 <- results
+res2$state <- factor(res2$state, 
+                        levels = c(1,2),
+                        labels = c("State 1", "State 2"))
+
+
+
+```
+
+
+```{r eval=TRUE, echo=FALSE}
+
+c <- data.frame(States = c(2,3,4,2,2,3,2,3), 
+                `Log Lik` = c(-922865.3, -934894, -934894, -1028984, -934894, -934894, -934894, -934894), 
+                AIC = c(1845773, 1869900, 1870002, 2057994, 1869842, 1869816, 1869826, 1869888), 
+                BIC = c(1845969, 1870424, 1871003, 2058115, 1870095, 1869947, 1870004, 1870356), 
+                df = c(21, 56, 107, 13, 27, 14, 19, 50), 
+                Response = c("Total Income", "Total Income", "Total Income", "Total Income and Employment Status", "Total Income", "Total Income",
+                             "Total Income", "Total Income"),
+                Covariates = c("Race, Age, Years of Education","Race, Age, Years of Education", "Race, Age, Years of Education", 
+                                "None",  "Race, Age, Years of Education, Years of Employment", "None", "Race and Age", "Race and Age"))
+
+
+kable(c, "html", caption = "Table 1") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "float_left") %>%
+  row_spec(1, bold = T) %>%
+  row_spec(1:8, color = "black")
+```
+
+
+##Results and Discussion
+Because the algorithm allows covariates on the transition probabilities, the default baseline category is the first state. The probability of being in the first state is the second state value in the first component, and the probability of being in the second state is the second state value in the second state component. We can also see the probability of being in each state withing each state component when the covariates are set at 0. (See table below)
+
+```{r eval=TRUE, echo=FALSE}
+fm.mod <- data.frame(Covariates = c("(Intercept)", "RaceWhite", "RaceBlack/African-American", "RaceAmerican Indian ", "RaceAsian", "RaceNative Hawaiian/Islander", 
+                                    "Age", "YearsCompletedEducation", "Probalities at zero values of the covariates"),
+                     `State 1.1` = c(0,0,0,0,0,0,0,0,0.8449153), 
+                     `State 1.2` = c(-1.695265217, 0.345279128, -0.016206558, 0.428342941, -0.331647880, 0.095527697, 0.009451043, 0.005767248, 0.1550847),
+                     `State 2.1` = c(0,0,0,0,0,0,0,0, 0.160579),
+                     `State 2.2` = c(1.653926256, -0.161628929, -0.806133339, -0.658742499,0.399870158, -0.488206547, -0.006501024, -0.004946809, 0.839421))
+
+
+kable(fm.mod, "html", caption = "Table 2") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  row_spec(1:9, color = "black") %>%
+  add_header_above(c(" " = 1, "State Component 1" = 2, "State Component 2" = 2))
+```
+
+
+
+To analyze the state for each individual in a household, and compare it to the covariates, we use the posterior viterbi algorithm to find the most likely state sequence. We vizualize the most probable state for each household and analyze the result. Looking at the results, there are clear indications that state 1 is the permanent poverty state, and state 2 is the transitionary poverty state. We can see some interesting results looking at charts 1 and 2. It seems like white and mixed households on average, are less likely to be in the permanent poverty state than black households. It also seems (chart 2), that households where the head of house and spouse are employed are more likely to be in the transtionary poverty state than households with unemployed individuals. Looking also at income levels by state, we can see that households with higher income levels are overwhelmenly more likely to be in the transitionary poverty state than those with lower income levels. For the age covariate, on average, younger individuals are more likely to be in a permanent poverty state,but the difference is trivial. 
+
+
+```{r eval=TRUE, echo=FALSE, fig.height=10, fig.width=10}
+ ##RACE
+race1 <- ggplot(subset(results, state == 1), aes(x = "", fill = factor(Race))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="Race", 
+       x=NULL, 
+       y=NULL, 
+       title="State 1 - Permanent Poverty")
+
+race1 <- race1 + coord_polar(theta = "y", start=0)
+
+
+race2 <- ggplot(subset(results, state == 2), aes(x = "", fill = factor(Race))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="Race", 
+       x=NULL, 
+       y=NULL, 
+       title="State 2 - Transitionary Poverty", 
+       caption="Chart 1 - Race")
+
+race2 <- race2 + coord_polar(theta = "y", start=0)
+library(gridExtra)
+grid.arrange(race1, race2)
+
+
+##EMPLOYMENT
+emp1 <- ggplot(subset(results, state == 1), aes(x = "", fill = factor(EmploymentStatus))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="Race", 
+       x=NULL, 
+       y=NULL, 
+       title="State 1 - Permanent Poverty")
+
+emp1 <- emp1 + coord_polar(theta = "y", start=0)
+
+
+emp2 <- ggplot(subset(results, state == 2), aes(x = "", fill = factor(EmploymentStatus))) + 
+  geom_bar(width = 1) +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="Race", 
+       x=NULL, 
+       y=NULL, 
+       title="State 2 - Transitionary Poverty", 
+       caption="Chart 2 - Race")
+
+emp2 <- emp2 + coord_polar(theta = "y", start=0)
+grid.arrange(emp1, emp2)
+
+income.lev <- ggplot(res2, aes(TotalIncome)) + scale_fill_brewer(palette = "Spectral")
+  
+income.lev <- income.lev + geom_histogram(aes(fill = state),
+                    bins=5, 
+                    col="black", 
+                    size=.1) +   # change number of bins
+                    labs(title="Chart 3: State classification by income levels", 
+                           subtitle="State 1 - Permanent Poverty; State 2 - Transitionary Poverty") 
+  
+income.lev
+
+##AGE
+age.lev <- ggplot(res2, aes(Age)) + scale_fill_brewer(palette = "Spectral")
+
+age.lev <- age.lev + geom_histogram(aes(fill = state),
+                                          bins=5, 
+                                          col="black", 
+                                          size=.1) +   # change number of bins
+  labs(title="State classification by age levels", 
+       subtitle="State 1 - Transitionary Poverty; State 2 - Permanent Poverty")
+
+age.lev
+```
+
+##References
+A Dynamic Latent Model for Poverty Measurement; Michelle Costa and Luca De Angelis
+Panel Study of Income Dynamics (PSID) University of Michigan
+https://pdfs.semanticscholar.org/207e/81cf7b5c22176ae3972da2ecd09f6b2c3c67.pdf
+http://yunus.hacettepe.edu.tr/~iozkan/eco742/hmm.html
+Lecture Notes: https://ionides.github.io/531w18/13/notes13.html
+Depmix4 CRAN
+
+
+

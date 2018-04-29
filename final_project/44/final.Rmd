@@ -1,0 +1,390 @@
+---
+title: "Time Series Analysis for the Henry Hub US Natural Gas Spot Price"
+date: "April 25, 2018"
+output:
+  html_document:
+    highlight: tango
+    theme: cosmo
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE, fig.align='center', fig.height = 4, fig.width = 6)
+
+set.seed(594709947L)
+
+library(knitr)
+library(readr)
+library(data.table)
+library(ggplot2)
+library(reshape2)
+
+library(forecast)
+library(mFilter)
+library(doMC)
+library(pomp)
+library(tseries)
+library(doParallel)
+
+stopifnot(packageVersion("pomp")>="0.69-1")
+```
+
+------
+
+------
+
+# 1. Motivation and Project Goal
+
+Natural gas is the second largest energy consumption source in the United States. Analyzing natural gas price is interesting because natural gas is an important commodity product as well as an important future product. Its price will affect trading company’s revenue, and manufacturing company’s cost structure. It is also a signal to make energy production plan. There are significant amount of former work analyzing stock price, yet not that many on the natural gas price. Thus, this project is interested in using time series analysis methods that are popular in analyzing stock price (GARCH and POMP) to study the pattern of Henry Hub US Natural Gas Spot Price from 2013 to 2017.
+
+------
+
+------
+
+# 2. Preliminary Data Analysis
+
+Here is the glance of the dataset to get a better sense of the data. The original dataset includes historical daily price data from 1997. Considering the computation feasibility, this project selected daily data since 2013.
+
+```{r echo=FALSE}
+data = read_csv("data.csv")
+names(data) = c("Day", "Price")
+data$Day = as.Date(data$Day, "%m/%d/%y")
+data$Weekday = weekdays(data$Day)
+# data = data[data$Weekday == "Monday", c("Day", "Price")]
+data = data[data$Day > as.Date("1/1/13", "%m/%d/%y"),]
+data$Time = c(1:nrow(data))
+# head(data)
+summary(data)
+print(paste0("Total data points: ", nrow(data)))
+```
+
+```{r}
+ggplot(data, aes(x=Day, y=Price)) + geom_line() +
+                                    labs(title="Fig-1: Henry Hub Natural Gas Spot Price") + 
+                                    labs(x="Year", y="Price ($ per Million Btu)") + 
+                                    theme(legend.position="top",
+                                          plot.title=element_text(hjust=0.5, face="bold"),
+                                          panel.background = element_blank()) # F39C12
+```
+
+From Figure 1, we can see that there is a significant pump in the winter of 2014 due to extreme weather, but there is no show of seasonality.
+
+```{r}
+dPrice = diff(log(data$Price))
+dPrice = dPrice - mean(dPrice)
+plot(dPrice, type = "l", ylab="log return", main = "Fig-2: Demeaned Log Return")
+```
+
+From Figure 2, we can see that the demeaned log return of natural gas price has some similar features to the stock market, which is said that there are time periods having higher volatility, and high volatility usually clusters together. Thus, we choose to fit a GARCH Model -- a widely used model for financial time series -- in section 3.
+
+------
+
+------
+
+# 3. GARCH Model
+
+A GARCH(p,q) Model can be notated as below:
+$$ Y_n = \epsilon_n \sqrt{V_n},$$
+where
+$$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2 + \sum_{k=1}^q \beta_k V_{n-k}$$
+and $\epsilon_{1:N}$ is white noise.
+
+```{r}
+acf(dPrice, main="Fig-3.1: ACF of Demeaned Log Return", lag=36)
+acf(dPrice^2, main="Fig-3.2: ACF of Squared Demeaned Log Return", lag=36)
+
+ddPrice = decompose(ts(dPrice, frequency=365, start=2013-01-01))$random
+ddPrice = ddPrice[!is.na(ddPrice)]
+```
+
+The GARCH model assumes that $y_n$ needs to be uncorrelated, but $y_n^2$ is correlated. From Figure 3, we can see that $y_n^2$ is well correlated, but $y_n$ also has some lag in 1, 2, 3, 9, 12, 14, 16, and 18. So $y_n$ is further processed to use time series decomposition to extract the random part as the less correlated data. We choose to fit a GARCH$(1,1)$ model since it is generally a popular choice (Cowpertwait and Metcalfe 2009).
+
+```{r}
+fit.garch <- garch(ddPrice, grad="numerical", trace=FALSE)
+L.garch <- logLik(fit.garch)
+summary(fit.garch)
+print(L.garch)
+```
+
+The loglikelihood of GARCH(1,1) model is 1853.099, and all the coefficient are significant. Also, the p-value of Box-Ljung test is not significant, so it is not sufficient to reject the null hypothesis that the squared residuals are uncorrelated. However, the p-value of Jarque Bera test is very small, so we should reject the null hypothesis of the residuals are normally distributed. 
+
+```{r}
+qqnorm(ddPrice, main="Fig-4: Normal Q-Q Plot of Demeaned Log Return")
+qqline(ddPrice)
+```
+
+The Q-Q Plot in Figure 4 also shows that the data have quite heavy tail. We can tell that the natural gas price log-returns are also similar to the stock price log-returns in that they both show heavy-tails.
+
+Since it is hard to interpret parameters of GARCH for financial market behavior, we need to go beyond GARCH model to POMP model for further analysis.
+
+# 4. POMP Model
+## 4.1 Theory
+In the stock market, there is a well-studied observation called leverage, which is said that negative shocks to a stock market index are associated with a subsequent increase in volatility. (Ionides, STATS531 notes14) This section will implement the stochastic volatility with random-walk leverage (Breto, 2014) and analyze this phenomenon in the natural gas market.
+
+We define the following variables:
+
+$Y_t$: a financial rate of return in time period $t$
+
+$σ_t^2$: the volatility of $y_t$
+
+$H_t$: log volatility of $y_t$
+
+$R_t$: the Fisher-transformed leverage process driven by the random-walk leverage factor process $G_t$
+
+$\epsilon_t$: Gaussian unit-variance white noise processes
+
+$ν_t$: a Gaussian white noise process
+
+$$Y_t = σ_t^2 \epsilon_t = \exp\{H_t/2\} \epsilon_t$$
+$$H_t = \mu_h (1-\phi) +\phi H_{t-1} + \beta_{t-1}R_t \exp\{-H_{t-1}/2\} +\omega_t$$
+$$R_t = \frac{\exp\{2G_t\}-1}{\exp\{2G_t\}+1}$$
+$$G_t = G_{t-1}+\nu_t$$
+where $\beta_n=Y_n\sigma_\eta\sqrt{1-\phi^2}$, $\{\epsilon_n\}$ is an iid $N(0,1)$ sequence, $\{\nu_n\}$ is an iid $N(0,\sigma_{\nu}^2)$ sequence, and $\{\omega_n\}$ is an iid $N(0,\sigma_\omega^2)$ sequence.
+
+## 4.2 Model Fitting
+```{r}
+# Here we start to build a POMP model.
+ngp_statenames <- c("H", "G", "Y_state")
+ngp_rp_names <- c("sigma_nu", "mu_h", "phi", "sigma_eta")
+ngp_ivp_names <- c("G_0", "H_0")
+ngp_paramnames <- c(ngp_rp_names, ngp_ivp_names)
+ngp_covarnames <- "covaryt"
+
+rproc1 <- "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+ngp_rproc.sim <- paste(rproc1, rproc2.sim)
+ngp_rproc.filt <- paste(rproc1, rproc2.filt)
+
+ngp_initializer <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+
+ngp_rmeasure <- "
+   y=Y_state;
+"
+ngp_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+ngp_toEstimationScale <- "
+  Tsigma_eta = log(sigma_eta);
+  Tsigma_nu = log(sigma_nu);
+  Tphi = logit(phi);
+"
+ngp_fromEstimationScale <- "
+  Tsigma_eta = exp(sigma_eta);
+  Tsigma_nu = exp(sigma_nu);
+  Tphi = expit(phi);
+"
+
+expit <- function(real){1/(1+exp(-real))}
+logit <- function(p.arg){log(p.arg/(1-p.arg))}
+
+ngp.filt <- pomp(data=data.frame(y=ddPrice,
+                                 time=1:length(ddPrice)),
+              statenames=ngp_statenames,
+              paramnames=ngp_paramnames,
+              covarnames=ngp_covarnames,
+              times="time",
+              t0=0,
+              covar=data.frame(covaryt=c(0,ddPrice),
+                     time=0:length(ddPrice)),
+              tcovar="time",
+              rmeasure=Csnippet(ngp_rmeasure),
+              dmeasure=Csnippet(ngp_dmeasure),
+              rprocess=discrete.time.sim(step.fun=Csnippet(ngp_rproc.filt),delta.t=1),
+              initializer=Csnippet(ngp_initializer),
+              toEstimationScale=Csnippet(ngp_toEstimationScale), 
+              fromEstimationScale=Csnippet(ngp_fromEstimationScale)
+)
+```
+
+After created the pomp object, we set the following starting values to initiate the model.
+```{r}
+params_test <- c(
+     sigma_nu = exp(-4.5),  
+     mu_h = -0.25,       
+     phi = expit(4),     
+     sigma_eta = exp(-0.07),
+     G_0 = 0,
+     H_0=0
+  )
+```
+
+```{r}
+sim1.sim <- pomp(ngp.filt, 
+                 statenames=ngp_statenames,
+                 paramnames=ngp_paramnames,
+                 covarnames=ngp_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(ngp_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+sim1.filt <- pomp(sim1.sim, 
+  covar=data.frame(
+    covaryt=c(obs(sim1.sim),NA),
+    time=c(timezero(sim1.sim),time(sim1.sim))),
+  tcovar="time",
+  statenames=ngp_statenames,
+  paramnames=ngp_paramnames,
+  covarnames=ngp_covarnames,
+  rprocess=discrete.time.sim(step.fun=Csnippet(ngp_rproc.filt),delta.t=1)
+)
+```
+
+We first use IF2 algorithm (Ionides, STATS531 notes12) and set the following variables to find the local maximum likelihood.
+```{r}
+run_level <- 3 
+ngp_Np <-          c(100, 1e3, 2e3)
+ngp_Nmif <-        c(10, 100, 200)
+ngp_Nreps_eval <-  c(4, 10, 20)
+ngp_Nreps_local <- c(10, 20, 20)
+ngp_Nreps_global <-c(10, 20, 100)
+
+cores <- 20
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+set.seed(1320290398, kind="L'Ecuyer")
+
+ngp_rw.sd_rp <- 0.02
+ngp_rw.sd_ivp <- 0.1
+ngp_cooling.fraction.50 <- 0.5
+```
+
+```{r}
+stew("mif1.rda",{
+   t.if1 <- system.time({
+   if1 <- foreach(i=1:ngp_Nreps_local[run_level],
+                  .packages='pomp', .combine=c,
+                  .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                    mif2(ngp.filt,
+                         start=params_test,
+                         Np=ngp_Np[run_level],
+                         Nmif=ngp_Nmif[run_level],
+                         cooling.type="geometric",
+                         cooling.fraction.50=ngp_cooling.fraction.50,
+                         transform=TRUE,
+                         rw.sd = rw.sd(
+                            sigma_nu  = ngp_rw.sd_rp,
+                            mu_h      = ngp_rw.sd_rp,
+                            phi       = ngp_rw.sd_rp,
+                            sigma_eta = ngp_rw.sd_rp,
+                            G_0       = ivp(ngp_rw.sd_ivp),
+                            H_0       = ivp(ngp_rw.sd_ivp)
+                         )
+                    )
+                  )
+    
+    L.if1 <- foreach(i=1:sp500_Nreps_local[run_level],.packages='pomp',
+                      .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                      {
+                        logmeanexp(
+                          replicate(ngp_Nreps_eval[run_level],
+                                    logLik(pfilter(ngp.filt,params=coef(if1[[i]]),Np=ngp_Np[run_level]))
+                          ),
+                          se=TRUE)
+                      }
+  })
+},seed=318817883,kind="L'Ecuyer")
+```
+
+```{r}
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level>1) 
+  write.table(r.if1,file="ngp_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+```
+The local maximization log likelihood is 1902, which is 2.6% higher than the result of GARCH(1,1), so that the pomp model better fits this dataset.
+
+Here is the local geometry of the likelihood surface.
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+Now we use the iterative algorithm again, but randomize the starting values of each parameter from a space and search for the global maximum likelihood.
+```{r}
+ngp_box <- rbind(
+ sigma_nu = c(0.005, 0.05),
+ mu_h     = c(-1,0),
+ phi = c(0.95, 0.99),
+ sigma_eta = c(0.5, 1),
+ G_0 = c(-2, 2),
+ H_0 = c(-1, 1)
+)
+```
+
+```{r}
+stew(file="box_eval.rda",{
+  t.box <- system.time({
+    if.box <- foreach(i=1:sp500_Nreps_global[run_level],.packages='pomp',.combine=c,
+                  .options.multicore=list(set.seed=TRUE)) %dopar%  
+      mif2(
+        if1[[1]],
+        start=apply(sp500_box,1,function(x)runif(1,x))
+      )
+    
+    L.box <- foreach(i=1:sp500_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                      .options.multicore=list(set.seed=TRUE)) %dopar% {
+                        set.seed(87932+i)
+                        logmeanexp(
+                          replicate(sp500_Nreps_eval[run_level],
+                                    logLik(pfilter(sp500.filt,params=coef(if.box[[i]]),Np=sp500_Np[run_level]))
+                          ), 
+                          se=TRUE)
+                      }
+  })
+},seed=290860873,kind="L'Ecuyer")
+```
+
+```{r}
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="ngp_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+```
+The global maximization log likelihood is also 1902.
+
+Here is the global geometry of the likelihood surface.
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+## 4.3 Diagnostics
+```{r}
+plot(if.box)
+```
+
+We can see the likelihood converges quite well after couple iterations, but the effective sample size frequently drops dramatically, which usually occurs when the volatility changes suddenly and dramatically. Phi and one of the sigma eta did not converge well, but the other variables became stable after about 100 iterations.
+
+------
+
+------
+
+# 5. Conclusion
+
+This project used time series models to analyze the pattern of the Henry Hub natural gas spot price. We examined the GARCH model and POMP model. We found that the natural gas price also has sudden changes in volatility. The POMP model gave us better performance in terms of the maximum likelihood.
+
+------
+
+------
+
+# 6. Reference
+
+1. Ionides, E. (n.d.). Stats 531 (Winter 2018) ‘Analysis of Time Series’ Retrieved April 22, 2018, from http://ionides.github.io/531w18/
+
+2. Henry Hub Natural Gas Spot Price. Retrieved April 22, 2018, from https://www.eia.gov/naturalgas/data.php
+
+3. Carles Bretó, 2014. On idiosyncratic stochasticity of financial leverage effects. Statistics and Probability Letters 91 (2014), 20–26.

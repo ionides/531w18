@@ -1,0 +1,712 @@
+---
+title: "Study of Varicella in Maryland"
+date: "April 18, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+```{r,echo=FALSE}
+set.seed(123)
+require(ggplot2)
+require(dplyr)
+require(reshape2)
+require(pomp) 
+require(doParallel) 
+require(doMC) 
+require(magrittr) 
+library(plyr) 
+
+#install.packages(c("ggplot2", "dplyr", "reshape2","pomp", "doParallel", "doMC", "magrittr"))
+```
+
+# Data Source and Motivation 
+Chickenpox (Varicella) is a very contagious disease caused by the varicella-zoster virus (VZV). It causes a blister-like rash, itching, tiredness, and fever. Chickenpox used to be very common in the United States. Each year, chickenpox caused about 4 million cases, about 10,600 hospitalizations and 100 to 150 deaths (From CDC website). 
+
+SIR model is widely used for disease transmission dynamics. Based on that we also have SEIR model that includes a period of latency before becoming infectious. Like what we learnt from class, SIR model has very good performance in boarding school flu data (Anonymous 1978). Also SEIR model performed well in Measles data (He, Ionides, & King, J. R. Soc. Interface). I want to compare the performance of those two model and see whether it appropriate to include an latency period in transmission of Varicella.
+
+The data of Varicella are from Project Tycho <http://www.tycho.pitt.edu>. Actually the data include all the states in US. However, the environment as well as population are different from state to state, so the coefficients may also be different. Therefore, it's better to focus on a smaller scale. Therefore, I focused on Maryland for my study. The data of population in Maryland from 1902 to 2015 is from <http://www.data.gov>, with birth rate of each year. 
+
+
+# Structure of the Study 
+I will use two pomp models, SIR and SEIR, in my study. The pomp representation for SIR and SEIR model already exist (Class note 12, EL Ionides & Case study: Measles in large and small towns, AA King). For SEIR model I will do slightly modification based on original model. For SIR model I will basically follow the class note.   
+
+In both models I will first perform local search to get the range of parameters, then perform global search and analyze the convergence diagnostic. The purpose is to see whether SEIR model works better in large population cases, with variation in the total population.
+
+
+# Data Exploration
+
+The plot is the time plot of Varicella cases in each week on different time scale. The upper one is plot of original data and there are obviously lots of missing values before 1973. And there is no evidence of missing value in time plot between 1973 to 1981. Also with limited computational resource, a smaller dataset would be easier to run. Therefore, it's more reasonable to choose range from 1973 to 1981. 
+
+```{r,echo=FALSE}
+disease = read.csv("Varicella.csv", header = T, sep = ",") 
+disease = disease[,c(8,12,20)]   
+colnames(disease) = c("state", "date", "cases")
+disease$date = as.Date(disease$date) 
+```
+
+```{r,echo=FALSE}
+# code from case study 
+disease %>% 
+  mutate(year=as.integer(format(date,"%Y"))) %>%
+  subset(state=="MARYLAND" & year>=1924 & year<1982) %>%
+  mutate(time=(julian(date,origin=as.Date("1924-01-06")))/365.25+1924) %>%
+  subset(time>1924 & time<1982, select=c(time,cases)) -> dat 
+dat %>% ggplot(aes(x=time,y=cases)) + geom_line() -> a
+
+# choose time between 1973 and 1981
+disease %>% 
+  mutate(year=as.integer(format(date,"%Y"))) %>%
+  subset(state=="MARYLAND" & year>=1973 & year<1981) %>%
+  mutate(time=(julian(date,origin=as.Date("1973-01-01")))/365.25+1973) %>%
+  subset(time>1973 & time<1981, select=c(time,cases)) -> dat 
+dat %>% ggplot(aes(x=time,y=cases)) + geom_line() -> b 
+gridExtra::grid.arrange(a,b)
+```
+
+As we can see from the plot below, both population and number of birth increased between 1973 and 1981. There is no peak in the population and the population and birth shared the same pattern. This suggesting that Varicella make no significant impact on the populatin of Maryland. It is intuitively correct as Varicella is not a deadly disease. 
+
+```{r,echo=FALSE} 
+# pop rate in maryland 
+maryland_birth = read.csv("Maryland_Births.csv", header = T, sep = ",") 
+maryland_birth$Birth.Rate = maryland_birth$Birth.Rate * 0.01 
+maryland_birth$pop =ceiling(maryland_birth$Number.of.Births/maryland_birth$Birth.Rate) 
+maryland_birth$Birth.Rate = NULL  
+maryland_birth =  maryland_birth[,c(1,3,2)] 
+colnames(maryland_birth) = c("year", "pop", "births") 
+maryland_birth = maryland_birth[maryland_birth$year >= 1973 & maryland_birth$year <= 1981,]
+maryland_birth %>% 
+  plyr::summarize(
+    time=seq(from=min(year),to=max(year),by=1/12),
+    pop=predict(smooth.spline(x=year,y=pop),x=time)$y,
+    birthrate=predict(smooth.spline(x=year+0.5,y=births),x=time-4)$y
+  ) -> covar
+
+#colnames(covar) = c("Date", "P", "birthrate")
+
+maryland_birth %>% melt(id="year") %>%
+  ggplot(aes(x=year,y=value))+geom_point()+
+  facet_wrap(~variable,ncol=1,scales="free_y") 
+
+```
+
+# SEIR Model 
+
+### Model Diagram 
+Compare to normal SEIR model, we also include birth and death into account, since they are important new entrances to susceptible compartment. According to CDC website, patients of Varicella may have latency period, when they are infected but have no symptoms. In the original model in King's case study, Measles patients in this latent period (E node in the diagram) are not infectous. And this is true for Varicella too, the patients of Varicella are not infectous until symptoms show up.  
+
+One special thing that my model is different from AA king's model in the case study of Measles is that I also include an arrow from S to R. There are some children got vaccination when they are young, I want to show this process. According to CDC, 91% of children 19 to 35 months old in the United States had received one dose of varicella vaccine, varying from 83% to 95% by state. I didn't find the exactly vaccination percentage for Maryland. So take (0.83, 0.95) as the range of $vr$ in global search and take 0.85 as start in local search. 
+
+
+```{r,echo=FALSE}
+library(DiagrammeR)
+DiagrammeR::grViz("digraph SEIR {
+            graph [rankdir=TD, overlap=false, fontsize = 10]
+            node[shape=egg, label='B'] b;
+            subgraph {
+            rank=same;
+            node[shape=oval, label='S'] S;
+            node[shape=oval, label='E'] E;
+            node[shape=oval, label='I'] I;
+            node[shape=oval, label='R'] R;
+            S->E E->I I->R S->R
+            }
+            node[shape=diamond, label='dead'] d;
+            b->S
+            {S E I R}->d
+            }",height=300,width=800)
+```
+
+
+Before define process model, I want to add a little more explanation of my model to make it clear. The sturucture of my model is from King's model, so the feature like cohort effect, seasonaility and transmission rate are the same as his model. So I won't spend time describing his model and explain the details.
+$vr$ is the vaccination rate, $vac$ is the number of person received vaccination before infected. $vr$ is the key parameter I would focus on. $vr$ is multiplied by the vaccination effectiveness, which is 0.9 for Varicella. Then multiplied by birthrate lagged one year because new birth children would receive vaccination before one year old. My model haven't take those who is infected and got vaccination after that into account. Below is how I defined the process model.
+
+
+```{r}
+## ----rprocess------------------------------------------------------------
+rproc <- Csnippet("
+  double beta, br, seas, foi, dw, births, vac;
+  double rate[6], trans[6];
+  
+  // cohort effect
+  if (fabs(t-floor(t)-251.0/365.0) < 0.5*dt) 
+    br = cohort*birthrate/dt + (1-cohort)*birthrate;
+  else 
+    br = (1.0-cohort)*birthrate;
+
+  // term-time seasonality
+  t = (t-floor(t))*365.25;
+  if ((t>=7&&t<=100) || (t>=115&&t<=199) || (t>=252&&t<=300) || (t>=308&&t<=356))
+      seas = 1.0+amplitude*0.2411/0.7589;
+    else
+      seas = 1.0-amplitude;
+
+  // transmission rate
+  beta = R0*(gamma+mu)*seas;
+  // expected force of infection
+  foi = beta*pow(I+iota,alpha)/pop;
+  // white noise (extrademographic stochasticity)
+  dw = rgammawn(sigmaSE,dt);
+
+  rate[0] = foi*dw/dt;  // stochastic force of infection
+  rate[1] = mu;             // natural S death
+  rate[2] = sigma;        // rate of ending of latent stage
+  rate[3] = mu;             // natural E death
+  rate[4] = gamma;        // recovery
+  rate[5] = mu;             // natural I death
+
+  // Poisson births
+  births = rpois(br*dt);
+  
+  // Vaccination
+  vac = nearbyint(vr*br*.9*dt);
+
+
+  // transitions between classes
+  reulermultinom(2,S,&rate[0],dt,&trans[0]);
+  reulermultinom(2,E,&rate[2],dt,&trans[2]);
+  reulermultinom(2,I,&rate[4],dt,&trans[4]);
+
+
+  S += births   - trans[0] - trans[1] - vac;
+  E += trans[0] - trans[2] - trans[3];
+  I += trans[2] - trans[4] - trans[5];
+  R = pop - S - E - I + vac;
+  W += (dw - dt)/sigmaSE;  // standardized i.i.d. white noise
+  C += trans[4];           // true incidence
+")
+
+## ----initializer------------------------------------------------------------
+
+initlz <- Csnippet("
+  double m = pop/(S_0+E_0+I_0+R_0);
+  S = nearbyint(m*S_0);
+  E = nearbyint(m*E_0);
+  I = nearbyint(m*I_0);
+  R = nearbyint(m*R_0);
+  W = 0;
+  C = 0;
+")
+
+## ----dmeasure------------------------------------------------------------
+dmeas <- Csnippet("
+  double m = rho*C;
+  double v = m*(1.0-rho+psi*psi*m);
+  double tol = 1.0e-18;
+  if (cases > 0.0) {
+    lik = pnorm(cases+0.5,m,sqrt(v)+tol,1,0)-pnorm(cases-0.5,m,sqrt(v)+tol,1,0)+tol;
+  } else {
+    lik = pnorm(cases+0.5,m,sqrt(v)+tol,1,0)+tol;
+  }
+")
+
+## ----rmeasure------------------------------------------------------------
+rmeas <- Csnippet("
+  double m = rho*C;
+  double v = m*(1.0-rho+psi*psi*m);
+  double tol = 1.0e-18;
+  cases = rnorm(m,sqrt(v)+tol);
+  if (cases > 0.0) {
+    cases = nearbyint(cases);
+  } else {
+    cases = 0.0;
+  }
+")
+```
+
+### Parameters
+
+Below are the parameters I want to estimate:  
+
+$R0$: "the expected number of secondary infections engendered by an infective introduced into a fully susceptible population" (He et al. 2010).  
+$\gamma$: Rate of recovery    
+$cohort$: A specified fraction (cohort) of the cohort enter the susceptible pool all at once. Actually refer to the beginning of a child’s school year as the introduction of a large number of new susceptible      
+$\alpha$: A mixing parameter; the closer to one, the more homogeneous mixing is in the population    
+$\iota$: "the mean number of infectives visiting the population at any given time" (He et al. 2010)    
+$\rho$: Reporting rate    
+$\psi$: Overdispersion parameter in the reporting process.    
+$\sigma$: Rate of ending the latent stage    
+$\sigma_{\text{SE}}$: Extrademographic stochasticity affecting the force of infection    
+$vr$: Vaccination rate    
+$amplitude$: Seasonality parameter    
+$S_0$, $E_0$, $I_0$, $R_0$: Fraction of the population in each of the four compartments
+
+
+```{r,echo=FALSE}
+dat %>% 
+  pomp(t0=with(dat,2*time[1]-time[2]),
+       time="time",
+       rprocess=euler.sim(rproc,delta.t=1/365.25),
+       initializer=initlz,
+       dmeasure=dmeas,
+       rmeasure=rmeas,
+       covar=covar,
+       tcovar="time",
+       zeronames=c("C","W"),
+       statenames=c("S","E","I","R","C","W"),
+       paramnames=c("R0","mu","sigma","gamma","alpha","iota",
+                    "rho","sigmaSE","psi","cohort","amplitude",
+                    "S_0","E_0","I_0","R_0", "vr")
+  ) -> m1
+
+
+```
+
+```{r,echo=FALSE}
+# mle based on previous study
+read.csv(text="
+town,loglik,loglik.sd,mu,delay,sigma,gamma,rho,R0,amplitude,alpha,iota,cohort,psi,S_0,E_0,I_0,R_0,sigmaSE
+Bedwellty,-1125.1,0.14,0.02,4,57.9,146,0.311,24.7,0.16,0.937,0.0396,0.351,0.951,0.0396,2.64e-05,2.45e-05,0.96,0.0611
+Birmingham,-3239.3,1.55,0.02,4,45.6,32.9,0.544,43.4,0.428,1.01,0.343,0.331,0.178,0.0264,8.96e-05,0.000335,0.973,0.0611
+Bradford,-2586.6,0.68,0.02,4,45.6,129,0.599,32.1,0.236,0.991,0.244,0.297,0.19,0.0365,7.41e-06,4.59e-06,0.964,0.0451
+Bristol,-2681.6,0.5,0.02,4,64.3,82.6,0.626,26.8,0.203,1.01,0.441,0.344,0.201,0.0358,9.62e-06,5.37e-06,0.964,0.0392
+Cardiff,-2364.9,0.73,0.02,4,39,143,0.602,34.4,0.223,0.996,0.141,0.267,0.27,0.0317,1.01e-05,9.21e-06,0.968,0.0539
+Consett,-1362.9,0.73,0.02,4,42.6,172,0.65,35.9,0.2,1.01,0.0731,0.31,0.406,0.0322,1.83e-05,1.97e-05,0.968,0.0712
+Dalton.in.Furness,-726.1,0.3,0.02,4,73.6,257,0.455,28.3,0.203,0.989,0.0386,0.421,0.818,0.0387,2.23e-05,2.36e-05,0.961,0.0779
+Halesworth,-318.6,0.51,0.02,4,49.6,210,0.754,33.1,0.381,0.948,0.00912,0.547,0.641,0.0526,1.99e-05,2.82e-05,0.947,0.0748
+Hastings,-1583.7,0.21,0.02,4,56.3,74.1,0.695,34.2,0.299,1,0.186,0.329,0.396,0.0233,5.61e-06,3.4e-06,0.977,0.0955
+Hull,-2729.4,0.39,0.02,4,42.1,73.9,0.582,38.9,0.221,0.968,0.142,0.275,0.256,0.0371,1.2e-05,1.13e-05,0.963,0.0636
+Leeds,-2918.6,0.23,0.02,4,40.7,35.1,0.666,47.8,0.267,1,1.25,0.592,0.167,0.0262,6.04e-05,3e-05,0.974,0.0778
+Lees,-548.1,1.1,0.02,4,45.6,244,0.612,29.7,0.153,0.968,0.0311,0.648,0.681,0.0477,2.66e-05,2.08e-05,0.952,0.0802
+Liverpool,-3403.1,0.34,0.02,4,49.4,39.3,0.494,48.1,0.305,0.978,0.263,0.191,0.136,0.0286,0.000184,0.00124,0.97,0.0533
+London,-3804.9,0.16,0.02,4,28.9,30.4,0.488,56.8,0.554,0.976,2.9,0.557,0.116,0.0297,5.17e-05,5.14e-05,0.97,0.0878
+Manchester,-3250.9,0.66,0.02,4,34.4,56.8,0.55,32.9,0.29,0.965,0.59,0.362,0.161,0.0489,2.41e-05,3.38e-05,0.951,0.0551
+Mold,-296.5,0.25,0.02,4,67.4,301,0.131,21.4,0.271,1.04,0.0145,0.436,2.87,0.064,2.61e-05,2.27e-05,0.936,0.0544
+Northwich,-1195.1,2.25,0.02,4,45.6,147,0.795,30.1,0.423,0.948,0.0602,0.236,0.402,0.0213,1.32e-05,1.58e-05,0.979,0.0857
+Nottingham,-2703.5,0.53,0.02,4,70.2,115,0.609,22.6,0.157,0.982,0.17,0.34,0.258,0.05,1.36e-05,1.41e-05,0.95,0.038
+Oswestry,-696.1,0.49,0.02,4,37.3,168,0.631,52.9,0.339,1.04,0.0298,0.263,0.476,0.0218,1.56e-05,1.61e-05,0.978,0.0699
+Sheffield,-2810.7,0.21,0.02,4,54.3,62.2,0.649,33.1,0.313,1.02,0.853,0.225,0.175,0.0291,6.04e-05,8.86e-05,0.971,0.0428
+",stringsAsFactors=FALSE) -> mles 
+mles$vr = 0.85
+mles %>% subset(town=="London") -> mle
+paramnames <- c("R0","mu","sigma","gamma","alpha","iota",
+                "rho","sigmaSE","psi","cohort","amplitude",
+                "S_0","E_0","I_0","R_0", "vr")
+mle %>% magrittr::extract(paramnames) %>% unlist() -> theta # mle
+
+```
+
+
+
+```{r,echo=FALSE}
+toEst <- Csnippet("
+  Tmu = log(mu);
+  Tsigma = log(sigma);
+  Tgamma = log(gamma);
+  Talpha = log(alpha);
+  Tiota = log(iota);
+  Trho = logit(rho); 
+  Tvr = logit(vr);
+  Tcohort = logit(cohort);
+  Tamplitude = logit(amplitude);
+  TsigmaSE = log(sigmaSE);
+  Tpsi = log(psi);
+  TR0 = log(R0);
+  to_log_barycentric (&TS_0, &S_0, 4);
+")
+
+fromEst <- Csnippet("
+  Tmu = exp(mu);
+  Tsigma = exp(sigma);
+  Tgamma = exp(gamma);
+  Talpha = exp(alpha);
+  Tiota = exp(iota);
+  Trho = expit(rho); 
+  Tvr = expit(vr);
+  Tcohort = expit(cohort);
+  Tamplitude = expit(amplitude);
+  TsigmaSE = exp(sigmaSE);
+  Tpsi = exp(psi);
+  TR0 = exp(R0);
+  from_log_barycentric (&TS_0, &S_0, 4);
+")
+
+
+pomp(m1,toEstimationScale=toEst,
+     fromEstimationScale=fromEst,
+     statenames=c("S","E","I","R","C","W"),
+     paramnames=c("R0","mu","sigma","gamma","alpha","iota",
+                  "rho","sigmaSE","psi","cohort","amplitude",
+                  "S_0","E_0","I_0","R_0", "vr")) -> m1
+```
+
+
+
+```{r, echo=FALSE}
+run_level <- 2
+switch(run_level,
+       {bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=2000; bsflu_Nmif=100; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=6000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=100; bsflu_Nlocal=20}
+)
+
+cores <- detectCores()-1  # The number of cores on this machine 
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer") 
+
+registerDoMC(cores=cores) 
+```
+
+
+### Local Search
+
+In order to carry out local search, we need to define inital values for parameters. Here I take the inital value of King's case study, and 0.85 for $vr$. Once we run the global search for the first time, we can use the result to update the MLEs and run the local and global search again to get better result. Due to limitation of time, here I just run it once. 
+```{r,echo=FALSE}
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_local <- foreach(i=1:bsflu_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  
+      mif2(
+        m1,
+        start=theta,
+        Np=bsflu_Np,
+        Nmif=bsflu_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=0.5,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          R0=0.02,
+          mu=0.02,
+          sigma=0.02,
+          gamma=0.02,
+          alpha=0.02,
+          iota=0.02,
+          rho=0.02,
+          sigmaSE=0.02,
+          psi=0.02,
+          cohort=0.02,
+          amplitude=0.02,
+          S_0=ivp(0.02),
+          E_0=ivp(0.02),
+          I_0=ivp(0.02),
+          R_0=ivp(0.02),
+          vr=0.02))
+      
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+## ----lik_global_eval-----------------------------------------------------
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+    t_local_eval <- system.time({
+    liks_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(bsflu_Neval, logLik(pfilter(m1,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5) 
+```
+
+```{r,echo=FALSE}
+pairs(~logLik+R0+mu+sigma+gamma+alpha+iota+rho+sigmaSE+psi+cohort+amplitude+S_0+E_0+I_0+R_0+vr,data=subset(results_local,logLik>max(logLik)-50)) 
+```
+
+
+### Global Search 
+Global search is actually based on the the reasonable range for parameters, and randomly select initial value for parameters from it and run the mif2 algorithm. As disucssed above, I first define the range box for parameters based on the pair plot.
+```{r} 
+abox = rbind(R0=c(5,50),mu=c(0.001,0.5),sigma=c(1,300),gamma=c(1,50),alpha=c(0.05,1),
+            iota=c(1,10),rho=c(0.5,1),sigmaSE=c(0.1,1),psi=c(0.1,1),cohort=c(0.1,1),
+            amplitude=c(0.1,1),S_0=c(0.01,0.03),E_0=c(0.00001,0.0001),I_0=c(5e-5,7e-5),R_0=c(0.5,1),vr=c(0.83,1.5))
+```
+
+The max likelihood of global search is significantly larger than local search.
+
+```{r,echo=FALSE}
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      mifs_local[[1]],
+      start=c(apply(abox,1,function(x)runif(1,x[1],x[2])))
+    )
+  })
+},seed=3847238,kind="L'Ecuyer") 
+
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(bsflu_Neval, logLik(pfilter(m1,params=coef(mifs_global[[i]]),Np=bsflu_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=823847,kind="L'Ecuyer") 
+results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef))) 
+summary(results_global$logLik,digits=5) 
+```
+
+The likelihood doesn't converge or stable to a certain level, suggesting it may need more iterations to converge. The $\rho$ converge to approximately 0.9, which means a high reorting rate. Also the range for $S_0$, $E_0$, $I_0$, $R_0$ are a bit small and none of them converged. This suggests that S, E, I, R initial parameters are not well identified by the model. 
+For the most important parameter $vr$, it converged to a value greater than 1, which is unexpected. There are two interpretation for this. The actual vaccination effectiveness may be greater than 0.9, so it lead to $vr$ converge to a value greater than 1. Or this may result from the birth lag. 
+
+```{r,echo=FALSE}
+plot(mifs_local)
+```
+
+
+### Simulation
+With the parameters estimations from global search, we can simulate cases and compare with original data. Simulation data caputures the seasonality pattern of the original data. As it covered the peaks of each outbreak, but it tend to over estimate the number of patient. And the first peak is slightly delay compare to original data.
+
+```{r,echo=FALSE}
+m1 %>% 
+  simulate(params=theta,nsim=100,as.data.frame=TRUE,include.data=TRUE) %>%
+  subset(select=c(time,sim,cases)) %>%
+  mutate(data=sim=="data") %>%
+  ddply(~time+data,summarize,
+        p=c(0.01,0.2,0.5),q=quantile(cases,prob=p,names=FALSE)) %>%
+  mutate(p=mapvalues(p,from=c(0.01,0.2,0.5),to=c("lo","med","hi")),
+         data=mapvalues(data,from=c(TRUE,FALSE),to=c("data","simulation"))) %>%
+  dcast(time+data~p,value.var='q') %>%
+  ggplot(aes(x=time,y=med,color=data,fill=data,ymin=lo,ymax=hi))+
+  geom_ribbon(alpha=0.2)
+```
+
+
+# SIR model 
+
+SIR model is simpler and less computational consuming. Basic SIR model doesn't have stage death or birth, in other word it doesn't consider change in the whole population. Well it may be suitable for analysis epidemic in a close environment with fixed population, like what we did in class, the flu in boarding school. It may not be suitable for analysis of the whole state with variation in population each year. However, SIR can serve as a control group for SEIR model.In this part I basically used the code from class note 12. 
+
+The SIR model we used in class have two stages, $R_1$ and $R_2$, which refer to different period of recovering in $R$ stage. The data of varicella just have one column of number of patients, not like the bsflu data that have two columns. So I assume those are two stages and both of them are not infectous. $\mu_{R_1}$ and $\mu_{R_2}$ are the transfer rate from $R_1$ to $R_2$ and from $R_2$ to $R_3$. Most of people get Varicella may recover in one week, and the time difference of my data is one week, so I fix $\mu_{R_1}$ and $\mu_{R_2}$ to 0.9.
+Also as I mentioned above, SIR model doesn't take birth and death into account. So I fix the population at $P=4000$, which is the 10% of the population of Marland at 1973. Because if we assume the population age follow normal distribution, there should be 10% of population age between 2 to 14. Since a person would be immune once he/she got infected and recovered. So population age between 2 to 14 are most likely to be infected.
+
+```{r,echo = FALSE}
+# this assume tranfer rate is 1
+create_cure = function(data){ 
+  temp1 = data[-nrow(data),]$cases
+  temp1 = as.data.frame(temp1)
+  temp2 = data[-1,] 
+  temp2 = as.data.frame(temp2)
+  temp2$RAIN = NULL
+  temp3 = cbind(temp2,temp1) 
+  return(temp3)
+} 
+test = create_cure(dat) 
+colnames(test) = c("day", "B", "C")
+```
+
+```{r,echo=FALSE}
+bsflu_statenames <- c("S","I","R1","R2")
+bsflu_paramnames <- c("Beta","mu_I","rho","mu_R1","mu_R2")
+bsflu_obsnames <- c("B", "C") 
+```
+
+
+```{r}
+bsflu_dmeasure <- "
+  lik = dpois(B,rho*R1+1e-6,give_log);
+"
+
+bsflu_rmeasure <- "
+  B = rpois(rho*R1+1e-6);
+  C = rpois(rho*R2);
+"
+
+bsflu_rprocess <- "
+  double t1 = rbinom(S,1-exp(-Beta*I*dt));
+  double t2 = rbinom(I,1-exp(-dt*mu_I));
+  double t3 = rbinom(R1,1-exp(-dt*mu_R1));
+  double t4 = rbinom(R2,1-exp(-dt*mu_R2));
+  S -= t1;
+  I += t1 - t2;
+  R1 += t2 - t3;
+  R2 += t3 - t4;
+"
+
+bsflu_fromEstimationScale <- "
+ TBeta = exp(Beta);
+ Tmu_I = exp(mu_I);
+ Trho = expit(rho);
+"
+
+bsflu_toEstimationScale <- "
+ TBeta = log(Beta);
+ Tmu_I = log(mu_I);
+ Trho = logit(rho);
+"
+
+bsflu_initializer <- "
+ S=4000;
+ I=1;
+ R1=0;
+ R2=0;
+"
+```
+
+
+```{r,echo=FALSE}
+m2 <- pomp(
+  data=test,
+  times="day",
+  t0=0,
+  rprocess=euler.sim(
+    step.fun=Csnippet(bsflu_rprocess),
+    delta.t=1/12
+  ),
+  rmeasure=Csnippet(bsflu_rmeasure),
+  dmeasure=Csnippet(bsflu_dmeasure),
+  fromEstimationScale=Csnippet(bsflu_fromEstimationScale),
+  toEstimationScale=Csnippet(bsflu_toEstimationScale),
+  obsnames = bsflu_obsnames,
+  statenames=bsflu_statenames,
+  paramnames=bsflu_paramnames,
+  initializer=Csnippet(bsflu_initializer)
+)
+
+
+bsflu_params <- data.matrix(read.table("mif_bsflu_params.csv",row.names=NULL,header=TRUE))
+bsflu_mle <- bsflu_params[which.max(bsflu_params[,"logLik"]),][bsflu_paramnames]
+bsflu_fixed_params <- c(mu_R1 = 0.8, mu_R2 = 0.9) # transfer rate 
+```
+
+```{r,echo=FALSE}
+run_level <- 3
+switch(run_level,
+       {bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=2000; bsflu_Nmif=100; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=6000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=100; bsflu_Nlocal=20}
+)
+
+cores <- detectCores()  # The number of cores on this machine 
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer") 
+
+registerDoMC(cores=cores) 
+```
+
+
+```{r,echo=FALSE} 
+bsflu_rw.sd <- 0.02
+bsflu_cooling.fraction.50 <- 0.5
+
+stew(file=sprintf("local_search_m2-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        m2,
+        start=bsflu_mle,
+        Np=bsflu_Np,
+        Nmif=bsflu_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=bsflu_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          Beta=bsflu_rw.sd,
+          mu_I=bsflu_rw.sd,
+          rho=bsflu_rw.sd
+        )
+      )
+      
+    }
+  })
+  
+},seed=900242057,kind="L'Ecuyer") 
+
+stew(file=sprintf("lik_local_m2-%d.rda",run_level),{
+    t_local_eval <- system.time({
+    liks_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(bsflu_Neval, logLik(pfilter(m2,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+```
+
+### Local Search
+With the relationship between parameters and likelihood from local search, we get a reasonable range for parameters. As shown in plot, the range of $Beta$ is (0,0.5), $\mu_I$ is (0.5,1), $rho$ is (0.5,1). The max likelihood is -4258, we will compare this with the result of global search.
+
+```{r,echo=FALSE}
+pairs(~logLik+Beta+mu_I+rho,data=subset(results_local,logLik>max(logLik)-500))
+```
+
+
+### Global Serch 
+First, from the filter diagnostics we can see the likelihood dosen't converge, so it may need more iterations to converge. $\rho$ converge to 1, which is similar to SEIR model. $\mu$ and $\beta$ are not converge. The max likelihood of global search is -4247, slightly higher than the local search. So the improvement is not significant. Also from the simulation based on mle from global search, we can see the SIR model failed to capature the pattern of original data. Overall, SIR model performed badly on the Varicella data. 
+
+
+```{r,echo=FALSE}
+bsflu_box <- rbind(
+  Beta=c(0,0.5),
+  mu_I=c(0.5,1),
+  rho = c(0.5,1)
+)
+
+stew(file=sprintf("box_eval_m2-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      mifs_local[[1]],
+      start=c(apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),bsflu_fixed_params)
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer") 
+
+stew(file=sprintf("lik_global_eval_m2-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(bsflu_Neval, logLik(pfilter(m2,params=coef(mifs_global[[i]]),Np=bsflu_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+```
+
+```{r,echo=FALSE}
+plot(mifs_global)
+```
+
+```{r,echo=FALSE} 
+a=which.max(results_local$logLik)
+m2 %>% 
+  simulate(params=coef(mifs_global[[a]]),nsim=50,as.data.frame=TRUE,include.data=TRUE) %>%
+  subset(select=c(time,sim,B)) %>%
+  mutate(data=sim=="data") %>%
+  ddply(~time+data,summarize,
+        p=c(0.05,0.4,0.99),q=quantile(B,prob=p,names=FALSE)) %>%
+  mutate(p=mapvalues(p,from=c(0.05,0.4,0.99),to=c("lo","med","hi")),
+         data=mapvalues(data,from=c(TRUE,FALSE),to=c("data","simulation"))) %>%
+  dcast(time+data~p,value.var='q') %>%
+  ggplot(aes(x=time,y=med,color=data,fill=data,ymin=lo,ymax=hi))+
+  geom_ribbon(alpha=0.2)
+```
+
+# Conclusion 
+
+Obviously SEIR model performed better than SIR model. And the modification on SEIR model with vaccination process is successful. Also from the estimation of $vr$, I would say the vaccination rate is higher in Maryland than the national wide averge, and the vaccination is very effective. 
+
+From the diagnostic of convergence of SEIR model, the cohort effect is not significant here. School year children may not be an large enter of susceptible. People from all age could be susceptible unless he/she received vaccination. Therefore, in future study the cohort effect should be remove from the model. 
+
+
+
+# Reference 
+
+[1] A. A. King, Case study: Measles in large and small towns      
+
+[2] E. L. Ionides, Class Note 12, Stats 531      
+
+[3] He, D., E. L. Ionides, and A. A. King. 2010. Plug-and-play inference for disease dynamics: Measles in large and small populations as a case study. Journal of the Royal Society, Interface 7:271–283.     
+
+[4] Centers for Disease Control and prevention, Chickenpox/Varicella Vaccination: https://www.cdc.gov/vaccines/vpd/varicella/index.html
+
+
+
+
+
+
+
+
+
+

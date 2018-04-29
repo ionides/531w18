@@ -1,0 +1,320 @@
+---
+title: "Relationship between CNH to USD Exchange Rate and S&P 500 Index"
+date: "April 24, 2018"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+require(ggplot2)
+require(plyr)
+require(reshape2)
+require(magrittr)
+require(foreach)
+require(doParallel)
+require(pomp)
+require(doMC)
+require(tseries)
+cores <- 2
+run_level <- 1
+switch(run_level,
+       {ex_Np=100; ex_Nmif=10; ex_Neval=5; ex_Nglobal=5; ex_Nlocal=5},
+       {ex_Np=1000; ex_Nmif=100; ex_Neval=10; ex_Nglobal=10; ex_Nlocal=10},
+       {ex_Np=6000; ex_Nmif=300; ex_Neval=10; ex_Nglobal=100; ex_Nlocal=20})
+```
+
+# 1. Introduction
+
+CNH to USD pair represents the offshore Chinese Yuan against US Dollar, CNH uses the letters CNY when trading inside of China. The Yuan used to be pegged to the US Dollar but is now allowed to trade a limited distance against the reserve currency on a daily basis. China has used its control over its exchange rate to help ward off global financial crisis.
+
+This project is to investigate the CNH to USD exchange rate prediction, and further, what is the best model to describe this relationship. If any proven relationship is discovered or confirmed, it can be a used as an effective proxy for exchange rate prediction. It can also make a significant impact on macroeconomic decisions of central banks, hedging and risk management for investors as well as any cross-border business that requires more than one currency for clearing and settlement purpose.
+
+This project is also an continued part of the midterm project, where we decided to adopt ARIMA(4,1,4) to model 2017 CNH USD exchange rate. Based on the analysis of midterm project, it is obvious that we can improve our model by
+
+1. Larger data set with longer time length (2013-2018);
+
+2. Non linear model, such as GARCH and POMP
+
+Please be noted that this file is executed under level 1, the level 3 output is stored in a seperate file Rplot.pdf and final.out.
+
+# 2. Data Overview and Midterm Project Recap
+
+In this project, we look at the CNH to USD exchange rate from 18-Jul-13 to 24-Apr-18 (1244 trading days). This longer piece of historical data is downloaded from Investing.com $^{[2]}$. A time plot for both time series may give a general overview of their behavior.
+
+```{r, echo=FALSE}
+ex_data <- rev(read.table("exchange.txt"))
+head(ex_data)
+plot(ex_data$Day,ex_data$Rate,main = "CNH to USD Exchange Rate from 2013 to 2018",xlab="Day")
+```
+
+After simulation a ARIMA(4,1,4) process and compare it with origianl time series. We can say that the specturm captured some important information of data set. As a time series, CNH USD itself is a decent predictor if ARIMA(4,1,4) is as prediction model.
+
+```{r,echo=FALSE}
+dc=diff(ex_data$Rate)
+armadc=arima(x=dc,order = c(4,0,4))
+armadc
+attach(mtcars)
+par(mfrow=c(2,2))
+acf(armadc$residuals,main="ACF of Residules")
+qqnorm(armadc$residuals)
+qqline(armadc$residuals, col = 2)
+simuc=arima.sim(n=1244,list(order=c(4,1,4),ar=armadc$coef[1:4],ma=armadc$coef[5:8]))
+spectrum(ex_data$Rate,spans=c(3,5,3),main="CNH to USD Exchange Spectrum")
+spectrum(simuc,spans=c(3,5,3),main="Simulated CNH to USD Exchange Spectrum")
+```
+
+So we still have two more tasks: GARCH modeling and POMP modeling, which will be stated in next two sections. We would like to fit our data in a more complex, non linear setting, to justify whether a complicated model is able to help generate better prediction for USD CNH exchange rate.
+
+# 3. GARCH Modeling
+
+Our first alternative is to fit GARCH(p,q) model, which is widely used for financial time series modeling. The GARCH(p,q) model can be expressed as \[Y_t=\epsilon_t \sqrt{V_t}\] 
+where $V_t=\alpha_0+\sum_{j=1}^{p} \alpha_j Y_{t-j}^2+\sum_{k=1}^{q} \beta_k V_{n-k}$ and $\epsilon_t$ are white noise. 
+
+```{r,echo=FALSE,warning=FALSE}
+require(tseries)
+fit <- garch(ex_data$Rate,grad = "numerical", trace = FALSE)
+L <- logLik(fit);
+summary(fit)
+par(mfrow=c(1,2))
+qqnorm(fit$residuals)
+qqline(fit$residuals)
+acf(na.omit(fit$residuals))
+```
+
+The maximum log likelihood is -4075.241 with d.f.=3 for GARCH model, which is much smaller than that of ARIMA(4,1,4), 3442.17. Therefore, GARCH model is not as good as ARIMA model in terms of modeling USD CNH exchange rate. We decided to move on to POMP Modeling.
+
+# 4. POMP Modeling
+
+## 4.1 Geometric Brownian Motion
+A geometric Brownian motion is a continuous-time stochastic process in which the logarithm of the randomly varying quantity follows a Brownian motion with drift $^{[3]}$. The original differential equation is defined as
+\[dN=\mu N dt+\delta N dz\]
+After solving the BSPDE, we get \[N_t=N_0e^{(\mu-\frac{\delta^2}{2})t+\delta\sqrt{t} \epsilon}\] With proper discritization by single trading days
+\[N_{t+1}=N_te^{(\mu-\frac{\delta^2}{2})+\delta \epsilon},\epsilon \sim N(0,1)\]
+We would like to describe our state variables based on GBM model as $N$ and $\epsilon$.
+
+## 4.2 Parameters description and empirical estimation
+There are two parameters in total for this model, they are:
+
+1. drift parameter for constant trend: $\mu$;
+
+2. volatility parameter for deviations: $\delta$;
+
+After taking the difference of log of original time series, we get $log(N_t)-log(N_{t-1})$, which should follows a normal distribution with mean $\mu$ and standard deviation $\delta$. We use our historical data and get empirical sample mean and sample standard deviation as follow.
+
+```{r, echo=FALSE}
+ex=log(ex_data$Rate)
+exx=diff(ex)
+mu0=mean(exx)
+delta0=sqrt(var(exx))
+mu0
+delta0
+```
+
+## 4.3 POMP Model Description
+
+The initial value of N is drawn from a normal distribution with mean 6.5 and standard divation 0.3. The initial value of  is drawn from a normal distribution with mean 1 and standard divation 1. The rmeasure is defined as Rate being drawn from a random draw from the normal distribution with mean 0 and variance, which is the state variable. Implementation details:
+
+```{r}
+ex_statenames <- c("N","e")
+ex_paramnames <- c("mu","delta")
+ex_dmeasure <- Csnippet("lik = dnorm(Rate,0,N,give_log);")
+ex_rmeasure <- Csnippet("Rate = rnorm(0,N);")
+ex_rprocess <- Csnippet(" e = rnorm(0,1);N = N*exp((mu-delta*delta/2)+delta*e);")
+ex_initializer <-"N=rnorm(6.5,0.3);e=rnorm(1,1);"
+stopifnot(packageVersion("pomp")>="0.75-1")
+ex_fromEstimationScale <- "Tmu = exp(mu);Tdelta = expit(delta);"
+ex_toEstimationScale <- "Tmu = log(mu);Tdelta = logit(delta);"
+```
+
+Please be noted that this file is executed under level 1, the level 3 output is stored in a seperate file Rplot.pdf. We first set up a pomp object likes following, and generate a bunch of simulated trajectories at some particular point in parameter space.
+
+```{r}
+ex <<- pomp(
+  data=ex_data,
+  times="Day",
+  t0=0,
+  rprocess=discrete.time.sim(step.fun=ex_rprocess,delta.t=1),
+  rmeasure=ex_rmeasure,
+  dmeasure=ex_dmeasure,
+  obsnames ="Rate",
+  statenames=ex_statenames,
+  paramnames=ex_paramnames,
+  initializer=Csnippet(ex_initializer))
+
+simulate(ex,params=c(mu=mu0,delta=delta0),nsim=20,states=TRUE) -> x
+matplot(time(ex),t(x["N",1:20,]),type='l',lty=1, xlab="time",ylab="Rate",bty='l',col='blue')
+lines(time(ex),obs(ex,"Rate"),lwd=2,col='black')
+```
+
+## 4.4 Loglikehood Slice and Surface
+
+The basic particle filter is implemented in the command pfilter in pomp. A theoretical property of the particle filter is that it gives us an unbiased Monte Carlo estimate of the likelihood.
+
+This theoretical property, combined with Jensen's inequality and the observation that  is a concave function, ensures that the average of the log likelihoods from many particle filter replications will have negative bias as a Monte Carlo estimator of the log likelihood. By using logmeanexp to average the likelihood estimates on the natural scale not the logarithmic scale.
+
+Here we evaluate the log likelihood of the data given the states, the model, and the parameters: 
+
+```{r}
+pf <- pfilter(ex,Np=ex_Np,params=c(mu=mu0,delta=delta0))
+logLik(pf)
+```
+
+We can also repeat several times to get an estimate as:
+
+```{r}
+pf <- replicate(10,pfilter(ex,Np=ex_Np,params=c(mu=-0.0001,delta=0.002)))
+ll <- sapply(pf,logLik)
+logmeanexp(ll,se=TRUE)
+```
+
+However, we would like to know more about the log likelihood of other parameters to better calibrate the model. Intuitively, it can be helpful to think of the geometric surface defined by the likelihood function versus changing parameters.
+
+Now, we can plot two likelihood slices 
+
+1. fix $\mu=-2.321843e-05$ and move $\delta$ around interval $[0,0.5]$
+
+2. fix $\delta=0.002357479$ and move $\mu$ around interval $[-0.5,0.5]$
+
+```{r, echo=FALSE}
+sliceDesign(
+  c(mu=mu0,delta=delta0),
+  mu=rep(seq(from=-0.5,to=0.5,length=40),each=3),
+  delta=rep(seq(from=0,to=0.5,length=40),each=3)) -> p
+
+
+registerDoParallel(cores)
+set.seed(998468235L,kind="L'Ecuyer")
+mcopts <- list(preschedule=FALSE,set.seed=TRUE)
+foreach (theta=iter(p,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts,.export=ls(globalenv())) %dopar% 
+         {
+           require(pomp)
+           pfilter(ex,params=unlist(theta),Np=ex_Np) -> pf
+           theta$loglik <- logLik(pf)
+           theta
+         } -> p
+par(mfrow=c(1,2))
+foreach (v=c("mu","delta")) %do% 
+{
+  x <- subset(p,slice==v)
+  plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+}
+
+```
+
+It is obvious that slices offer limited perspective on the geometry of the likelihood surface, there are far more parameter combinations not being tested. With just two parameters $\mu$ and $\delta$, we can evaluate the likelihood at a grid of points and visualize the surface directly.
+
+```{r, echo=FALSE}
+expand.grid(mu=seq(from=-0.5,to=0.5,length=40),delta=seq(from=0,to=0.5,length=40)) -> p
+foreach (theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts) %dopar% 
+         {
+           pfilter(ex,params=unlist(theta),Np=ex_Np) -> pf
+           theta$loglik <- logLik(pf)
+           theta
+         } -> p
+pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=pp,mapping=aes(x=mu,y=delta,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=3)+
+  scale_fill_gradient()+
+  labs(x=expression(mu),y=expression(delta))
+```
+
+## 4.5 Maximizing the Likelihood Using the Particle Filter
+
+We need to build the new pomp object as follows.
+
+```{r}
+ex2 <<- pomp(
+  data=ex_data,
+  times="Day",
+  t0=0,
+  rprocess=euler.sim(step.fun=ex_rprocess,delta.t=1),
+  rmeasure=ex_rmeasure,
+  dmeasure=ex_dmeasure,
+  fromEstimationScale=Csnippet(ex_fromEstimationScale),
+  toEstimationScale=Csnippet(ex_toEstimationScale),
+  obsnames ="Rate",
+  statenames=ex_statenames,
+  paramnames=ex_paramnames,
+  initializer=Csnippet(ex_initializer))
+```
+
+```{r, echo=FALSE}
+plot(ex2)
+ex_params <- data.matrix(read.table("ex_params.txt",row.names=NULL,header=TRUE))
+ex_mle <- ex_params[which.max(ex_params[,"logLik"]),][ex_paramnames]
+ex_fixed_params <- c(mu=mu0,delta=delta0)
+```
+
+The local maximum search gives us a maximum of likelihood with a standard error.
+
+```{r,echo=FALSE}
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+set.seed(396658101,kind="L'Ecuyer")
+stew(file=sprintf("pf-%d.rda",run_level),{
+  t_pf <- system.time(
+    pf <- foreach(i=1:20,.packages='pomp', .options.multicore=mcopts,.export=ls(globalenv())) %dopar% try(
+                    pfilter(ex2,params=ex_mle,Np=ex_Np)) )
+},seed=1320290398,kind="L'Ecuyer")
+(L_pf <- logmeanexp(sapply(pf,logLik),se=TRUE))
+```
+
+## 4.6 A Local Search of the Likelihood Surface
+
+Let's carry out a local search using mif2 around this previously identified MLE. We set the rw.sd=0.002 and  cooling.fraction.50=0.5 algorithmic parameters. We evaluate the likelihood, together with a standard error, using replicated particle filters at each point estimate.
+
+```{r,echo=FALSE}
+ex_rw.sd <- 0.002
+ex_cooling.fraction.50 <- 0.5
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:ex_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts,.export=ls(globalenv())) %dopar%  {
+      mif2(ex2,start=ex_mle,Np=ex_Np,
+        Nmif=ex_Nmif,cooling.type="geometric",cooling.fraction.50=ex_cooling.fraction.50,transform=TRUE,
+        rw.sd=rw.sd(
+          mu=ex_rw.sd,
+          delta=ex_rw.sd))}})},seed=900242057,kind="L'Ecuyer")
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:ex_Nlocal,.packages='pomp',.combine=rbind,.export=ls(globalenv())) %dopar% {
+      evals <- replicate(ex_Neval, logLik(pfilter(ex2,params=coef(mifs_local[[i]]),Np=ex_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+```
+
+These repeated stochastic maximizations can also show us the geometry of the likelihood surface in a neighborhood of this point estimate
+ 
+```{r, echo=FALSE}
+pairs(~logLik+mu+delta,data=subset(results_local,logLik>max(logLik)-500))
+```
+
+Till now we see the maximum log likelihood is -6406, which is far smaller than that of ARIMA(4,1,4), 3442.17. Therefore, POMP model is not as good as ARIMA model in terms of modeling USD CNH exchange rate. 
+
+# 5. Conclusion
+
+We decided to use ARIMA(4,1,4) to model CNH USD exchange rate. As we discrussed, it captured most important information of data set compared with GARCH model and POMP model. As a time series, CNH USD itself is a decent predictor if ARIMA(4,1,4) is as prediction model.
+
+We can add other predicting factors to our analysis, or extend time window to include more data points, or conduct nonlinear variable transformation if we plan to further imporve our analysis.
+
+# 6. Appendix
+## 6.1 Explaination
+The data analysis report is very intuitive and easy to follow. We first conducted data overview for CNH and USD exchange rate. Then we evaluate our original proposed model ARIMA(4,1,4), and estimate two other non linear models, GARCH(1,1) and POMP. By comparing log likelihood value, we concluded that ARIMA(4,1,4) has the best performance.
+
+## 6.2 Source
+[1] Edward L. Ionides, STATS 531 Class notes 4,5,6,7,8.9,10,11,12
+
+[2] Ross, Sheldon M. (2014). "Variations on Brownian Motion". Introduction to Probability Models (11th ed.). Amsterdam: Elsevier. pp. 612-14.
+
+[3] S&P 500 Index, https://finance.yahoo.com/quote/%5EGSPC/history?p=%5EGSPC
+
+[4] R.H.Shmway and D.S.Stoffer,Time Series Analysis and Its Application, Chapter 4

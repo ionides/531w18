@@ -1,0 +1,315 @@
+---
+title: "Analyzing the Volatility of Bitcoin Market Price"
+date: "4/23/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### 1. Introduction
+Cryptocurrency is without any doubt one of the most discussed techniques in the recent years. As the very first cryptocurrency, Bitcoin has been in the center of discussion and the market value of Bitcoin went from merely \$0.3 in the early 2011 to almost \$20000 at the end of 2017, which is illustrated in the left figure below.     
+
+Lots of faith and money have been put into the market. Therefore, it is always relevant to study the market price and look for some insights, which might help in making an investment decision. One type of study on market prices focuses on the correlation between volatility and return. For example, one empirical observation tells us that negative shocks to a stockmarket index are associated with a subsequent increase in volatility, which may also be referred to as financial leverage [1].
+
+In this project, I retrieved the market history for Bitcoin from 2011-01-01 to 2018-04-22 [2]. The plots below give us a basic idea how the market price for Bitcoin is changing from 2011 to 2018. The figure to the left is the plot for original price, the figure in the middle plots the market price in the log space, and the figure to the right illustrates the fluctuations of the demeaned return.
+
+```{r echo=FALSE, fig.align='center', fig.width=7, fig.height=5}
+data = read.csv("https://raw.githubusercontent.com/joebeav/531midterm/master/market_price_1.csv")
+date <- data$Date
+price <- data$Price
+return <- diff(log(price))
+demeaned <- return - mean(return)
+par(mfrow=c(1,3))
+plot(price, type="l")
+plot(log(price), type="l")
+plot(demeaned, type="l")
+```
+
+### 2. Garch Model
+#### 2.1. Model Definition
+We start with fitting a Garch model to our data.    
+Assuming $Y_n$ is the return and $V_n$ is the volatility at time n, a GARCH(p,q) is defined as the follows:
+$$Y_n = \epsilon_n\sqrt{V_n},$$
+where
+$$V_n = \alpha_0 + \sum_{j=1}^{p}{\alpha_jY_{n-j}^2} + \sum_{k=1}^{q}{\beta_k}V_{n-k}$$
+and $\epsilon$ denotes white noise.
+
+#### 2.2. Check Model Assumptions
+Given the model definition, one could expect the volatility at time n to be correlated with previous returns and volatilities. Meanwhile, one could also expect the return at time n to be less correlated with previous returns as white noise is a major component for the return at time n. 
+
+The auto-correlation for return and returns-squared are shown below. It is demonstrated that the auto-correlation for the original returns is weak and the auto-correlation for returns-squared is stronger, though the difference is not very large. These plots do comply to the assumption entailed by the model definition.
+
+```{r echo=FALSE, fig.align='center'}
+par(mfrow = c(1,2))
+acf(return)
+acf(return^2)
+```
+
+#### 2.3. Select Model Based on AIC
+After checking the assumptions for Garch models, I calculated the AIC values for Garch models with different orders to select the best model.    
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+require(tseries)
+require(knitr)
+Table_For_GARCH_AIC <- function(data,P,Q){
+  table <- matrix(NA,(P),(Q))
+  for(p in 1:P) {
+    for(q in 1:Q) {
+      temp.fit = garch(x = data, order = c(p,q), grad = "numerical", trace = FALSE)
+      table[p,q] <- 2*length(temp.fit$coef) - 2*as.numeric(logLik(temp.fit))
+    }
+  }
+  dimnames(table) <- list(paste("<b> p",1:P, "</b>", sep=""),paste("q",1:Q,sep=""))
+  table
+}
+aic_table <- Table_For_GARCH_AIC(demeaned,6,6)
+kable(aic_table,digits=2)
+```
+
+Based on the values in the table above, AIC selects Garch(1, 5) as the best model since it has the lowest AIC value. However, the Garch(2, 5) model has an AIC value that is 59 smaller than Garch(1, 5), which is much bigger than 2. This means the AIC value for this model might not be very reliable. The second best model is Garch(1, 1), which doesn't suffer as much from inappropriate AIC value. In addition, Garch(1, 1) is a much smaller model than Garch(1, 5). Smaller models are typically preferred than large models. However, it's still reasonale to compare how differently these two models perform by comparing the maximized log likelihood and 95% confidence intervals. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+garch11 <- garch(x = demeaned, order = c(1,1), grad = "numerical", trace = FALSE)
+garch15 <- garch(x = demeaned, order = c(1,5), grad = "numerical", trace = FALSE)
+L.11 <- logLik(garch11)
+L.15 <- logLik(garch15)
+L.11
+L.15
+```  
+
+As shown above, the log likelihood for two models are in fact very close, with Garch(1, 5) being slightly bigger. However, there's still no strong reason to choose Garch(1, 5) over Garch(1, 1).
+
+```{r warning=FALSE, message=FALSE, fig.width=7, fig.height=9, fig.align='center'}
+require(fGarch) 
+par(mfrow = c(2, 1))
+garch11 <- garchFit(~garch(1,1), demeaned, trace = F)
+u11 = garch11@sigma.t
+plot(demeaned, ylim = c(-1,1), ylab = 'Demeaned Returns', xlab = 'Index', type = 'l', main = 'Garch(1,1)', lwd = 1)
+lines(-2*u11, lty=2, col='grey', lwd = 1.5)
+lines(2*u11, lty=2, col='grey', lwd = 1.5)
+legend('topright', c('return','95% interval'), col = c('black','grey'), lty = c(1,2), lwd = c(1,1.5))
+garch15 <- garchFit(~garch(1,5), demeaned, trace = F)
+u15 = garch15@sigma.t
+plot(demeaned, ylim = c(-1,1), ylab = 'Demeaned Returns', xlab = 'Index', type = 'l', main = 'Garch(1,5)', lwd = 1)
+lines(-2*u15, lty=2, col='grey', lwd = 1.5)
+lines(2*u15, lty=2, col='grey', lwd = 1.5)
+legend('topright', c('return','95% interval'), col = c('black','grey'), lty = c(1,2), lwd = c(1,1.5))
+```
+
+Then I also checked the 95% interval for both models. Again, the 95% confidence interval shows no evidence in favor of Garch(1, 5). Therefore, we should choose Garch(1, 1) for model simplicity.
+
+#### 2.4. Predict Volatility with Garch(1,1)
+To make predictions using Garch(1,1), we used the last 100 points from the time series as calibration points to compare the predictions of the model with true data. In addition, we made 40 predictions for the future. 
+```{r echo=FALSE, warning=FALSE}
+set.seed(123456789)
+pred.u = c()
+pred.y = c()
+u.pre = u11[(length(u11)-100)]
+y.pre = demeaned[(length(demeaned)-100)]
+garch11 = garch(demeaned, order=c(1,1) , grad = "numerical", trace = FALSE)
+a0 = garch11$coef["a0"]
+a1 = garch11$coef["a1"]
+b1 = garch11$coef["b1"]
+for(ahead in 1:140){
+  cur.u = sqrt(a0+a1*y.pre^2+b1*u.pre^2)
+  cur.y = rnorm(1, 0, cur.u)
+  pred.u = c(pred.u,cur.u)
+  pred.y = c(pred.y,cur.y)
+  u.pre = cur.u
+  y.pre = cur.y
+}
+```
+
+```{r warning=FALSE, message=FALSE, fig.width=7, fig.height=5, fig.align='center'}
+ind <- seq((length(demeaned)-99), (length(demeaned)+40), by=1)
+plot(demeaned, ylim = c(-1,1), ylab = 'Demeaned Returns', xlab = 'Index', type = 'l', main = 'Garch(1,1)', lwd = 1)
+lines(-2*u11, lty=2, col='grey', lwd = 1.5)
+lines(2*u11, lty=2, col='grey', lwd = 1.5)
+lines(ind, pred.y, lty=2, col=adjustcolor("red", alpha.f = 0.6), lwd = 1)
+lines(ind, -2*pred.u, lty=2, col='blue', lwd = 1.5)
+lines(ind, 2*pred.u, lty=2, col='blue', lwd = 1.5)
+legend('topright', c('return','95% interval', 'predicted return', 'predicted volatility'), col = c('black','grey', 'red', 'blue'), lty = c(1,2, 1, 2), lwd = c(1,1.5, 1, 1.5))
+```
+
+As shown in the plot above, the red line represents the model predictions for the returns and blue lines represent the model predictions for the volatility. Even though the predicted returns aren't exactly the true returns, this model does capture the trend how the volatility fluctuates.
+
+### 3. POMP Model
+Based on the work of Carles Breto [3], the model is defined as follows. 
+$$Y_n=\mathrm{exp}(H_n/2)\epsilon_n,$$
+$$H_n=\mu_h(1-\phi)+\phi H_{n-1}+\beta_{n-1}R_n \mathrm{exp(-H_{n-1}/2)+\omega_n},$$
+$$G_n=G_{n-1}+v_n$$
+where $\beta_n=Y_{n}\sigma_{\eta}\sqrt{1-\phi^2}$, $\epsilon_{1:N}$, $v_{1:N}$ and $\omega_{1:N}$ are Gaussian white noise, and $R_n = \frac{\mathrm{exp}{(2G_n)}-1}{\mathrm{exp}{(2G_n)}+1}$, and {$G_n$} is Gaussian random walk.
+
+In this model, $H_n$ is the log volatility, which is $H_n=log(\sigma^2_n)=2log(\sigma_n)$.
+
+Below is how the model is built based on the instructions from class slides [1]. For computational convenience, we transformed the parameters to the whole real time scale using logit function, and then transform them back using expit function.
+
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+require(pomp)
+btc_statenames <- c("H","G","Y_state")
+btc_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+btc_ivp_names <- c("G_0","H_0")
+btc_paramnames <- c(btc_rp_names,btc_ivp_names)
+btc_covarnames <- "covaryt"
+
+rproc1 <- "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+btc_rproc.sim <- paste(rproc1,rproc2.sim)
+btc_rproc.filt <- paste(rproc1,rproc2.filt)
+
+btc_initializer <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+btc_rmeasure <- "
+   y=Y_state;
+"
+
+btc_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+btc_toEstimationScale <- "
+  Tsigma_eta = log(sigma_eta);
+  Tsigma_nu = log(sigma_nu);
+  Tphi = logit(phi);
+"
+
+btc_fromEstimationScale <- "
+  Tsigma_eta = exp(sigma_eta);
+  Tsigma_nu = exp(sigma_nu);
+  Tphi = expit(phi);
+"
+
+btc.filt <- pomp(data=data.frame(y=demeaned,
+                     time=1:length(demeaned)),
+              statenames=btc_statenames,
+              paramnames=btc_paramnames,
+              covarnames=btc_covarnames,
+              times="time",
+              t0=0,
+              covar=data.frame(covaryt=c(0,demeaned),
+                     time=0:length(demeaned)),
+              tcovar="time",
+              rmeasure=Csnippet(btc_rmeasure),
+              dmeasure=Csnippet(btc_dmeasure),
+              rprocess=discrete.time.sim(step.fun=Csnippet(btc_rproc.filt),delta.t=1),
+              initializer=Csnippet(btc_initializer),
+              toEstimationScale=Csnippet(btc_toEstimationScale), 
+              fromEstimationScale=Csnippet(btc_fromEstimationScale)
+)
+```
+
+To fit the model, we use IF2 algorithm of Ionides et al. (2015) [4], implemented by mif2. We defined two different run_levels. run_level = 1 is for debugging, run_level = 2, 3 and 4 are for finer simulations.
+
+```{r echo=TRUE, message=FALSE}
+require(doParallel)
+registerDoParallel()
+
+run_level <- 4
+btc_Np <-          c(100,1e3,1e4,2e3)
+btc_Nmif <-        c(10,50,500,200)
+btc_Nreps_eval <-  c(4,10,20,20)
+btc_Nreps_local <- c(10,20,20,20)
+btc_Nreps_global <-c(10,20,100,100)
+
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+
+params_test <- c(
+     sigma_nu = exp(-4.5),  
+     mu_h = -0.25,       
+     phi = expit(4),     
+     sigma_eta = exp(-0.07),
+     G_0 = 0,
+     H_0=0
+  )
+
+btc_rw.sd_rp <- 0.02
+btc_rw.sd_ivp <- 0.1
+btc_cooling.fraction.50 <- 0.5
+
+stew("mif1.rda",{
+   t.if1 <- system.time({
+   if1 <- foreach(i=1:btc_Nreps_local[run_level],
+                  .packages='pomp', .combine=c,
+                  .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                    mif2(btc.filt,
+                         start=params_test,
+                         Np=btc_Np[run_level],
+                         Nmif=btc_Nmif[run_level],
+                         cooling.type="geometric",
+                         cooling.fraction.50=btc_cooling.fraction.50,
+                         transform=TRUE,
+                         rw.sd = rw.sd(
+                            sigma_nu  = btc_rw.sd_rp,
+                            mu_h      = btc_rw.sd_rp,
+                            phi       = btc_rw.sd_rp,
+                            sigma_eta = btc_rw.sd_rp,
+                            G_0       = ivp(btc_rw.sd_ivp),
+                            H_0       = ivp(btc_rw.sd_ivp)
+                         )
+                    )
+                  )
+    
+    L.if1 <- foreach(i=1:btc_Nreps_local[run_level],.packages='pomp',
+                      .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                      {
+                        logmeanexp(
+                          replicate(btc_Nreps_eval[run_level],
+                                    logLik(pfilter(btc.filt,params=coef(if1[[i]]),Np=btc_Np[run_level]))
+                          ),
+                          se=TRUE)
+                      }
+  })
+},seed=318817883,kind="L'Ecuyer")
+```
+Diagnostics for the model are plotted as below.   
+```{r echo=FALSE, message=FALSE, fig.width=7, fig.height=5, fig.align='center'}
+plot(if1)
+```
+As we can see, the model converges reasonably well within 200 iterations, especially for $\mu_h$ and $\sigma_\eta$. The fact that the effective sample size reached the maximum most of the time might suggest that increasing the sample size should furthur improve the performance. For loglikelihood, we can still see a small growing trend after 200 iterations, which means increasing iterations might also improve the performance. 
+
+```{r echo=FALSE, fig.align='center', message=FALSE}
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level>1) 
+  write.table(r.if1,file="btc_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+```
+We can also check the log likelihood for this model. As shown above, the log likelihood ranges from 1946 to 1950, with a mean of 1948. For our Garch models, Garch(1,1) and Garch(1,5), the maxmized log likelihood are 1802 and 1810 respectively, which are smaller than this POMP model. This might suggest that the POMP model is a better model as it explains our data better.    
+
+Although the parameters vector are in higher dimensions, we can visualize them by showing the geometry surfaces for each pairs. 
+```{r echo=FALSE, fig.align='center', message=FALSE}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+### 4. Conclusion
+In this project, two models were implemented to analyze the volatility of the bitcoin market price. Here are some findings.    
+1. Garch method is an effective way to analyze this time series as the model assumptions hold.    
+2. There's no big difference in performance between Garch(1, 1) and Garch(1, 5). Even though AIC suggests Garch(1, 5) had a lower AIC value, the log likelihood of two models are close and the 95% intervals are similar.         
+3. Even though Garch(1,1) can't predict the exact returns for calibration data, it models the trend for volatility very well.      
+4. The POMP model is a better model for this time series as it gives higher loglikelihood.    
+5. However, the POMP model is computationally expensive. The simulation takes much longer time than Garch, and it has more paramters, which makes it more sensitive to errors and harder to interpret.     
+
+### 5. Reference
+[1] Edward Ionides. Stats 531 Lecture Notes. https://ionides.github.io/531w18/14/notes14.html    
+[2] Blockchain website. https://blockchain.info/charts/market-price?timespan=all    
+[3] Breto, C. 2014. On idiosyncratic stochasticity of financial leverage effects. Statistics & Probability Letters.    
+[4] Ionides, E. L., D. Nguyen, Y. Atchade, S. Stoev, and A. A. King. 2015. Inference for dynamic and latent variable models via iterated, perturbed Bayes maps. Proceedings of the National Academy of Sciences of the U.S.A.    
+[5] Past Project from Stats 531. https://ionides.github.io/531w16/final_project/Project13/final_project.html      

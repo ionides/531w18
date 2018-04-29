@@ -1,0 +1,1027 @@
+---
+title: "Volatility of the SNE Stock"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Introduction
+
+Many companies issue stocks or shares that can be bought as an investment. A stock represents ownership on part of the company's earnings and assets [6]. 
+
+Like other investments, there is risk involved with buying stocks. The price of a stock fluctuates depending on how the company is doing. If the price increases after you bought it, you would profit, but if the price decreases, you would end up with a loss. 
+
+It would be reasonable to analyze past data in order to predict whether the stock price will increase or decrease in the short term. However, that is very difficult, if not impossible to do with complete accuracy. Instead, we study the volatility of the stock. The volatality of a stock measures the variance or standard deviation of the returns of the stock, which are the daily logged difference of prices in two consecutive days [7]. If the volatility is high, then the price is prone to fluctuating drastically. It is possible that the price would increase dramatically, but it is also possible that the price would plummet. As a result, a high volatility means that the stock has a high risk. On the other hand, if the volatility is low, the price would not fluctuate dramatically and would be more stable. A stock with low volatility is a less risky investment.
+
+In this project, we will analyze the volatility of the Sony (SNE) stock. We will be fitting stochastic volatility models onto the demeaned returns of the stock and determine how well the model fits using the log-likelihood. We will create the model using the pomp package.
+
+#Description of the Dataset
+
+The data used for this project is the daily adjusted closing price of the SNE stock from the past five years, starting from April 8th, 2013 to April 5th, 2018. The dataset is taken from Yahoo Finance [1]. 
+
+We first read in the data. There are 1259 observations and 7 parameters. We will also take the log of the adjusted closing price.
+
+```{r echo=FALSE}
+dat <- read.table(file="SNE.csv",sep=",",header=TRUE)
+dat$Date <- as.Date(dat$Date)
+dat2 <- dat
+dat2$Adj.Close <- log(dat2$Adj.Close)
+knitr::opts_chunk$set(fig.width=8, fig.height=4)
+```
+
+Now, we plot the adjusted closing price of SNE versus the time and the log of the adjusted closing price versus time. Both plots show an upwards trend in the dataset. As time passes, the stock price of SNE steadily increases.
+
+```{r echo=FALSE}
+par(mfrow = c(1,2))
+plot(Adj.Close~Date,data=dat,type="l",xlab="Year", ylab="Price",main="Adjusted Closing Price of SNE")
+plot(Adj.Close~Date,data=dat2,type="l",xlab="Year", ylab="Price",main="Log Adjusted Closing Price of SNE")
+```
+
+Next, we find the returns of the investment, where we take the difference between adjacent log prices. If $y^*_{1:N}$ is the time series of weekly adjusted closing price, then the return time series $z^*_{2:N}$ will be calculated using the equation
+
+$$z^*_n=\log y^*_n - \log y^*_{n-1}$$
+
+We plot the returns against time. The blue line on the plot represents the mean return value. We also find the demeaned returns of SNE, calculated by subtracting the mean from each value of $z^*_n$.
+
+```{r echo=FALSE}
+z <- diff(dat2$Adj.Close)
+date <- dat$Date
+zdem <- z-mean(z)
+sne.ret.demeaned <- zdem
+
+par(mfrow = c(1,2))
+plot(z~date[1:1258], type="l", xlab="Year", ylab="Return", main="Returns of SNE")
+abline(h=mean(z),col="blue")
+
+plot(zdem~date[1:1258], type="l", xlab="Year", ylab="Demeaned Return", main="Demeaned Returns of SNE")
+abline(h=mean(zdem),col="blue")
+```
+
+#Stochastic Volatility Model
+
+We will first analyze the stochastic volatility model that we studied in class [4]. The model is written below.
+
+$$ Y_n = exp(0.5H_n) \epsilon _n $$
+
+$$ H_n = \mu_h (1-\phi) + \phi H_{n-1} + \beta _{n-1} R_n exp(-0.5H_{n-1}) + \omega _n $$
+
+$$ G_n = G_{n-1} + \nu _n $$
+
+where $H_n$ is the log volatility, $\beta _n = Y_n \sigma _n \sqrt{1-\phi ^2}$, $\epsilon _n$ are iid $N(0,1)$, $\nu _n$ are iid $N(0, \sigma _{\nu}^2)$, and $\omega _n$ are iid $N(0, \sigma _{\omega}^2)$. 
+
+
+##Constructing the POMP model
+
+We now build the POMP model of our stochastic volatility model. The code used is given from [4].
+
+```{r echo=FALSE}
+library(knitr)
+prefix <- "sne"
+opts_chunk$set(
+  progress=TRUE,
+  prompt=FALSE,tidy=FALSE,highlight=TRUE,
+  strip.white=TRUE,
+  warning=FALSE,
+  message=FALSE,
+  error=FALSE,
+  echo=TRUE,
+  cache=TRUE,
+  #  cache=FALSE,
+  cache.extra=list(rand_seed,R.version.string),
+  results='markup',
+  fig.show='asis',
+  size='small',
+  fig.lp="fig:",
+  fig.path=paste0("figure/",prefix,"-"),
+  cache.path=paste0("cache/",prefix,"-"),
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=5,fig.width=6.83,
+  dpi=300,
+  dev='png',
+  dev.args=list(bg='transparent')
+)
+options(cores=20)
+library(ggplot2)
+theme_set(theme_bw())
+require(pomp)
+```
+
+We first declare the various names.
+
+```{r}
+sne_statenames <- c("H","G","Y_state")
+sne_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+sne_ivp_names <- c("G_0","H_0")
+sne_paramnames <- c(sne_rp_names,sne_ivp_names)
+sne_covarnames <- "covaryt"
+```
+
+We now write the two rprocesses for our model. We also initialize the variables, with initial value of $H$ being $H_0$, initial value of $G$ being $G_0$ and initial value of Y_state being a random normal variable with mean 0 and variance $\exp (0.5 H)$
+
+```{r}
+rproc1 <- "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+sne_rproc.sim <- paste(rproc1,rproc2.sim)
+sne_rproc.filt <- paste(rproc1,rproc2.filt)
+
+sne_initializer <- "
+G = G_0;
+H = H_0;
+Y_state = rnorm( 0,exp(H/2) );
+"
+sne_rmeasure <- "
+y=Y_state;
+"
+sne_dmeasure <- "
+lik=dnorm(y,0,exp(H/2),give_log);
+"
+```
+
+Now we would like to transform the parameters so that all are defined on the entire real line. We are given that $0 < \phi < 1$, so we use a logistic transformation to $\phi$ to define it in the real line. For both sigma parameters, we know that they must both be positive values, so we use log and exponential transformations for $\sigma _\eta$ and $\sigma _\nu$.
+
+```{r}
+sne_toEstimationScale <- "
+  Tsigma_eta = log(sigma_eta);
+  Tsigma_nu = log(sigma_nu);
+  Tphi = logit(phi);
+"
+sne_fromEstimationScale <- "
+  Tsigma_eta = exp(sigma_eta);
+  Tsigma_nu = exp(sigma_nu);
+  Tphi = expit(phi);
+"
+```
+
+We now build a pomp object that we will be using for filtering.
+
+```{r}
+sne.filt <- pomp(data=data.frame(y=sne.ret.demeaned,
+                                   time=1:length(sne.ret.demeaned)),
+                   statenames=sne_statenames,
+                   paramnames=sne_paramnames,
+                   covarnames=sne_covarnames,
+                   times="time",
+                   t0=0,
+                   covar=data.frame(covaryt=c(0,sne.ret.demeaned),
+                                    time=0:length(sne.ret.demeaned)),
+                   tcovar="time",
+                   rmeasure=Csnippet(sne_rmeasure),
+                   dmeasure=Csnippet(sne_dmeasure),
+                   rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.filt),delta.t=1),
+                   initializer=Csnippet(sne_initializer),
+                   toEstimationScale=Csnippet(sne_toEstimationScale), 
+                   fromEstimationScale=Csnippet(sne_fromEstimationScale)
+)
+```
+
+We will now simulate our stochastic volatility model using the simulate function. In addition, we build a pomp object for filtering for the simulations.
+
+```{r}
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,       
+  phi = expit(4),     
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+sim1.sim <- pomp(sne.filt, 
+                 statenames=sne_statenames,
+                 paramnames=sne_paramnames,
+                 covarnames=sne_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.sim),delta.t=1)
+)
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+sim1.filt <- pomp(sim1.sim, 
+                  covar=data.frame(
+                    covaryt=c(obs(sim1.sim),NA),
+                    time=c(timezero(sim1.sim),time(sim1.sim))),
+                  tcovar="time",
+                  statenames=sne_statenames,
+                  paramnames=sne_paramnames,
+                  covarnames=sne_covarnames,
+                  rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.filt),delta.t=1)
+)
+```
+
+After getting the simulated data, we plot it versus time. The plot is shown below. The plot in blue is the simulated demeaned returns, while the plot in black is the actual demeaned returns. We can see that the simulation might have overestimated the variance of the demeaned returns, so the model may not be the most accurate model to use for our dataset.
+
+```{r}
+plot(Y_state~time, data=sim1.sim, type="l", col="blue", xlab="Time", ylab="Demeaned Returns", main="Simulated Demeaned Returns")
+lines(zdem)
+```
+
+##Filtering on the simulated data
+
+In order to test the code, we specify different run levels for our program. For now, we run the program using run level 2.
+
+```{r}
+run_level <- 2
+sne_Np <-          c(100,1e3,2e3)
+sne_Nmif <-        c(10, 100,200)
+sne_Nreps_eval <-  c(4,  10,  20)
+sne_Nreps_local <- c(10, 20, 20)
+sne_Nreps_global <-c(10, 20, 100)
+```
+
+In order to run the program more efficiently, we do parallelization.
+
+```{r}
+require(doParallel)
+registerDoParallel()
+```
+
+Now, we will filter. We use the stew function to cache our results. 
+
+```{r}
+stew(file=sprintf("pf1-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:sne_Nreps_eval[run_level], .export=c("sim1.filt","sne_Np","run_level"), 
+                   .packages='pomp',
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     pfilter(sim1.filt,Np=sne_Np[run_level])
+                   )
+  )
+},seed=493536993,kind="L'Ecuyer")
+L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE)
+```
+
+## Fitting the model to the SNE data
+
+### Local Search
+
+We will now use iterated filtering to our data using the function mif2.
+
+```{r}
+sne_rw.sd_rp <- 0.02
+sne_rw.sd_ivp <- 0.1
+sne_cooling.fraction.50 <- 0.5
+
+stew(file=sprintf("mif1-%d.rda",run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()),
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(sne.filt,
+                          start=params_test,
+                          Np=sne_Np[run_level],
+                          Nmif=sne_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=sne_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            sigma_nu  = sne_rw.sd_rp,
+                            mu_h      = sne_rw.sd_rp,
+                            phi       = sne_rw.sd_rp,
+                            sigma_eta = sne_rw.sd_rp,
+                            G_0       = ivp(sne_rw.sd_ivp),
+                            H_0       = ivp(sne_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()), .packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(sne_Nreps_eval[run_level],
+                                   logLik(pfilter(sne.filt,params=coef(if1[[i]]),Np=sne_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level==2) 
+  write.table(r.if1,file="sne_params2.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+t.if1
+summary(r.if1$logLik,digits=5)
+```
+
+The program ran for 4140.11 seconds.
+
+From the summary, we get an average log-likelihood of 3234 for our model. The max log-likelihood found was 3276. We now look at the scatter plots of the parameters.
+
+```{r echo=FALSE}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=r.if1)
+```
+
+From the scatter plots, we can see that $\phi$ is more likely to be equal to 1, while the log-likelihood value is more concentrated in the 3220 to 3230 range. There are a few outliers with larger log-likelihood values, as can be see with the two points far away from the rest of the points in the plot.
+
+We now analyze the diagnostics plot.
+
+```{r echo=FALSE}
+plot(if1)
+```
+
+We see that there are times where the effective sample size drops significantly. These occurred when the demeaned returns of our dataset go further away from the mean value. 
+
+Looking at the convergence diagnostics, we see that most of the log-likelihood values converge to similar values. There are a few that have higher values, which can also be observed by the scatterplot. We see that the majority of the time, $\phi$ equals 1, while $\sigma _\eta$ is near a value of 0. The other parameters seem to not have a specific converging value.
+
+### Global Search
+
+We now perform a global search. Instead of having only one start value for each parameter, we give a range of values for the parameters, in the sne_box variable.
+
+```{r}
+sne_box <- rbind(
+  sigma_nu=c(0.005,0.05),
+  mu_h    =c(-1,0),
+  phi = c(0.95,0.99),
+  sigma_eta = c(0.5,1),
+  G_0 = c(-2,2),
+  H_0 = c(-1,1)
+)
+```
+
+We carry out the global search and cache our results using stew.
+
+```{r}
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:sne_Nreps_global[run_level], .export = ls(globalenv()), .packages='pomp',.combine=c,
+                      .options.multicore=list(set.seed=TRUE)) %dopar%  
+      mif2(
+        if1[[1]],
+        start=apply(sne_box,1,function(x)runif(1,x))
+      )
+    
+    L.box <- foreach(i=1:sne_Nreps_global[run_level], .export = ls(globalenv()), .packages='pomp',.combine=rbind,
+                     .options.multicore=list(set.seed=TRUE)) %dopar% {
+                       set.seed(87932+i)
+                       logmeanexp(
+                         replicate(sne_Nreps_eval[run_level],
+                                   logLik(pfilter(sne.filt,params=coef(if.box[[i]]),Np=sne_Np[run_level]))
+                         ), 
+                         se=TRUE)
+                     }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level==2) write.table(r.box,file="sne_params2global.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+```
+
+We get a mean log-likelihood value of 3243 and a max value of 3277. We now look at the scatterplot.
+
+```{r echo=FALSE}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta+H_0+G_0,data=r.box)
+```
+
+Again, we see that more values of $\phi$ are concentrated to be 1. We also see that $\sigma _\eta$ is concentrated near a value of 0. We see that there are more log-likelihood values located at the higher range in the global search than in the local search. We also see that $\sigma _\nu$ is concentrated at a value of 0. We plot the diagnostics to see more of the convergence.
+
+```{r echo=FALSE}
+plot(if.box)
+```
+
+The diagnostic plot agrees with the scatterplot with regards to the log-likelihood, $\sigma _\eta$, $\sigma _\nu$, and $\phi$. We also see that $G_0$ converges to a value slightly smaller than 0.
+
+### Local Search with Run Level 3
+
+We now run the local search with run level 3, which should give more accurate results. 
+
+```{r}
+run_level <- 3
+```
+
+```{r echo=FALSE}
+stew(file=sprintf("pf1-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:sne_Nreps_eval[run_level], .export=c("sim1.filt","sne_Np","run_level"), 
+                   .packages='pomp',
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     pfilter(sim1.filt,Np=sne_Np[run_level])
+                   )
+  )
+},seed=493536993,kind="L'Ecuyer")
+L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE)
+
+sne_rw.sd_rp <- 0.02
+sne_rw.sd_ivp <- 0.1
+sne_cooling.fraction.50 <- 0.5
+
+stew(file=sprintf("mif1-%d.rda",run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()),
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(sne.filt,
+                          start=params_test,
+                          Np=sne_Np[run_level],
+                          Nmif=sne_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=sne_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            sigma_nu  = sne_rw.sd_rp,
+                            mu_h      = sne_rw.sd_rp,
+                            phi       = sne_rw.sd_rp,
+                            sigma_eta = sne_rw.sd_rp,
+                            G_0       = ivp(sne_rw.sd_ivp),
+                            H_0       = ivp(sne_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()), .packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(sne_Nreps_eval[run_level],
+                                   logLik(pfilter(sne.filt,params=coef(if1[[i]]),Np=sne_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level==3) 
+  write.table(r.if1,file="sne_params3.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=r.if1)
+plot(if1)
+```
+
+The mean log-likelihood is 3243 and the maximum value is 3278. The values are slightly higher than those of the run level 2 local search, and are comparable with those of the run level 2 global search. The diagnostics plot and scatter plot also agree with the plots of the previous local search. Despite the better results than the local search of run level 2, the parameters do not converge as cleanly as the global search. For best results, doing a global search with run level 3 would be a potential extension.
+
+#Stochastic Volatility in Mean Model
+
+We will now build another stochastic model for our demeaned returns dataset. This time, we will use the stochastic volatility in mean model.
+
+According to [5], the model can be defined as follows.
+
+$$ Y_n = d \sigma ^2 \exp (H_n) + \sigma \exp (0.5 H_n) \epsilon _n $$
+
+$$ H_n = \phi H_{n-1} + \sigma _\nu \nu _n$$
+
+Where $Y_n$ are the demeaned returns, $\epsilon _n$ and $\nu _n$ are iid $N(0,1)$ random variables, $H_n$ is the volatility, and $0 < \phi < 1$.
+
+## Constructing the POMP model
+
+Like for the first model, we will write down the variable names
+
+```{r}
+sne_statenames <- c("H","Y_state")
+sne_rp_names <- c("d", "phi", "sigma_eta", "sigma")
+sne_ivp_names <- c("H_0")
+sne_paramnames <- c(sne_rp_names,sne_ivp_names)
+sne_covarnames <- "covaryt"
+```
+
+We write down the two rprocesses for the model. For the Y_state, we write it as a random normal variable of mean $d \sigma ^2 \exp (H_n)$ and variance $\sigma \exp (0.5 H_n)$ [8]. This is because $\sigma \exp (0.5 H_n)$ is multiplied by $\epsilon_n$, which is a random normal variable of mean 0 and variance 1. The second term of $Y_n$ affects the variance, while the first term would be the mean. 
+
+```{r}
+rproc1 <- "
+double eta;
+eta = rnorm(0, 1);
+H = phi * H + sigma_eta * eta;
+"
+rproc2.sim <- "
+Y_state = rnorm(d * sigma * sigma * exp(H), sigma * exp(0.5*H));
+"
+rproc2.filt <- "
+Y_state = covaryt;
+"
+sne_rproc.sim <- paste(rproc1,rproc2.sim)
+sne_rproc.filt <- paste(rproc1,rproc2.filt)
+
+sne_initializer <- "
+H = H_0;
+Y_state = rnorm(d * sigma * sigma * exp(H), sigma * exp(0.5*H));
+"
+sne_rmeasure <- "
+y=Y_state;
+"
+sne_dmeasure <- "
+lik=dnorm(y, d * sigma * sigma * exp(H), sigma * exp(0.5*H),give_log);
+"
+```
+
+We also transform the parameters, like in the previous model building. Since $\sigma _\eta$ and $\sigma$ are postive parameters, we use a log and exponent transform. Since $0 < \phi < 1$, we use a logistic transformation.
+
+```{r}
+sne_toEstimationScale <- "
+Tsigma_eta = log(sigma_eta);
+Tsigma = log(sigma);
+Tphi = logit(phi);
+"
+sne_fromEstimationScale <- "
+Tsigma_eta = exp(sigma_eta);
+Tsigma = exp(sigma);
+Tphi = expit(phi);
+"
+```
+
+We now give initial values for the parameters.
+
+```{r echo=FALSE}
+sne.filt <- pomp(data=data.frame(y=sne.ret.demeaned,
+                                 time=1:length(sne.ret.demeaned)),
+                 statenames=sne_statenames,
+                 paramnames=sne_paramnames,
+                 covarnames=sne_covarnames,
+                 times="time",
+                 t0=0,
+                 covar=data.frame(covaryt=c(0,sne.ret.demeaned),
+                                  time=0:length(sne.ret.demeaned)),
+                 tcovar="time",
+                 rmeasure=Csnippet(sne_rmeasure),
+                 dmeasure=Csnippet(sne_dmeasure),
+                 rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.filt),delta.t=1),
+                 initializer=Csnippet(sne_initializer),
+                 toEstimationScale=Csnippet(sne_toEstimationScale), 
+                 fromEstimationScale=Csnippet(sne_fromEstimationScale)
+)
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+```
+
+```{r}
+params_test <- c(
+  d = .5,  
+  phi = 0.99,  
+  sigma = 0.99,
+  sigma_eta = 0.03,
+  H_0=0
+)
+```
+
+
+After the initializing of parameters, the code will be the same as the code of the previous model. We do a local search and give the summary of the log-likelihoods found.
+
+```{r echo=FALSE}
+sim1.sim <- pomp(sne.filt, 
+                 statenames=sne_statenames,
+                 paramnames=sne_paramnames,
+                 covarnames=sne_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+sim1.filt <- pomp(sim1.sim, 
+                  covar=data.frame(
+                    covaryt=c(obs(sim1.sim),NA),
+                    time=c(timezero(sim1.sim),time(sim1.sim))),
+                  tcovar="time",
+                  statenames=sne_statenames,
+                  paramnames=sne_paramnames,
+                  covarnames=sne_covarnames,
+                  rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.filt),delta.t=1)
+)
+
+run_level <- 2
+sne_Np <-          c(100,1e3,2e3)
+sne_Nmif <-        c(10, 100,200)
+sne_Nreps_eval <-  c(4,  10,  20)
+sne_Nreps_local <- c(10, 20, 20)
+sne_Nreps_global <-c(10, 20, 100)
+
+require(doParallel)
+registerDoParallel()
+
+stew(file=sprintf("pf2-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:sne_Nreps_eval[run_level], .export=c("sim1.filt","sne_Np","run_level"), 
+                   .packages='pomp',
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     pfilter(sim1.filt,Np=sne_Np[run_level])
+                   )
+  )
+},seed=493536993,kind="L'Ecuyer")
+L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE)
+
+sne_rw.sd_rp <- 0.02
+sne_rw.sd_ivp <- 0.1
+sne_cooling.fraction.50 <- 0.5
+
+stew(file=sprintf("mif2-%d.rda",run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()),
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(sne.filt,
+                          start=params_test,
+                          Np=sne_Np[run_level],
+                          Nmif=sne_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=sne_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            sigma     = sne_rw.sd_rp,
+                            d         = sne_rw.sd_rp,
+                            phi       = sne_rw.sd_rp,
+                            sigma_eta = sne_rw.sd_rp,
+                            H_0       = ivp(sne_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()), .packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(sne_Nreps_eval[run_level],
+                                   logLik(pfilter(sne.filt,params=coef(if1[[i]]),Np=sne_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level==2) 
+  write.table(r.if1,file="new_sne_params2.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+if (run_level==3) 
+  write.table(r.if1,file="new_sne_params3.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+
+summary(r.if1$logLik,digits=5)
+```
+
+We see that the mean log-likelihood is 3277 and the max value found is 3285. Now we give the scatter plot and diagnostics plot.
+
+```{r echo=FALSE}
+pairs(~logLik+d+sigma+phi+sigma_eta,data=r.if1)
+plot(if1)
+```
+
+Here, we see that the value of $\sigma$ is very close to 0. This is problematic since the demeaned returns is defined by $Y_n = d \sigma ^2 \exp (H_n) + \sigma \exp (0.5 H_n) \epsilon _n$. If $\sigma$ is close to 0, we would get $Y_n=0$ as well, resulting in a value of 0 for the demaned returns. The log-likelihood is high in this case because the mean of the demeaned returns is 0. 
+
+## Modified POMP Model
+
+To help solve the problem, we would fix the value of $\sigma$ to be 1. Then the stochastic volatility in mean model is defined by
+
+$$ Y_n = d \exp (H_n) + \exp (0.5 H_n) \epsilon _n $$
+
+$$ H_n = \phi H_{n-1} + \sigma _\nu \nu _n$$
+
+We now declare the variable names and rprocesses.
+
+```{r}
+sne_statenames <- c("H","Y_state")
+sne_rp_names <- c("d", "phi", "sigma_eta")
+sne_ivp_names <- c("H_0")
+sne_paramnames <- c(sne_rp_names,sne_ivp_names)
+sne_covarnames <- "covaryt"
+
+rproc1 <- "
+double eta;
+eta = rnorm(0, 1);
+H = phi * H + sigma_eta * eta;
+"
+rproc2.sim <- "
+Y_state = rnorm(d * exp(H), exp(0.5*H));
+"
+rproc2.filt <- "
+Y_state = covaryt;
+"
+sne_rproc.sim <- paste(rproc1,rproc2.sim)
+sne_rproc.filt <- paste(rproc1,rproc2.filt)
+
+sne_initializer <- "
+H = H_0;
+Y_state = rnorm(d * exp(H), exp(0.5*H));
+"
+sne_rmeasure <- "
+y=Y_state;
+"
+sne_dmeasure <- "
+lik=dnorm(y, d * exp(H), exp(0.5*H),give_log);
+"
+sne_toEstimationScale <- "
+Tsigma_eta = log(sigma_eta);
+Tphi = logit(phi);
+"
+sne_fromEstimationScale <- "
+Tsigma_eta = exp(sigma_eta);
+Tphi = expit(phi);
+"
+```
+
+We filter and simulate. We also plot the simulation, comparing it to the actual dataset.
+
+```{r echo=FALSE}
+sne.filt <- pomp(data=data.frame(y=sne.ret.demeaned,
+                                 time=1:length(sne.ret.demeaned)),
+                 statenames=sne_statenames,
+                 paramnames=sne_paramnames,
+                 covarnames=sne_covarnames,
+                 times="time",
+                 t0=0,
+                 covar=data.frame(covaryt=c(0,sne.ret.demeaned),
+                                  time=0:length(sne.ret.demeaned)),
+                 tcovar="time",
+                 rmeasure=Csnippet(sne_rmeasure),
+                 dmeasure=Csnippet(sne_dmeasure),
+                 rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.filt),delta.t=1),
+                 initializer=Csnippet(sne_initializer),
+                 toEstimationScale=Csnippet(sne_toEstimationScale), 
+                 fromEstimationScale=Csnippet(sne_fromEstimationScale)
+)
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+```
+
+```{r}
+params_test <- c(
+  d = .5,  
+  phi = 0.99,     
+  sigma_eta = 0.03,
+  H_0=0
+)
+```
+
+```{r echo=FALSE}
+sim1.sim <- pomp(sne.filt, 
+                 statenames=sne_statenames,
+                 paramnames=sne_paramnames,
+                 covarnames=sne_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+sim1.filt <- pomp(sim1.sim, 
+                  covar=data.frame(
+                    covaryt=c(obs(sim1.sim),NA),
+                    time=c(timezero(sim1.sim),time(sim1.sim))),
+                  tcovar="time",
+                  statenames=sne_statenames,
+                  paramnames=sne_paramnames,
+                  covarnames=sne_covarnames,
+                  rprocess=discrete.time.sim(step.fun=Csnippet(sne_rproc.filt),delta.t=1)
+)
+plot(Y_state~time, data=sim1.sim, type="l", col="blue", xlab="Time", ylab="Demeaned Returns", main="Simulated Demeaned Returns")
+lines(zdem)
+```
+
+We can see that the simulation overestimates the values of the demeaned returns.
+
+### Local Search
+
+We continue on by performing the local search.
+
+```{r echo=FALSE}
+run_level <- 2
+sne_Np <-          c(100,1e3,2e3)
+sne_Nmif <-        c(10, 100,200)
+sne_Nreps_eval <-  c(4,  10,  20)
+sne_Nreps_local <- c(10, 20, 20)
+sne_Nreps_global <-c(10, 20, 100)
+
+require(doParallel)
+registerDoParallel()
+
+stew(file=sprintf("pf3-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:sne_Nreps_eval[run_level], .export=c("sim1.filt","sne_Np","run_level"), 
+                   .packages='pomp',
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     pfilter(sim1.filt,Np=sne_Np[run_level])
+                   )
+  )
+},seed=493536993,kind="L'Ecuyer")
+L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE)
+
+sne_rw.sd_rp <- 0.02
+sne_rw.sd_ivp <- 0.1
+sne_cooling.fraction.50 <- 0.5
+```
+
+```{r echo=FALSE}
+stew(file=sprintf("mif3-%d.rda",run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()),
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(sne.filt,
+                          start=params_test,
+                          Np=sne_Np[run_level],
+                          Nmif=sne_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=sne_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            d         = sne_rw.sd_rp,
+                            phi       = sne_rw.sd_rp,
+                            sigma_eta = sne_rw.sd_rp,
+                            H_0       = ivp(sne_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()), .packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(sne_Nreps_eval[run_level],
+                                   logLik(pfilter(sne.filt,params=coef(if1[[i]]),Np=sne_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level==2) 
+  write.table(r.if1,file="new2_sne_params2.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+
+t.if1
+summary(r.if1$logLik,digits=5)
+```
+
+The program ran for 982.64 seconds, or 16.377 minutes.
+We obtain a mean log-likelihood value of 3228 and a max value of 3234. We now plot the scatterplot and diagnostics.
+
+```{r echo=FALSE}
+pairs(~logLik+d+phi+sigma_eta,data=r.if1)
+plot(if1)
+```
+
+Looking at the scatterplot, we see that $\phi$ tends to go towards a value near 1. From the diagnostics, we see that there are times where the effective sample size drops significantly, when the dataset at that time oscillates more dramatically. We see the log-likelihood quickly converges to a value of about 3200, $\phi$ converges near 1, and $\sigma _\eta$ converges around 0.3.
+
+### Global Search
+
+We now perform the global search. We give a range of values for the parameters, and run the program below.
+
+```{r echo=FALSE}
+sne_box <- rbind(
+  d = c(0,1),
+  phi = c(0.95,0.99),
+  sigma_eta = c(0.02,1),
+  H_0 = c(-1,1)
+)
+stew(file=sprintf("box_eval3-%d.rda",run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:sne_Nreps_global[run_level], .export = ls(globalenv()), .packages='pomp',.combine=c,
+                      .options.multicore=list(set.seed=TRUE)) %dopar%  
+      mif2(
+        if1[[1]],
+        start=apply(sne_box,1,function(x)runif(1,x))
+      )
+    
+    L.box <- foreach(i=1:sne_Nreps_global[run_level], .export = ls(globalenv()), .packages='pomp',.combine=rbind,
+                     .options.multicore=list(set.seed=TRUE)) %dopar% {
+                       set.seed(87932+i)
+                       logmeanexp(
+                         replicate(sne_Nreps_eval[run_level],
+                                   logLik(pfilter(sne.filt,params=coef(if.box[[i]]),Np=sne_Np[run_level]))
+                         ), 
+                         se=TRUE)
+                     }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level==2) write.table(r.box,file="new2_sne_params2global.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+t.box
+summary(r.box$logLik,digits=5)
+pairs(~logLik+d+phi+sigma_eta+H_0,data=r.box)
+plot(if.box)
+```
+
+The program ran for 964.27 seconds, or 16.07 minutes. The mean log-likelihood found is 3228 and the maximum value found is 3238. 
+
+Looking at the scatterplot, we see that $\phi$ tends to go near a value of 1, and $\sigma _\eta$ being around 0.3. We also see a linear relationship between the log-likelihood and $H_0$. As $H_0$ increases, the log-likelihood decreases.
+
+Looking at the diagnostics plot, we see similar results for the effective sample size as for the local search. The log-likelihood converges quickly to a little higher than 3200, while $\phi$ converges near 1 and $\sigma _\eta$ converges around 0.3.
+
+### Local Search with Run Level 3
+
+Like for the previous model, we run the local search with run level 3.
+
+```{r}
+run_level <- 3
+```
+
+```{r echo=FALSE}
+stew(file=sprintf("pf3-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:sne_Nreps_eval[run_level], .export=c("sim1.filt","sne_Np","run_level"), 
+                   .packages='pomp',
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     pfilter(sim1.filt,Np=sne_Np[run_level])
+                   )
+  )
+},seed=493536993,kind="L'Ecuyer")
+L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE)
+
+sne_rw.sd_rp <- 0.02
+sne_rw.sd_ivp <- 0.1
+sne_cooling.fraction.50 <- 0.5
+
+stew(file=sprintf("mif3-%d.rda",run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()),
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(sne.filt,
+                          start=params_test,
+                          Np=sne_Np[run_level],
+                          Nmif=sne_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=sne_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            d         = sne_rw.sd_rp,
+                            phi       = sne_rw.sd_rp,
+                            sigma_eta = sne_rw.sd_rp,
+                            H_0       = ivp(sne_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:sne_Nreps_local[run_level], .export = ls(globalenv()), .packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(sne_Nreps_eval[run_level],
+                                   logLik(pfilter(sne.filt,params=coef(if1[[i]]),Np=sne_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level==3) 
+  write.table(r.if1,file="new2_sne_params3.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+
+summary(r.if1$logLik,digits=5)
+pairs(~logLik+d+phi+sigma_eta,data=r.if1)
+plot(if1)
+```
+
+The local search results in a mean log-likelihood value of 3232 and a maximum value of 3238. According to the scatterplot and diagnostic plot, we see that $\phi$ converges to a value of 1, $\sigma _\eta$ converges near 0.3, and the log-likelihood values are consistent. The results are improved from the previous local search and slightly improved in terms of mean value compared to the global search. 
+
+#Benchmark Likelihood from GARCH model
+
+Having obtained log-likelihood values for our models, we will compare them to that of a simpler model that can be used for our dataset. In this case, we will use the GARCH(1,1) model. 
+
+The GARCH(1,1) model has the form
+
+$$ Y_n = \epsilon _n \sqrt{V_n} $$
+$$ V_n = \alpha _0 + \alpha _1 Y_{n-1}^2 + \beta _1 V_{n-1} $$
+
+We will find the log likelihood of the GARCH(1,1) model.
+
+```{r}
+require(tseries)
+fit.garch.benchmark <- garch(zdem,grad = "numerical", trace = FALSE)
+L.garch.benchmark <- logLik(fit.garch.benchmark)
+L.garch.benchmark
+```
+
+The log-likelihood obtained from the GARCH(1,1) model is 3160.049 with 3 degrees of freedom.
+
+The max log-likelihood obtained from the first stochastic volatility model is 3278 while the max log-likelihood obtained from the stochastic volatility in mean model is 3238. Based on the value of the log-likelihood, we can conclude that our models perform better than the GARCH(1,1) model. 
+
+#Conclusion
+
+In this project, we studied the volatility demeaned returns of the Sony stock from the past five years. In order to do this, we fitted two kinds of volatility models to our dataset and compared the log-likelihood values. We first created the pomp model and ran local and global searches for each model.
+
+As a result, we obtained a maximum log-likelihood value of 3278 from the first stocastic volatility model, and a value of 3238 from the stochastic volatility in mean model. After obtaining the log-likelihood values, we compared them to that of the GARCH(1,1) model in order to see how well how models performed compared to a simpler but easily coded model. The GARCH(1,1) resulted a log-likelihood of 3160.049, which is lower than the log-likelihood found with our models. We can conclude that our models performed better than the bench value.
+
+
+## Extensions
+
+In this project, we set the run level to 2 for most of the searches, while we only used run level 3 for the local searchs of the two volatility models. A further analysis can start with using the run level 3 on global searches and compare the results with the results described in this project. In addition, with further computing power, we may also have a higher run level with larger number of particles and iterations. 
+
+#Sources
+[1] https://finance.yahoo.com/quote/SNE/history?period1=1364702400&period2=1522468800&interval=1wk&filter=history&frequency=1wk
+
+[2] https://ionides.github.io/531w18/
+
+[3] http://ionides.github.io/531w16/final_project/index.html
+
+[4] https://ionides.github.io/531w18/14/notes14.html
+
+[5] Koopman, Siem Jan and Uspensky, Eugenie Hol. "The Stochastic Volatility in Mean model:Empirical evidence from international stock markets." 
+
+[6] https://www.investopedia.com/terms/s/stock.asp
+
+[7] https://www.investopedia.com/terms/v/volatility.asp
+
+[8] https://ionides.github.io/531w16/final_project/Project08/Final/Stats_531_Final_Project.html

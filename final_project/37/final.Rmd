@@ -1,0 +1,584 @@
+---
+title: "Shigellosis Transmission in South Korea from 2001 to 2016"
+date: '2018 4 22 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+shigellosis = read.csv("report.csv",
+                       header = F)
+births = read.csv("birth01_17.csv", header = F)
+pops = read.csv("pop01_17.csv", header = F)
+deaths = read.csv("death_rate01_16.csv", header = F)
+
+colnames(births) = NULL
+birth = unlist(births[2,1:192])
+birth = as.vector(birth)
+birth = as.numeric(birth)
+
+colnames(pops) = NULL
+pop = unlist(pops[2,1:16])
+pop = as.vector(pop)
+pop = rep(pop, each = 12) 
+
+death = unlist(deaths[2,2*(1:16)])
+death = as.vector(death)
+death = death/100000
+death = rep(death, each = 12)
+
+colnames(shigellosis) = c("Year","Total",1:12)
+shigellosis = shigellosis[1:18,]
+shi = shigellosis[,3:14]
+shi = as.vector(t(shi))
+shi = shi[1:192]
+month = 1:12
+month = month/12
+month = rep(month, 16)
+time = rep(2001:2016,each = 12)
+time = time + month
+shi_data = data.frame(time, shi, birth, pop, death)
+rm(shi, month, time, pop, birth)
+
+require(doParallel)
+require(DiagrammeR)
+require(foreach)
+require(ggplot2)
+require(pomp)
+require(plyr)
+require(magrittr)
+require(reshape2)
+require(data.table)
+stopifnot(packageVersion("pomp")>="0.75-1")
+```
+
+## Introduction
+
+Shigellosis is an infectious disease caused by a group of bacteria called Shigella. Shigella species are classified by four serogroups. Among them, S. sonnei and S. flexneri account for most cases of outbreaks of shigellosis. Approximately, 1.4 million people have been infected with reports suggesting 600,000 deaths due to the infection [1]. It is the third most common enteric bacterial infection in the United States [2]. It is transmitted by the direct and indirect fecal-oral route as well as by contact with contaminated water, food, hand, stool, and flies [1]. People with shigellosis shed the bacteria in their feces [3]. Thus, the bacteria can be transmitted from an infected person to another, or surrounding environments such as water and food. It causes a diarrhea and other gastrointestinal symptoms starting a day or two of the incubation period after a person is exposed to the bacteria. Usually, the disease resolves within 5 to 7 days. There may be a case that people who are infected have no symptoms. Nevertheless, they may pass the bacteria to others. Shigella infections are treated with antibiotics. However, no vaccines against Shigella infection currently exist [4]. 
+
+In South Korea, shigellosis is the most common among a group of infectious diseases caused by various pathogens. Approximately 500 cases of shigellosis have reported every year since 2004 [1]. To understand the transmission dynamics of shigella infection in South Korea, we will build extended SIR models with covariates. Therethrough, we will estimate parameters explaining the transmission dynamics. We will borrow ideas for modeling from [5-7]. 
+
+## Data
+
+We will use monthly shigellosis outbreak data collected by Korean Statistical Information Service from Febuary 2001 to December 2016. In the data, there is not a single day without Shigella infection reported. The average and median number of reported infections during the period are 29 and 11, respectively. Also, during the period, 5,612 cases were reported. 
+
+```{r echo = F}
+head(shigellosis)
+summary(shi_data$shi[-1])
+```
+
+According to the time series plot of the shigellosis outbreak, the overall outbreak has decreased since 2004. 
+
+```{r echo = F}
+plot(shi_data$time[-1], shi_data$shi[-1], type = "l", xlab = "Time", ylab = "Shigellosis", main = "Monthly Shigellosis Outbreak in South Korea" )
+```
+
+Also, we will additionally use three covariates: P (annual population in South Korea), B (monthly number of newborn babies in South Korea) and D (annual death rate in South Korea). Before applying these covariates to modeling, we will smooth population and death rate because they were collected annually.
+
+```{r}
+shi_t0 <- shi_data$time[1]-1/12
+shi_tcovar = shi_data$time
+covartable = data.frame(
+  time=shi_tcovar,
+  B = shi_data$birth,
+  P = predict(smooth.spline(x = 2001:2016, y = shi_data$pop[12*(1:16)]), x = shi_tcovar)$y,
+  D = predict(smooth.spline(x = 2001:2016, y = shi_data$death[12*(1:16)]), x = shi_tcovar)$y
+)
+
+par(mfrow = c(1,3))
+plot(B ~ time, data = covartable, type = "l", col = "red", ylab = "Birth")
+plot(P ~ time, data = covartable, type = "l", col = "red", ylab = "Population")
+points(pop ~ time, data = shi_data[seq(1,181,by =12),])
+plot(D ~ time, data = covartable, type = "l", col = "red", ylab = "Death")
+points(death ~ time, data = shi_data[seq(1,181,by =12),])
+```
+
+## Partially Observed Markov Process Models Analysis
+
+### SEIR model
+
+At first, we will use a SEIR compartment model for shigellosis outbreak. 
+
+```{r echo = F}
+DiagrammeR::grViz("digraph SEIR {
+          graph [rankdir=TD, overlap=false, fontsize = 10]
+          node[shape=egg, label='B'] b;
+          subgraph {
+          rank=same;
+          node[shape=oval, label='S'] S;
+          node[shape=oval, label='E'] E;
+          node[shape=oval, label='I'] I;
+          node[shape=oval, label='R'] R;
+          S->E E->I I->R
+          }
+          node[shape=diamond, label='dead'] d;
+          b->S
+          {S E I R}->d
+          }",height=300,width=800)
+```
+
+$B = \text{Births}$
+
+$S = \text{Susceptibles}$
+
+$E = \text{Exposed, non-infectious, incubating}$
+
+$I = \text{Infectious}$
+
+$R = \text{Recovered}$
+
+Our first model is a susceptible-exposed-infectious-recovered (SEIR) model. Together with a basic structure of SEIR model, we add births and deaths. The flow of people between the compartments is shown above. When babies are born at each time step, they migrate to the susceptible compartment. People in the susceptible poor move to the exposed at a specific rate called contact rate, $\beta$. Most of people exposed to shigellosis have the incubation period. After the period, people who show symptoms of shigellosis in the exposed are considered as infectious people. Within 7 days after the infection, patients recover and then move to the recovered pool. Additionally, people in every state can die at a certain rate. In this model, we assume disease-induced immunity is permanent. 
+
+Since the SEIR model is underlying dynamics, we assume the number of reported cases and the number of infectious individuals are different. Therefore, we will try to estimate the reporting rate as well in the model.
+
+Our analysis will be conducted in using POMP, which is useful for non-linear process modeling. To implement POMP framework, there are several things to be set. The first thing is a stochastic simulator for the unobserved state process using Euler's method. We will model the number of moving from one compartment to the next over a very short time as a binomial variable.
+
+```{r}
+shi2_step <- "
+double t_SE = rbinom(S,1-exp(-dt*Beta*I/P));
+double t_EI = rbinom(E,1-exp(-dt*omega));
+double t_IR = rbinom(I,1-exp(-dt*gamma));
+double t_S = rbinom(S,1-exp(-D*dt));
+double t_E = rbinom(E,1-exp(-D*dt));
+double t_I = rbinom(I,1-exp(-D*dt));
+double t_R = rbinom(R,1-exp(-D*dt));
+
+S += B - t_SE - t_S;
+E += t_SE - t_EI - t_E;
+if(E<0) E = 0;
+I += t_EI - t_IR - t_I;
+if(I<0) I = 0;
+R += t_IR - t_R;
+if(R<0) R = 0;
+"
+```
+
+```{r}
+shi2_statenames <- c("S","E","I","R")
+shi2_paramnames <- c("Beta","omega","gamma","rho")
+shi_obsnames <- "shi"
+shi_fixed_parameters <- c(p=0.14)
+```
+
+Parameters we define in the model are following:
+
+$\beta = \text{Contact rate}$
+
+$\omega = \text{Incubation rate}$
+
+$\gamma = \text{Recovery rate}$
+
+$\rho = \text{Reporting rate}$
+
+We will model the shigellosis cases as a poison process with mean $\rho*I$ [6].
+
+```{r}
+shi2_dmeas <- "
+lik = dpois(shi,rho*I+1e-18,give_log);
+"
+
+shi2_rmeas <- "
+shi = rpois(rho*I+1e-18);
+"
+
+shi2_fromEstimationScale <- "
+TBeta = exp(Beta);
+Tomega = exp(omega);
+Tgamma = exp(gamma);
+Trho = expit(rho);
+"
+
+shi2_init <- "
+S = 45985000;
+E = 100;
+I = 45;
+R = 14;
+"
+shi2_toEstimationScale <- "
+TBeta = log(Beta);
+Tomega = log(omega);
+Tgamma = log(gamma);
+Trho = logit(rho);
+"
+
+shi2_pomp <- pomp(
+  data=subset(shi_data[,1:2],time > shi_t0 + 1/12),
+  times=colnames(shi_data[1]),
+  t0=shi_t0 + 1/12,
+  rprocess=euler.sim(
+    step.fun=Csnippet(shi2_step),
+    delta.t=1/12
+  ),
+  rmeasure=Csnippet(shi2_rmeas),
+  dmeasure=Csnippet(shi2_dmeas),
+  covar=covartable,
+  tcovar=colnames(covartable)[1],
+  
+  fromEstimationScale=Csnippet(shi2_fromEstimationScale),
+  toEstimationScale=Csnippet(shi2_toEstimationScale),
+  obsnames = shi_obsnames,
+  statenames=shi2_statenames,
+  paramnames=shi2_paramnames,
+  covarnames = c("B","P","D"),
+  initializer=Csnippet(shi2_init)
+)
+```
+
+#### Global likelihood maximization
+
+Now, we are ready to analyze the transmission dynamics of shigellosis using POMP. To understand it, we will try to estimate the parameters by global search. Before doing it, we need to set up ranges for the search. Usually, the incubation period for shigellosis, $1/\omega$, is between a day and ten. Also, the period of recovery, $\gamma$, takes 5 to 7 days. Ranges for $\beta$ and $\rho$ are referred to [7]. Additionally, we set the rw.sd = 0.02 andcooling.fraction.50 = 0.5.
+
+```{r}
+run_level <- 3
+switch(run_level,
+       {shi_Np=100; shi_Nmif=10; shi_Neval=10; shi_Nglobal=10; shi_Nlocal=10}, 
+       {shi_Np=5000; shi_Nmif=200; shi_Neval=10; shi_Nglobal=10; shi_Nlocal=10}, 
+       {shi_Np=10000; shi_Nmif=300; shi_Neval=10; shi_Nglobal=100; shi_Nlocal=20}
+)
+
+cores <- 20  # The number of cores on this machine 
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer")
+
+shi_rw.sd <- 0.02
+shi_cooling.fraction.50 <- 0.5
+shi_box <- rbind(
+  Beta=c(0,6),
+  rho=c(0,0.5),
+  gamma=c(3.4,5.1),
+  omega=c(3,30)
+)
+
+stew(file=sprintf("box_2eval-%d.rda",run_level),{
+  
+  t_2global <- system.time({
+    mifs_2global <- foreach(i=1:shi_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        shi2_pomp,
+        start=c(apply(shi_box,1,function(x)runif(1,x[1],x[2])),shi_fixed_parameters),
+        Np=shi_Np,
+        Nmif=shi_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=shi_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          Beta=shi_rw.sd,
+          rho=shi_rw.sd,
+          gamma=shi_rw.sd,
+          omega=shi_rw.sd
+        )
+      )
+      
+    }
+  })
+  
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_global_2eval-%d.rda",run_level),{
+  t_global_2eval <- system.time({
+    liks_2global <- foreach(i=1:shi_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(shi_Neval, logLik(pfilter(shi2_pomp,params=coef(mifs_2global[[i]]),Np=shi_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_2global <- data.frame(logLik=liks_2global[,1],logLik_se=liks_2global[,2],t(sapply(mifs_2global,coef)))
+summary(results_2global$logLik,digits=5)
+mle = which.max(results_2global$logLik)
+shi_mle = unlist(results_2global[mle,])
+```
+
+Evaluation of the best result of this search gives a likelihood fo -1413.06 with a standard error 9.55. This took in  127.7 minutes for the maximization and 2.4 minutes for the evaluation. Plotting these diverse parameter estimates can help to give a feel for the global geometry of the likelihood surface.
+
+```{r}
+pairs(~logLik+Beta+rho+omega+gamma,data=results_2global)
+```
+
+We see that there are extreme outliers in every estimate surface.  
+
+#### Diagnostics
+
+```{r}
+plot(mifs_2global)
+shi_mle
+```
+
+As we see the plots in the likelihood surface, there are some lines which are corresponding to the outliers. Nevertheless, convergence is not bad. 
+
+Based on the global search, we got the result that most cases of shigella infection were reported at 0.99 rate. Also, most patients were recovered from 4 to 5 days. 
+
+### SEIRS model
+
+We will try a different compartment model, a SEIR compartment model for shigellosis outbreak. 
+
+```{r echo = F}
+DiagrammeR::grViz("digraph SEIRS {
+          graph [rankdir=TD, overlap=false, fontsize = 10]
+          node[shape=egg, label='B'] b;
+          subgraph {
+          rank=same;
+          node[shape=oval, label='SB'] SB;
+          node[shape=oval, label='SO'] SO;
+          node[shape=oval, label='E'] E;
+          node[shape=oval, label='I'] I;
+          node[shape=oval, label='R'] R;
+          SB->E SB->SO SO->E E->I I->R R->SO
+          }
+          node[shape=diamond, label='dead'] d;
+          b->SB
+          {SB SO E I R}->d
+          }",height=300,width=800)
+```
+
+$B = \text{Births}$
+
+$SB = \text{Susceptibles under age 10}$
+
+$SO = \text{Susceptibles over age 10}$
+
+$E = \text{Exposed, non-infectious, incubating}$
+
+$I = \text{Infectious}$
+
+$R = \text{Recovered}$
+
+Our second model is a susceptible-exposed-infectious-recovered-susceptible (SEIRS) model. Together with a basic structure of SEIRS model, we add births and deaths as same as the first model. The flow of people between the compartments is shown above. When babies are born at each time step, they migrate to the compartment for susceptibles under age 10. Babies and children in the susceptible poor move to the exposed at a specific rate called contact rate, $\beta_B$. If they are not exposed to the bacteria until they reach age 10, they move to the compartment for susceptibles over age 10. As same as the contact rate for the susceptibles under age 10, people in the pool of susceptibles over age 10 are exposed to Shigella at a certain rate, $\beta_O$. The rest of setting for this model is same inas the first model except the assumption for immunity. In this model, we assume disease-induced immunity is not permanent. Therefore, recovered people may mirgrate to the susceptible poor again at a specific rate. 
+
+```{r}
+shi_step <- "
+double t_SBE = rbinom(SB,1-exp(-beta_B*I/P*dt));
+double t_SOE = rbinom(SO,1-exp(-beta_O*I/P*dt));
+double t_SBSO = rbinom(SB,1-exp(-dt*p));
+double t_EI = rbinom(E,1-exp(-dt*omega));
+double t_IR = rbinom(I,1-exp(-dt*gamma));
+double t_RSO = rbinom(R,1-exp(-dt*phi));
+double t_SB = rbinom(SB,1-exp(-D*dt));
+double t_SO = rbinom(SO,1-exp(-D*dt));
+double t_E = rbinom(E,1-exp(-D*dt));
+double t_I = rbinom(I,1-exp(-D*dt));
+double t_R = rbinom(R,1-exp(-D*dt));
+
+SB += B - t_SBE - t_SB;
+SO += t_SBSO - t_SO + t_RSO;
+E += t_SBE + t_SOE - t_EI - t_E;
+if(E<0) E = 0;
+I += t_EI - t_IR - t_I;
+if(I<0) I = 0;
+R += t_IR - t_R - t_RSO;
+if(R<0) R = 0;
+H += t_EI;
+"
+```
+
+Parameters we define for the second model are following:
+
+$\beta_B = \text{Contact rate for the susceptibles under age 10}$
+
+$\beta_O = \text{Contact rate for the susceptibles over age 10}$
+
+$\omega = \text{Incubation rate}$
+
+$\gamma = \text{Recovery rate}$
+
+$\rho = \text{Reporting rate}$
+
+$\phi = \text{Immunity loss rate}$
+
+```{r}
+shi_statenames <- c("SB","SO","E","I","R","H")
+shi_paramnames <- c("beta_O","beta_B","p","omega","gamma","rho","tau","phi")
+shi_obsnames <- "shi"
+shi_fixed_parameters <- c(p=0.14)
+```
+
+We assume cases are drawn from a rounded, left-censored normal distribution with a mean report rate, $\rho$ and dispersion parameter, $\tau$ [8]. We refer to the measurement model in [8] since our data are dispersed. 
+
+```{r}
+shi_dmeas <- "
+double tol = 1.0e-25;
+double mean_cases = rho*H;
+double sd_cases = sqrt(pow(tau*H,2) + mean_cases);
+if(shi > 0.0){
+  lik = pnorm(shi+0.5,mean_cases,sd_cases,1,0) - pnorm(shi-0.5,mean_cases,sd_cases,1,0) + tol;
+} else{
+  lik = pnorm(shi+0.5,mean_cases,sd_cases,1,0) + tol;
+}
+if (give_log) lik = log(lik);
+"
+
+shi_rmeas <- "
+  shi = rnorm(rho*H, sqrt( pow(tau*H,2) + rho*H ) );
+  if (shi > 0.0) {
+    shi = nearbyint(shi);
+  } else {
+    shi = 0.0;
+  }
+"
+```
+
+```{r}
+shi_fromEstimationScale <- "
+Tbeta_B = exp(beta_B);
+Tbeta_O = exp(beta_O);
+Tomega = exp(omega);
+Tgamma = exp(gamma);
+Ttau = exp(tau);
+Tphi = expit(phi);
+Trho = expit(rho);
+"
+
+shi_init <- "
+SB = 6574000;
+SO = 39411000;
+E = 100;
+I = 45;
+R = 14;
+H = 0;
+"
+shi_toEstimationScale <- "
+Tbeta_B = log(beta_B);
+Tbeta_O = log(beta_O);
+Tomega = log(omega);
+Tgamma = log(gamma);
+Ttau=log(tau);
+Tphi = logit(phi);
+Trho = logit(rho);
+"
+
+shi_pomp <- pomp(
+  data=subset(shi_data[,1:2],time > shi_t0 + 1/12),
+  times=colnames(shi_data[1]),
+  t0=shi_t0 + 1/12,
+  rprocess=euler.sim(
+    step.fun=Csnippet(shi_step),
+    delta.t=1/12
+  ),
+  rmeasure=Csnippet(shi_rmeas),
+  dmeasure=Csnippet(shi_dmeas),
+  covar=covartable,
+  tcovar=colnames(covartable)[1],
+
+  fromEstimationScale=Csnippet(shi_fromEstimationScale),
+  toEstimationScale=Csnippet(shi_toEstimationScale),
+  obsnames = shi_obsnames,
+  zeronames = "H",
+  statenames=shi_statenames,
+  paramnames=shi_paramnames,
+  covarnames = c("B","P","D"),
+  initializer=Csnippet(shi_init)
+)
+```
+
+#### Global likelihood maximization
+
+Now, we are ready to analyze the transmission dynamics of shigellosis using POMP. We add ranges for ne w parameters, $\beta_B, \beta_O, \tau$, and $\phi$. 
+
+```{r} 
+run_level <- 3
+switch(run_level,
+       {shi_Np=100; shi_Nmif=10; shi_Neval=10; shi_Nglobal=10; shi_Nlocal=10},
+       {shi_Np=5000; shi_Nmif=200; shi_Neval=10; shi_Nglobal=10; shi_Nlocal=10}, 
+       {shi_Np=10000; shi_Nmif=300; shi_Neval=10; shi_Nglobal=100; shi_Nlocal=20}
+)
+
+cores <- 20  # The number of cores on this machine 
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer")
+
+shi_rw.sd <- 0.02
+shi_cooling.fraction.50 <- 0.5
+shi_boxx <- rbind(
+  beta_B=c(0,6),
+  beta_O=c(0,2),
+  rho=c(0,0.5),
+  phi=c(0,0.1),
+  tau=c(0,0.1),
+  gamma=c(3.4,5.1),
+  omega=c(3,30)
+)
+
+stew(file=sprintf("box_1eval-%d.rda",run_level),{
+
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:shi_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        shi_pomp,
+        start=c(apply(shi_boxx,1,function(x)runif(1,x[1],x[2])),shi_fixed_parameters),
+        Np=shi_Np,
+        Nmif=shi_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=shi_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          beta_B=shi_rw.sd,
+          beta_O=shi_rw.sd,
+          rho=shi_rw.sd,
+          phi=shi_rw.sd,
+          tau=shi_rw.sd,
+          gamma=shi_rw.sd,
+          omega=shi_rw.sd
+        )
+      )
+
+    }
+  })
+
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_global_1eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:shi_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(shi_Neval, logLik(pfilter(shi_pomp,params=coef(mifs_global[[i]]),Np=shi_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+
+mle2 = which.max(results_global$logLik)
+shi_mle2 = unlist(results_global[mle2,])
+```
+
+Evaluation of the best result of this search gives a likelihood fo -882.06 with a standard error 0.70. This took in  218.3 minutes for the maximization and 4.6 minutes for the evaluation. Since the second model is more complex than the first one, it took more time for computation. Also, this model gives a higher likelihood than the previous model. Plotting these diverse parameter estimates can help to give a feel for the global geometry of the likelihood surface.
+
+```{r}
+pairs(~logLik+beta_B+beta_O+rho+omega+gamma+phi,data=results_global)
+```
+
+From the likelihood plot, the log likelihood has two local optimums.  
+
+#### Diagnostics
+
+```{r}
+plot(mifs_global)
+shi_mle2
+```
+
+In the second model, log likelihood and nfail converge better than the first model. On the other hand, it's hard to tell the contact rates converge on certain numbers. In terms of the reporting rate, the second model has also 0.94, which is similar with the reporting rate estimated by the first model. However, the incubation rate and recovery rate are very different from those of the first model. The estimated immunity loss rate is 0.53, which suggests that recovered patients lost their disease-induced immunity within 60 days and became susceptible again. 
+
+## Conclusion
+
+We conducted two compartment models. The POMP framework was very helpful to model the transmission dynamics of shigellosis. The first model based on the SEIR model is simpler than the second model. Also, in terms of convergence of parameters, the first one has the better results than the second one. On the other hand, the SEIRS model gives the better likelihood. However, both of them failed to capture the peaks in the data. In the future, we need to improve our models to capture peaks in the data. 
+
+For further studies, we need to consider outbreak cases that people were infected while traveling. According to increase of numbers of overseas travelers, the numbers of patients diseased with imported shigellosis is also increasing [1]. We can include the number of overseas travelers during the same period of this project. 
+
+## References
+
+1. Scallan E., Hoekstra RM, Angulo FJ, Tauxe RV, Widdowson MA, Roy SL, Jones JL, Griffin PM. 2011. Foodborne illness acquired in the United States–major pathogens. Emerg. Infect. Dis. 17:7–15.
+2. Hee-Jung Kim, Seung-Ki Youn, Sangwon Lee and Yeon Hwa Choi. 2013. Epidemiological Characteristics of Imported Shigellosis in Korea, 2010-2011.
+3. Shigella in Foodsafety.gov (https://www.foodsafety.gov/poisoning/causes/bacteriaviruses/shigella/index.html)
+4. Vaccine for Protection Against Shigella sonnei Disease in FDA (https://www.fda.gov/ForConsumers/ConsumerUpdates/ucm464236.htm)
+5. Ojaswita Chaturvedi, Tiny Masupe, Shedden Masupe. 2014. A Continuous Mathematical Model for Shigella Outbreaks.
+6. Richard I. Joh, Robert M. Hoekstra, Ezra J. Barzilay, Anna Bowen, Eric D. Mintz, Howard Weiss, and Joshua S. Weitz. 2012. Dynamics of Shigellosis Epidemics: Estimating Individual-Level Transmission and Reporting Rates From National Epidemiologic Data Sets.
+7. Tianmu Chen, Ross Ka-kit Leung, Zi Zhou, Ruchun Liu, Xixing Zhang, and Lijie Zhang. 2014. Investigation of Key Interventions for Shigellosis Outbreak Control in China.
+8. Martinez-Bakker, M., A. A. King, and P. Rohani. 2015. Unraveling the transmission ecology of polio. PLoS Biology 13:e1002172.
+9. E. Ionides. Times Series Analysis Courese notes.
+
+

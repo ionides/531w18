@@ -1,0 +1,29 @@
+#PBS -N createDB 
+###enter your account info here
+#PBS -M lojun@umich.edu
+#PBS -m abe 
+#PBS -V 
+
+
+#PBS -q fluxm
+#PBS -A si699w18_fluxm 
+#PBS -l pmem=30gb,qos=flux,walltime=120:00:00,procs=2
+
+
+#### change above
+
+
+
+# Include the next three lines always
+if [ "x${PBS_NODEFILE}" != "x" ] ; then
+   cat $PBS_NODEFILE   # contains a list of the CPUs you were using if run with PBS
+fi
+
+###PYTHON CODE####
+
+cd $PBS_O_WORKDIR
+pwd
+###change this to you python file name
+python topicsDB.py 
+
+

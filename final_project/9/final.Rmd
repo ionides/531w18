@@ -1,0 +1,1253 @@
+---
+title: "Stats 531 Final project: Variations of the Ricker POMP model of <i>Lactobacillus crispatus</i> bacterial counts in the vaginal microbiota"
+output: 
+  html_document:
+    theme: yeti
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\estimate[1]{\data{#1}}
+\newcommand\params{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\eqspace{\quad\quad\quad}
+\newcommand\lik{\mathscr{L}}
+\newcommand\loglik{\ell}
+\newcommand\profileloglik[1]{\ell^\mathrm{profile}_#1}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+
+```{r,echo=F,message=F,warning=F}
+require(ggplot2)
+require(plyr)
+require(reshape2)
+require(pomp)
+require(foreach)
+require(doMC)
+```
+
+--------
+
+##1. Vaginal microbiota background
+</br>
+The vaginal microbiota is the community of microorganisms that reside in the vagina. For most women of reproductive age, the vaginal microbiota is dominated by one or more species of <i>Lactobacillus</i>.<sup>1,2</sup> Lactobacilli have long been thought to promote vaginal health through the production of lactic acid, which acidifies the vagina and can inhibit pathogens.<sup>3,4</sup> However, recent applications of DNA sequencing-based approaches to characterize the composition of the vaginal microbiota have revealed that different <i>Lactobacillus</i> species behave differently in the vagina, and that they are not all strongly associated with health.<sup>1,2</sup> In particular, <i>L. crispatus</i> and <i>L. iners</i> are two of the most common lactobacilli found in the vaginal microbiota, and they are the species this analysis will focus on. While <i>L. crispatus</i> dominated vaginal microbial communities are associated with low (acidic) vaginal pH and vaginal health, <i>L. iners</i> dominated communities are associated with higher (more neutral) pH and may predispose women to bacterial vaginosis and accompanying sexual and reproductive health risks.<sup>1,2</sup> This is of public health concern because bacterial vaginosis is implicated in a range of adverse outcomes, HIV and other sexually transmitted infection acquisition, pelvic inflammatory disease, infertility, adverse pregnancy outcomes, and gynecologic cancers.<sup>5-10</sup> 
+</br></br>
+Studying the vaginal microbiota presents certain study design and data analysis challenges for a few reasons. First, the vaginal microbiota is a dynamic community whose composition changes over time in response to a number of different factors, including the menstrual cycle and menstruation.<sup>2,11-16</sup> Additionally, the composition and dynamics of the vaginal microbiota can be vary widely between women.<sup>1,2</sup> For these reasons, longitudinal studies that collect multiple vaginal samples from the same woman over time are best suited to study vaginal microbial dynamics, and the relationships between the vaginal microbiota and sexual and reproductive health outcomes. However, the applicability of ecological population POMP models to vaginal microbiota data has not been reported.
+</br></br>
+The goal of this analysis is to explore variations of the Ricker discrete population model as a POMP model of <i>L. crispatus</i> bacterial counts from lognitudinal vaginal microbiota composition data. Compared to many other areas of health research, this field is still quite young and there is no well-agreed-upon or standard approach to data analysis. As such, now is an optimal time to explore a range of different analysis approaches in order to identify methods that perform well.
+</br>
+
+------
+
+##2. Data exploration
+</br>
+In this analysis, we will work with two vaginal microbiota composition time series that were generated as part of a larger study of the impact of tampon use on the vaginal microbiota (not yet published). This study collected biweekly vaginal swab samples from 22 women over the course of four menstrual cycles. Bacterial DNA was extracted from the swabs, and then all 16S rRNA genes in the samples were amplified by polymerase chain reaction (PCR) and sequenced.<sup>17,18</sup> The 16S rRNA gene is present in all bacteria, and it has enough sequence dissimilarity between species that its sequence can be used to identify the bacterial species present in a sample. Moreover, because there is one copy of the 16S rRNA gene in every bacterium, the number of sequences from a species in a sample after PCR and sequencing is proportional to the number of bacteria of the species that were present in the original sample (assuming PCR and sequencing do not perform differentially between species).
+</br></br>
+We will use a series of <i>L. crispatus</i> sequence counts and a series of <i>L. iners</i> sequence counts from a single subject of the study described above. Each series contains 32 observations that were collected twice-weekly over 16 weeks. The series of <i>L. crispatus</i> counts will be modeled, and the series of <i>L. iners</i> counts used as a covariate series. Both series will be transformed by a factor of 1/1000 in order to work with count data that are on a reasonable scale to simulate with the POMP models. Below is a plot of the <i>L. crispatus</i> and <i>L. iners</i> 1/1000 transformed sequence counts.
+</br></br>
+```{r read_plot_6, echo=F, message=F,fig.align="center"}
+subject6<-read.csv(file="subject6counts.csv",header=T)
+subject6$lcrisp_k<-subject6$lcrisp/1000
+subject6$liners_k<-subject6$liners/1000
+crisp_series_k<-subject6[,c(13,15)]
+iners_series_k<-subject6[,c(13,16)]
+covar_series<-as.data.frame(subject6[,c(13,11,16)])
+covar.0<-data.frame(week=0,menses=0,liners_k=mean(iners_series_k$liners_k))
+covar_series<-rbind(covar.0,covar_series)
+crisp_plot<-crisp_series_k
+crisp_plot$Species<-"lcrisp"
+crisp_plot$count<-crisp_plot$lcrisp_k
+crisp_plot<-crisp_plot[,c(1,3,4)]
+iners_plot<-iners_series_k
+iners_plot$Species<-"liners"
+iners_plot$count<-iners_plot$liners_k
+iners_plot<-iners_plot[,c(1,3,4)]
+subject6_plot<-rbind(crisp_plot,iners_plot)
+ggplot(subject6_plot,aes(week,count,color=Species))+
+  xlab("Week")+
+  ylab("Count")+
+  geom_line()+
+  scale_color_manual(values=c("#ca0020","#0571b0"),labels=c(expression(italic("L. crispatus")),expression(italic("L. iners"))))+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  ggtitle(expression(italic("Lactobacillus")~"species counts across four menstrual cycles"))+
+  theme(legend.text.align = 0)
+```
+</br>
+In these series, each consecutive block of four weeks corresponds to a single menstrual cycle with menstruation at the end of the cycle. Considering this, it looks like there may be cyclic patterns in <i>L. crispatus</i> counts where, for menstrual cycles 1, 2, and 3, <i>L. crispatus</i> count drops at the end of the cycle during menstruation. It also looks like there may be some reciprocity in the two species' counts: at several points, the <i>L. iners</i> count drops when the <i>L. crispatus</i> count rises, and vice versa. We will explore Ricker models incoporating both of these potential drivers of <i>L. crispatus</i> counts.
+</br>
+
+------
+
+##3. Basic Ricker model
+</br>
+The Ricker model is a discrete population model that predicts the number of organisms at time t<sub>n+1</sub> based on the number at time t<sub>n</sub>, a maximum potential growth rate of the population, and the carrying capactiy of the environment.<sup>19</sup> The model is as follows:
+$$\begin{eqnarray} N_{n+1}=N_n*e^{r-r(N_n/k)+\epsilon_n}\end{eqnarray}$$
+<ul>
+  <li>$\begin{eqnarray} N_{n+1}=\end{eqnarray}$ <i>L. crispatus</i> count at time t<sub>n+1</sub></li>
+  <li>$\begin{eqnarray} N_n=\end{eqnarray}$ <i>L. crispatus</i> count at time t<sub>n</sub></li>
+  <li>$\begin{eqnarray} r=\end{eqnarray}$ maximum potential growth rate of the <i>L. crispatus</i> population</li>
+  <li>$\begin{eqnarray} k=\end{eqnarray}$ carrying capacity of the environment</li>
+  <li>$\begin{eqnarray} \epsilon_n=\end{eqnarray}$ process noise at time t<sub>n</sub>, $\begin{eqnarray} \epsilon_{1:N}&\sim&\mathrm{ iid }\, N[0,\sigma]\end{eqnarray}$</li>
+</ul>
+This model accounts for the fact that there are a finite number of niches that <i>L. crispatus</i> can occupy in the vagina. At each time point, the actual growth rate of the population is the potential maximum growth rate scaled by the proportion of the carrying capacity that is currently occupied (N<sub>n</sub> / k). Ignoring process noise, when N<sub>n</sub> < k, the exponent term will be positive and the population will grow. When N<sub>n</sub> > k, the exponent term will be negative and the population will shrink. When N<sub>n</sub> = k, the exponent term will equal 0 and the population will be in equilibrium. 
+</br></br>
+While 16S rRNA gene amplicon sequencing is a highly sensitive and specific method for measuring bacterial species counts, it is not perfect. It is reasonable to model the measured <i>L. crispatus</i> count as a draw from a normal distribution with mean  N<sub>n</sub> and standard deviation <i>stdev</i>:
+$$\begin{eqnarray} Y_n|N_n&\sim&\mathrm\, N[N_n,stdev]\end{eqnarray}$$
+With X<sub>n</sub> being the unobserved latent process model governing <i>L. crispatus</i> counts, and Y<sub>n</sub> being the measurement model, the basic Ricker model can be written as a POMP model as follows:
+$$\begin{eqnarray} X_n=N_n\end{eqnarray}$$
+$$\begin{eqnarray} Y_n=Y_n\end{eqnarray}$$
+```{r basic_ricker,echo=F,message=F,warning=F}
+#discrete time deterministic skeleton
+skel<-Csnippet("DN=N*exp(r-(r*N/k));")
+
+#discrete time stochastic process model
+stochStep<-Csnippet("
+                    e=rnorm(0,sigma);
+                    N=N*exp(r-(r*N/k)+e);
+                    ")
+
+#measurement model
+rmeas<-Csnippet("lcrisp_k=rnorm(N,stdev);")
+dmeas<-Csnippet("lik = dnorm(lcrisp_k,N,stdev,give_log);")
+
+#estimation scales
+fromEstimScale<-Csnippet("
+                         Tr = exp(r);
+                         Tk = exp(k);
+                         ")
+
+toEstimScale<-Csnippet("
+                       Tr = log(r);
+                       Tk = log(k);
+                       ")
+
+#initializer
+init<-Csnippet("
+               N=9.75;
+               e=0;
+               ")
+
+#building pomp
+crisp<-pomp(
+  data=crisp_series_k,
+  times="week",
+  t0=0,
+  skeleton=map(skel),
+  rprocess=discrete.time.sim(step.fun=stochStep,delta.t=.125),
+  rmeasure=rmeas,
+  dmeasure=dmeas,
+  statenames=c("N","e"),
+  paramnames=c("r","sigma","stdev","k"),
+  fromEstimationScale=fromEstimScale,
+  toEstimationScale=toEstimScale,
+  initializer=init,
+  obsnames="lcrisp_k"
+  )
+```
+
+------
+
+####3.1 Selecting initial state and fixed parameter values 
+</br>
+The two states in this model are N and e. We will set N<sub>0</sub> equal to 9.75, the mean observed <i>L. crispatus</i> count, and e<sub>0</sub> = 0. We will assume that the variance of the process noise, $\begin{eqnarray}\sigma^2\end{eqnarray}$, and the variance of the measurment model, <i>stdev<sup>2</sup></i>, are fixed. Particle filtering the basic Ricker model over a range of possible $\begin{eqnarray}\sigma\end{eqnarray}$ and <i>stdev</i> values using 1,000 particles suggests that $\begin{eqnarray}\sigma\end{eqnarray}$ = 0.25 and <i>stdev</i> = 1 maximize the log likelihood of the model, so we will use these values throughout the analysis.
+```{r sigma_stdev,echo=F,message=F,warning=F,fig.align="center",results="hide"}
+#likelihood slice
+set.seed(594709947L)
+stopifnot(packageVersion("pomp")>="0.69-1")
+run_level<-1
+switch(run_level,
+       {crisp_Np=100; crisp_Nmif=10; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10}, 
+       {crisp_Np=1000; crisp_Nmif=100; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10},
+       {crisp_Np=20000; crisp_Nmif=100; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10}, 
+       {crisp_Np=60000; crisp_Nmif=300; crisp_Neval=10; crisp_Nglobal=100; crisp_Nlocal=20}
+)
+registerDoMC(cores=2)
+mcopts<-list(preschedule=FALSE,set.seed=TRUE)
+crisp_slice<-sliceDesign(
+  c(r=2,sigma=0.25,stdev=1,k=10),
+  r=rep(seq(from=1,to=10,length=100),each=3),
+  sigma=rep(seq(from=0.05,to=2,length=100),each=3),
+  stdev=rep(seq(from=.1,to=5,length=100),each=3),
+  k=rep(seq(from=5,to=20,length=100),each=3))
+
+stew(file=sprintf("crisp_slice-1.rda",run_level),{
+  foreach (theta=iter(crisp_slice,"row"),.combine=rbind,
+           .inorder=FALSE,.options.multicore=mcopts) %dopar% 
+           {
+             pfilter(crisp,params=unlist(theta),Np=1000) -> pf
+             theta$loglik <- logLik(pf)
+             theta
+           }->crisp_slice
+},seed=900242057,kind="L'Ecuyer")
+
+foreach (v=c("sigma","stdev")) %do% 
+{
+  x <- subset(crisp_slice,slice==v)
+  plot(x[[v]],x$loglik,xlab=v,ylab="Log Likelihood")
+}
+```
+
+------
+
+####3.2 Exploring the likelihood surfce of the basic Ricker model
+</br>
+We will explore the two-dimensional likelihood surface of the basic Ricker model using serial particle filters (1,000 particles each) that incrementally step through a range of r and k value pairs. The following contour plot shows two peaks in the likelihood surface: one at k = 10 and r = 2, and the other at k = 10 and r = 0.2. This suggests that there may be identifiability issues for this model. 
+ 
+```{r crisp_2d, echo=F,message=F,warning=F,fig.align="center"}
+set.seed(594709947L)
+stopifnot(packageVersion("pomp")>="0.69-1")
+run_level<-2
+switch(run_level,
+       {crisp_Np=100; crisp_Nmif=10; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10}, 
+       {crisp_Np=1000; crisp_Nmif=100; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10},
+       {crisp_Np=20000; crisp_Nmif=100; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10}, 
+       {crisp_Np=60000; crisp_Nmif=300; crisp_Neval=10; crisp_Nglobal=100; crisp_Nlocal=20}
+)
+crisp_rw.sd<-.02
+crisp_cooling.fraction.50<-.5
+registerDoMC(cores=20)
+mcopts<-list(preschedule=FALSE,set.seed=TRUE)
+slices_k_r<-expand.grid(k=seq(from=5,to=15,length=100),
+                        r=seq(from=.1,to=5,length=100),
+                        stdev=1,
+                        sigma=.25,
+                        N=1000)
+
+stew(file=sprintf("crisp_2D_lik-1.rda",run_level),{
+  t_local_eval<-system.time({
+    foreach (theta=iter(slices_k_r,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts) %dopar% 
+    {
+      slices_pf<-pfilter(crisp,params=unlist(theta),Np=1000)
+      theta$loglik <- logLik(slices_pf)
+      theta
+    }->slices_k_r
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+slices_plot<-mutate(slices_k_r,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=slices_plot,mapping=aes(x=k,y=r,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=.85)+
+  scale_fill_gradient("Log Likelihood")+
+  labs(x="k",y="r")
+```
+
+Simulating the data using the basic Ricker model with N<sub>0</sub> = 9.75, e<sub>0</sub> = 0, $\begin{eqnarray}\sigma\end{eqnarray}$ = 0.25, <i>stdev</i> = 1, r = 2, and k = 10 appears to give mediocre approximations of the <i>L. crispatus</i> count series that are within a similar range as the data. However, we generally do not see decreased counts during menstruation around weeks 4, 8, 12, and 16 in the simulations. The simulations also seem to be more volatile than the data. Neither of these differences are surprising given that many factors can influence vaginal microbiota composition and constrain species counts, none of which are accounted for in the basic Ricker model.
+
+```{r basic_ricker_sim_1,echo=F,fig.align="center"}
+coef(crisp)<-c(r=2,sigma=0.25,stdev=1,k=10)
+sims<-simulate(crisp,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+sims$simulation<-ifelse(sims$sim=="data","Data",ifelse(sims$sim=="1","Simulation 1",ifelse(sims$sim=="2","Simulation 2","Simulation 3")))
+ggplot(data=sims,mapping=aes(x=time,y=lcrisp_k))+
+  geom_line()+
+  facet_wrap(~simulation,nrow=2,ncol=2)+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  xlab("Time (weeks)")+
+  ylab(expression(italic("L. crispatus")~" count"))
+```
+</br>
+Instead simulating with r = 0.2 also gives mediocre approximations of the data. These simulations do not stray as far outside of the range of the data, but on the other hand they do not resemble the data as well. Both of these simulations leave room for improvement, which we will expore in later models.
+
+```{r basic_ricker_sim_2,echo=F,fig.align="center"}
+coef(crisp)<-c(r=.2,sigma=0.25,stdev=1,k=10)
+sims<-simulate(crisp,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+sims$simulation<-ifelse(sims$sim=="data","Data",ifelse(sims$sim=="1","Simulation 1",ifelse(sims$sim=="2","Simulation 2","Simulation 3")))
+ggplot(data=sims,mapping=aes(x=time,y=lcrisp_k))+
+  geom_line()+
+  facet_wrap(~simulation,nrow=2,ncol=2)+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  xlab("Time (weeks)")+
+  ylab(expression(italic("L. crispatus")~" count"))
+```
+</br>
+
+------
+
+####3.3 Likelihood maximization of the basic Ricker model
+</br>
+We will use IF2, an iterated filtering algorithm, to generate MLEs for the basic Ricker model parameters.<sup>20</sup> We will specify a box in parameter space for IF2 to randomly draw staring parameter values from: 0.1 <u><</u> r <u><</u> 5 and 7 <u><</u> k <u><</u> 15. We will perform 300 filtering iterations with 60,000 particles each, a random walk standard deviation of 0.02, and geometric cooling with a cooling fraction of 0.5. IF2 diagnostic plots and results are below.
+
+```{r basic_ricker_local_global,echo=F,message=F,fig.align="center"}
+set.seed(594709947L)
+stopifnot(packageVersion("pomp")>="0.69-1")
+run_level<-4
+switch(run_level,
+       {crisp_Np=100; crisp_Nmif=10; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10}, 
+       {crisp_Np=1000; crisp_Nmif=100; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10},
+       {crisp_Np=20000; crisp_Nmif=100; crisp_Neval=10; crisp_Nglobal=10; crisp_Nlocal=10}, 
+       {crisp_Np=60000; crisp_Nmif=300; crisp_Neval=10; crisp_Nglobal=100; crisp_Nlocal=20}
+)
+crisp_rw.sd<-.02
+crisp_cooling.fraction.50<-.5
+registerDoMC(cores=20)
+mcopts<-list(preschedule=FALSE,set.seed=TRUE)
+coef(crisp)<-c(r=2,sigma=0.25,stdev=1,k=10)
+
+#local search
+stew(file=sprintf("crisp_local_search-4.rda",run_level),{
+  t_local<-system.time({
+    mifs_local<-foreach(i=1:crisp_Nlocal,.packages='pomp',.combine=c,.options.multicore=mcopts) %dopar%  {
+      mif2(
+        crisp,
+        start=coef(crisp),
+        Np=crisp_Np,
+        Nmif=crisp_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=crisp_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          r=crisp_rw.sd,
+          k=crisp_rw.sd
+        )
+      )
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("crisp_lik_local-4.rda",run_level),{
+  t_local_eval<-system.time({
+    liks_local<-foreach(i=1:crisp_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals<-replicate(crisp_Neval,logLik(pfilter(crisp,params=coef(mifs_local[[i]]),Np=crisp_Np)))
+      logmeanexp(evals,se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+#global search
+crisp_box<-rbind(r=c(.1,5),k=c(7,15))
+crisp_fixed_params<-c(sigma=.25,stdev=1)
+run_level<-4
+
+stew(file=sprintf("crisp_box_eval-4.rda",run_level),{
+  t_global <- system.time({
+    mifs_global<-foreach(i=1:crisp_Nglobal,.packages='pomp',.combine=c,.options.multicore=mcopts) %dopar%  
+      mif2(
+      mifs_local[[1]],
+      start=c(apply(crisp_box,1,function(x)runif(1,x[1],x[2])),crisp_fixed_params)
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("crisp_lik_global_eval-4.rda",run_level),{
+  t_global_eval<-system.time({
+    liks_global<-foreach(i=1:crisp_Nglobal,.packages='pomp',.combine=rbind,.options.multicore=mcopts) %dopar% {
+      evals<-replicate(crisp_Neval,logLik(pfilter(crisp,params=coef(mifs_global[[i]]),Np=crisp_Np)))
+      logmeanexp(evals,se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+plot(mifs_global)
+results_global<-data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+results_large_r<-results_global[which(results_global$r>1),]
+length_large<-length(results_large_r$logLik)
+avg_r_large<-round(mean(results_large_r$r),2)
+avg_k_large<-round(mean(results_large_r$k),2)
+avg_l_large<-round(mean(results_large_r$logLik),2)
+se_r_large<-round(sd(results_large_r$r)/sqrt(length_large),4)
+se_k_large<-round(sd(results_large_r$k)/sqrt(length_large),4)
+se_l_large<-round(sd(results_large_r$logLik)/sqrt(length_large),4)
+cat("Parameter set 1","\n",
+    "\t","\t","Number of iterations converging on: ",length_large,"\n",
+    "\t","\t","Average r: ",avg_r_large,", Standard error: ",se_r_large,"\n",
+    "\t","\t","Average k: ",avg_k_large,", Standard error: ",se_k_large,"\n",
+    "\t","\t","Average log likelihood: ",avg_l_large,", Standard error: ",se_l_large,"\n",
+    sep="")
+
+results_small_r<-results_global[which(results_global$r<1),]
+length_small<-length(results_small_r$logLik)
+avg_r_small<-round(mean(results_small_r$r),2)
+avg_k_small<-round(mean(results_small_r$k),2)
+avg_l_small<-round(mean(results_small_r$logLik),2)
+se_r_small<-round(sd(results_small_r$r)/sqrt(length_small),4)
+se_k_small<-round(sd(results_small_r$k)/sqrt(length_small),4)
+se_l_small<-round(sd(results_small_r$logLik)/sqrt(length_small),4)
+cat("Parameter set 2","\n",
+    "\t","\t","Number of iterations converging on: ",length_small,"\n",
+    "\t","\t","Average r: ",avg_r_small,", Standard error: ",se_r_small,"\n",
+    "\t","\t","Average k: ",avg_k_small,", Standard error: ",se_k_small,"\n",
+    "\t","\t","Average log likelihood: ",avg_l_small,", Standard error: ",se_l_small,"\n",
+    sep="")
+
+#logliks for large and small are normally distributed
+large_r_normal<-shapiro.test(results_large_r$logLik)
+small_r_normal<-shapiro.test(results_small_r$logLik)
+
+#t test comparing loglik large r to loglik small r
+#p<2.2e-16
+loglik_p<-round(t.test(results_large_r$logLik,results_small_r$logLik)$p.value,28)
+
+cat("t-test comparing log likelihoods: p = ",loglik_p,sep="")
+```
+</br>
+The effective sample size (eff.samplesize) of the last iteration is quite high for all time points except t=11, there are no filtering failures (nfail), and both r and k converge on one or two values early in the iterations. These features suggest that IF2 performed well and give us confidence that we have identified MLEs. The r parameter converging on two values is evidence that there may not be a unique MLE for r. It is difficult to tell from the log likelihood (loglik) convergence diagnostic plot whether either value of r is favored. Further investigation of the results shows that r = 0.19 is slightly favored over r = 2.02 according to log likelihoods (-83.87 versus -84.36), and a t-test shows that this difference in log likelihood is significant (p = 3e<sup>-28</sup>). We can conclude that parameter set 2 represents the MLEs for this basic Ricker model, that the vagina's carrying capacity for <i>L. crispatus</i> is about 9,600 organisms (recall that the data are 1/1,000 transformed), and that the maximum potentail growth rate of the <i>L. crispatus</i> population is 0.19. In the next section of the analysis, we will attempt to improve the model and its MLEs by including the effect of menses.
+
+------
+
+##4. Ricker model incorporating menses
+</br>
+Recall the cyclic patterns in <i>L. crispatus</i> counts where the counts tended to drop at the end of each menstrual cycle during menstruation. One way to incorporate menses as a driver of <i>L. criapstus</i> count into the Ricker model is to include an indicator of when menses is occuring in the exponent, as follows:
+$$\begin{eqnarray} N_{n+1}=N_n*e^{r-r(N_n/k)-p(menses_n)+\epsilon_n}\end{eqnarray}$$
+<ul>
+  <li>$\begin{eqnarray}menses_n=\end{eqnarray}$ indicator of whether menses is occuring at time t<sub>n</sub></li>
+  <li>$\begin{eqnarray}p=\end{eqnarray}$ the strength of the menses effect on the actual population growth rate</li>
+  <li>$\begin{eqnarray}N_{n+1}\end{eqnarray}$, $\begin{eqnarray}N_n\end{eqnarray}$, $\begin{eqnarray}r\end{eqnarray}$, $\begin{eqnarray}k\end{eqnarray}$, and $\begin{eqnarray}\epsilon_n\end{eqnarray}$ are the same as in the basic Ricker model</li>
+</ul>
+As in the basic Ricker model, the actual growth rate of the population is the potential maximum growth rate scaled by the proportion of the carrying capacity that is currently occupied, but now the actual growth rate is reduced by p during menses. The measurement model will remain the same because it is reasonable to assume that menses should not impact  16S rRNA gene amplicon sequencing.
+```{r ricker_plus_menses,echo=F,warning=F,message=F}
+#deterministic skeleton
+skel_m<-Csnippet("DN=N*exp((r-(r*N/k))-(menses*p));")
+
+#process model
+stochStep_m<-Csnippet("
+                    e=rnorm(0,sigma);
+                    N=N*exp(((r-(r*N/k))-(menses*p))+e);
+                    ")
+
+#measurement model
+rmeas_m<-Csnippet("lcrisp_k=rnorm(N,stdev);")
+dmeas_m<-Csnippet("lik=dnorm(lcrisp_k,N,stdev,give_log);")
+
+#estimation scales
+fromEstimScale_m<-Csnippet("
+                         Tr = exp(r);
+                         Tk = exp(k);
+                         ")
+
+toEstimScale_m<-Csnippet("
+                       Tr = log(r);
+                       Tk = log(k);
+                       ")
+
+#initializer
+init_m<-Csnippet("
+               N=9.75;
+               e=0;
+               ")
+
+#build pomp
+crisp_m<-pomp(
+  data=crisp_series_k,
+  times="week",
+  t0=0,
+  skeleton=map(skel_m),
+  rprocess=discrete.time.sim(step.fun=stochStep_m,delta.t=.125),
+  rmeasure=rmeas_m,
+  dmeasure=dmeas_m,
+  statenames=c("N","e"),
+  paramnames=c("r","sigma","stdev","k","p"),
+  covar=covar_series,
+  tcovar="week",
+  covarnames="menses",
+  fromEstimationScale=fromEstimScale_m,
+  toEstimationScale=toEstimScale_m,
+  initializer=init_m
+)
+```
+
+------
+
+####4.1 Exploring the likelihood surface of the Ricker+menses model
+</br>
+We will explore the 2D likelihood surfaces of the Ricker+menses model in the same was as we did for the basic Ricker model. The only difference is that there are three surfaces to explore for this model: the k x r surface, the k x p surface, and the the r x p surface. The k x r and k x p surfaces suggest that k = 10.25 yields near maximum log likelihood, and is in the neighborhood of the MLE. However, the r x p surface shows two peaks. One is around r = 2 and p = 0.8, which corresponds with the k x r and k x p surfaces. The second is around r = 0.3 and p = 0.2, which is not represented on the other two surfaces and may suggest an identifiability issue for r and p.
+
+```{r menses_2d,echo=F,warning=F,message=F,fig.align="center"}
+stopifnot(packageVersion("pomp")>="0.69-1")
+slices_k_r_m<-expand.grid(k=seq(from=5,to=15,length=100),
+                             r=seq(from=.1,to=5,length=100),
+                             stdev=1,
+                             sigma=.25,
+                             p=1,
+                             N=1000)
+
+stew(file=sprintf("crisp_m_2D_k_r_lik-1.rda",run_level),{
+  t_local_eval<-system.time({
+    foreach (theta=iter(slices_k_r_m,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts) %dopar% 
+    {
+      slices_k_r_m_pf<-pfilter(crisp_m,params=unlist(theta),Np=1000)
+      theta$loglik<-logLik(slices_k_r_m_pf)
+      theta
+    }->slices_k_r_m
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+slices_k_r_m_plot<-mutate(slices_k_r_m,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=slices_k_r_m_plot,mapping=aes(x=k,y=r,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=1)+
+  scale_fill_gradient("Log Likelihood")+
+  labs(x="k",y="r")
+
+slices_k_p_m<-expand.grid(k=seq(from=5,to=15,length=100),
+                          p=seq(from=.1,to=3,length=100),
+                          stdev=1,
+                          sigma=.25,
+                          r=2,
+                          N=1000)
+
+stew(file=sprintf("crisp_m_2D_k_p_lik-1.rda",run_level),{
+  t_local_eval<-system.time({
+    foreach (theta=iter(slices_k_p_m,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts) %dopar% 
+    {
+      slices_k_p_m_pf<-pfilter(crisp_m,params=unlist(theta),Np=1000)
+      theta$loglik<-logLik(slices_k_p_m_pf)
+      theta
+    }->slices_k_p_m
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+slices_k_p_m_plot<-mutate(slices_k_p_m,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=slices_k_p_m_plot,mapping=aes(x=k,y=p,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=1.25)+
+  scale_fill_gradient("Log Likelihood")+
+  labs(x="k",y="p")
+
+slices_r_p_m<-expand.grid(r=seq(from=.1,to=3,length=100),
+                          p=seq(from=.1,to=2,length=100),
+                          stdev=1,
+                          sigma=.25,
+                          k=10,
+                          N=1000)
+
+stew(file=sprintf("crisp_m_2D_r_p_lik-1.rda",run_level),{
+  t_local_eval<-system.time({
+    foreach (theta=iter(slices_r_p_m,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts) %dopar% 
+    {
+      slices_r_p_m_pf<-pfilter(crisp_m,params=unlist(theta),Np=1000)
+      theta$loglik<-logLik(slices_r_p_m_pf)
+      theta
+    }->slices_r_p_m
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+slices_r_p_m_plot<-mutate(slices_r_p_m,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=slices_r_p_m_plot,mapping=aes(x=r,y=p,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=1.5)+
+  scale_fill_gradient("Log Likelihood")+
+  labs(x="r",y="p")
+```
+
+Simulating the data using the Ricker+menses model with N<sub>0</sub> = 9.75, e<sub>0</sub> = 0, $\begin{eqnarray}\sigma\end{eqnarray}$ = 0.25, <i>stdev</i> = 1, r = 2, k = 10.25, and p = 0.8 gives somewhat better approximations of the <i>L. crispatus</i> count series than simulating with the basic Ricker model did. These simulations generally show decreased counts during menstruation, though not always on as large of a scale as the decreases in the data. Additionally, while some of these simulations are still more volatile than the data, they appear to be less volatile than the simulations from the basic Ricker model. Overall, these simulations suggest that the inclusion of the menses effect is an improvement over the basic Ricker model. 
+
+```{r menses_sim_1,echo=F,fig.align="center"}
+coef(crisp_m)<-c(r=2,sigma=0.25,stdev=1,k=10.25,p=.8)
+sims_m<-simulate(crisp_m,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+sims_m$simulation<-ifelse(sims_m$sim=="data","Data",ifelse(sims_m$sim=="1","Simulation 1",ifelse(sims_m$sim=="2","Simulation 2","Simulation 3")))
+ggplot(data=sims_m,mapping=aes(x=time,y=lcrisp_k))+
+  geom_line()+
+  facet_wrap(~simulation,nrow=2,ncol=2)+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  xlab("Time (weeks)")+
+  ylab(expression(italic("L. crispatus")~" count"))
+```
+</br>
+Simulating instead with r = 0.3 and p = 0.2 appears to further improve the Ricker+menses model. These simulations more closely resemble the data and generally capture the large peaks in <i>L. crispauts</i> count that occur in menstrual cycles 1 (week 2), 2 (week 6), and 3 (week 11). These simulations also appear to be less volatile than prior simulations, and do not stray outside of the range of the data as far.
+
+```{r menses_sim_2,echo=F,fig.align="center"}
+coef(crisp_m)<-c(r=.3,sigma=0.25,stdev=1,k=10.25,p=.2)
+sims_m_2<-simulate(crisp_m,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+sims_m_2$simulation<-ifelse(sims_m_2$sim=="data","Data",ifelse(sims_m_2$sim=="1","Simulation 1",ifelse(sims_m_2$sim=="2","Simulation 2","Simulation 3")))
+ggplot(data=sims_m_2,mapping=aes(x=time,y=lcrisp_k))+
+  geom_line()+
+  facet_wrap(~simulation,nrow=2,ncol=2)+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  xlab("Time (weeks)")+
+  ylab(expression(italic("L. crispatus")~" count"))
+```
+
+------
+
+####4.2 Likelihood maximization of the Ricker+menses model
+</br>
+We will use IF2 to generate MLEs for the Ricker+menses model as above, with the following parameter space box to randomly draw starting values from: 0.1 <u><</u> r <u><</u> 5, 7 <u><</u> k <u><</u> 15, and 0.1 <u><</u> p <u><</u> 5. IF2 diagnostic plots and results are below.
+
+```{r menses_local_global,echo=F,fig.align="center"}
+#local search of likelihood surface using mif2
+run_level<-4
+coef(crisp_m)<-c(r=2,sigma=0.25,stdev=1,k=10,p=.8)
+
+stew(file=sprintf("crisp_m_local_search-4.rda",run_level),{
+  t_local<-system.time({
+    mifs_local_m<-foreach(i=1:crisp_Nlocal,.packages='pomp',.combine=c,.options.multicore=mcopts) %dopar%  {
+      mif2(
+        crisp_m,
+        start=coef(crisp_m),
+        Np=crisp_Np,
+        Nmif=crisp_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=crisp_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          r=crisp_rw.sd,
+          k=crisp_rw.sd,
+          p=crisp_rw.sd
+        )
+      )
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("crisp_m_lik_local-4.rda",run_level),{
+  t_local_eval<-system.time({
+    liks_local_m<-foreach(i=1:crisp_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals<-replicate(crisp_Neval,logLik(pfilter(crisp_m,params=coef(mifs_local_m[[i]]),Np=crisp_Np)))
+      logmeanexp(evals,se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+#global search
+crisp_box_m<-rbind(r=c(.1,5),k=c(7,15),p=c(.1,5))
+crisp_fixed_params<-c(sigma=.25,stdev=1)
+run_level<-4
+
+stew(file=sprintf("crisp_m_box_eval-4.rda",run_level),{
+  t_global<-system.time({
+    mifs_global_m<-foreach(i=1:crisp_Nglobal,.packages='pomp',.combine=c,.options.multicore=mcopts) %dopar%  
+      mif2(
+        mifs_local_m[[1]],
+        start=c(apply(crisp_box_m,1,function(x)runif(1,x[1],x[2])),crisp_fixed_params)
+      )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("crisp_m_lik_global_eval-4.rda",run_level),{
+  t_global_eval<-system.time({
+    liks_global_m<-foreach(i=1:crisp_Nglobal,.packages='pomp',.combine=rbind,.options.multicore=mcopts) %dopar% {
+      evals<-replicate(crisp_Neval,logLik(pfilter(crisp_m,params=coef(mifs_global_m[[i]]),Np=crisp_Np)))
+      logmeanexp(evals,se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+plot(mifs_global_m)
+results_global_m<-data.frame(logLik=liks_global_m[,1],logLik_se=liks_global_m[,2],t(sapply(mifs_global_m,coef)))
+results_large_r_m<-results_global_m[which(results_global_m$r>1),]
+length_large_m<-length(results_large_r_m$logLik)
+avg_r_large_m<-round(mean(results_large_r_m$r),2)
+avg_k_large_m<-round(mean(results_large_r_m$k),2)
+avg_p_large_m<-round(mean(results_large_r_m$p),2)
+avg_l_large_m<-round(mean(results_large_r_m$logLik),2)
+se_r_large_m<-round(sd(results_large_r_m$r)/sqrt(length_large_m),4)
+se_k_large_m<-round(sd(results_large_r_m$k)/sqrt(length_large_m),4)
+se_p_large_m<-round(sd(results_large_r_m$p)/sqrt(length_large_m),4)
+se_l_large_m<-round(sd(results_large_r_m$logLik)/sqrt(length_large_m),4)
+cat("Parameter set 1:","\n",
+    "\t","\t","Number of iterations converging on: ",length_large_m,"\n",
+    "\t","\t","Average r: ",avg_r_large_m,", Standard error: ",se_r_large_m,"\n",
+    "\t","\t","Average k: ",avg_k_large_m,", Standard error: ",se_k_large_m,"\n",
+    "\t","\t","Average p: ",avg_p_large_m,", Standard error: ",se_p_large_m,"\n",
+    "\t","\t","Average log likelihood: ",avg_l_large_m,", Standard error: ",se_l_large_m,"\n",
+    sep="")
+
+results_small_r_m<-results_global_m[which(results_global_m$r<1),]
+length_small_m<-length(results_small_r_m$logLik)
+avg_r_small_m<-round(mean(results_small_r_m$r),2)
+avg_k_small_m<-round(mean(results_small_r_m$k),2)
+avg_p_small_m<-round(mean(results_small_r_m$p),2)
+avg_l_small_m<-round(mean(results_small_r_m$logLik),2)
+se_r_small_m<-round(sd(results_small_r_m$r)/sqrt(length_small_m),4)
+se_k_small_m<-round(sd(results_small_r_m$k)/sqrt(length_small_m),4)
+se_p_small_m<-round(sd(results_small_r_m$p)/sqrt(length_small_m),4)
+se_l_small_m<-round(sd(results_small_r_m$logLik)/sqrt(length_small_m),4)
+cat("Parameter set 2:","\n",
+    "\t","\t","Number of iterations converging on: ",length_small_m,"\n",
+    "\t","\t","Average r: ",avg_r_small_m,", Standard error: ",se_r_small_m,"\n",
+    "\t","\t","Average k: ",avg_k_small_m,", Standard error: ",se_k_small_m,"\n",
+    "\t","\t","Average p: ",avg_p_small_m,", Standard error: ",se_p_small_m,"\n",
+    "\t","\t","Average log likelihood: ",avg_l_small_m,", Standard error: ",se_l_small_m,"\n",
+    sep="")
+
+#logliks for large are normally distributed, not normal for small r
+large_r_normal_m<-shapiro.test(results_large_r_m$logLik)
+small_r_normal_m<-shapiro.test(results_small_r_m$logLik)
+
+#Mann whitney test comparing loglik large r to loglik small r
+#p=7.164e-9
+loglik_p_m<-wilcox.test(results_large_r_m$logLik,results_small_r_m$logLik)$p.value
+
+cat("Mann Whitney test comparing log likelihoods: p = ",loglik_p_m,sep="")
+```
+</br>
+The effective sample size of the last iteration is quite high for all time points except t=11, filtering failures drop to 0 after a few iterations, and all parameters converge on two values early in the iterations. These features suggest that IF2 performed well and give us confidence that we have identified MLEs. Again, the fact that the IF2 iterations converged onto two parameter sets suggests that there may not be a single unique set of MLEs for r, k, and p. While parameter set 2 is only slightly favored over parameter set 1 according to log likelihoods (-77.07 versus -78.75), 89 of the 100 iterations converged on parameter set 2, and a Mann Whitney test shows that the difference in log likelihood is significant (p = 7e<sup>-8</sup>, Mann Whitney test was used because log likelihoods for parameter set 2 were non-normally distributed). The log likelihood of the MLE set for this model (parameter set 2) is greater than that from the basic Ricker model, which suggests that the inclusion of the menses effect improves the model. This is in accordance with our initial observations of the data, the simulations of these two models, and <i>a priori</i> knowledge that menses impacts vaginal microbiota composition. From this model, we can reasonably conclude that the vagina's carrying capacity for <i>L. crispauts</i> is around 11,560 organisms (higher than suggested by the basic Ricker model), the maximum potentail growth rate of the <i>L. crispatus</i> population is around 0.47 (again, higher than suggested by the basic Ricker model), and that menses reduces the actual growth rate by 68% of the maximum potential growth rate. Next, we will explore whether accounting for the reciprocity between <i>L. crispatus</i> and <i>L. iners</i> counts can also improve the model.
+
+------
+
+##5. Ricker model incorporating <i>L. iners</i> count
+</br>
+Recall the reciprocal behavior in <i>L. crispatus</i> and <i>L. iners</i> counts where at several points the <i>L. iners</i> count drops when the <i>L. crispatus</i> count rises, and vice versa. Until now, the carrying capacity has only been in reference to <i>L. crispatus</i> because the models have only considered this single species. One way to incorporate <i>L. iners</i> count as a driver of <i>L. criapstus</i> count into the Ricker model is to scale the maximum potential growth rate of the <i>L. crispatus</i> population by the proportion of the combined carrying capacity for both <i>L. crispatus</i> and <i>L. iners</i> that is occupied:
+$$\begin{eqnarray} N_{n+1}=N_n*e^{r-r((N_n+iners_n)/k)+\epsilon_n}\end{eqnarray}$$
+<ul>
+  <li>$\begin{eqnarray}iners_n=\end{eqnarray}$ <i>L. iners</i> count at time t<sub>n</sub></li>
+  <li>$\begin{eqnarray}k=\end{eqnarray}$ combined carring capacity for both <i>L. crispatus</i> and <i>L. iners</i></li>
+  <li>$\begin{eqnarray}N_{n+1}\end{eqnarray}$, $\begin{eqnarray}N_n\end{eqnarray}$, $\begin{eqnarray}r\end{eqnarray}$, and $\begin{eqnarray}\epsilon_n\end{eqnarray}$ are the same as in the basic Ricker model</li>
+</ul>
+This process model accounts for the fact that there are a finite number of niches in the vaginal microbiota, that <i>L. crispatus</i> and <i>L. iners</i> are capable of occupying the same niches, and thus that there is competition between the two species for those niches. This is one possible conceptualization of the reciprocity between <i>L. crispatus</i> and <i>L. iners</i> counts. Again, the measurement model will remain the same.
+```{r ricker_plus_iners,echo=F,warning=F,message=F}
+#deterministic skeleton
+skel_i<-Csnippet("DN=N*exp(r-(r*(N+liners_k)/k));")
+
+#process model
+stochStep_i<-Csnippet("
+                      e=rnorm(0,sigma);
+                      N=N*exp((r-(r*(N+liners_k)/k))+e);
+                      ")
+
+#measurement model
+rmeas_i<-Csnippet("lcrisp_k=rnorm(N,stdev);")
+dmeas_i<-Csnippet("lik=dnorm(lcrisp_k,N,stdev,give_log);")
+
+#estimation scales
+fromEstimScale_i<-Csnippet("
+                           Tr = exp(r);
+                           Tk = exp(k);
+                           ")
+
+toEstimScale_i<-Csnippet("
+                         Tr = log(r);
+                         Tk = log(k);
+                         ")
+
+#initializer
+init_i<-Csnippet("
+               N=9.75;
+               e=0;
+               ")
+
+#building pomp
+crisp_i<-pomp(
+  data=crisp_series_k,
+  times="week",
+  t0=0,
+  skeleton=map(skel_i),
+  rprocess=discrete.time.sim(step.fun=stochStep_i,delta.t=.125),
+  rmeasure=rmeas_i,
+  dmeasure=dmeas_i,
+  statenames=c("N","e"),
+  paramnames=c("r","sigma","stdev","k"),
+  covar=covar_series,
+  tcovar="week",
+  covarnames="liners_k",
+  fromEstimationScale=fromEstimScale_i,
+  toEstimationScale=toEstimScale_i,
+  initializer=init_i
+)
+```
+
+------
+
+####5.1 Exploring the likelihood surface of the Ricker+<i>L. iners</i> model
+</br>
+Exploring the likelihood surface of the Ricker+<i>L. iners</i> model as we did above again shows two peaks: one at r = 3 and k = 23, and the other at r = 0.3 and k = 20.25.
+
+```{r iners_2d, echo=F,message=F,warning=F,fig.align="center"}
+slices_k_r_i<-expand.grid(k=seq(from=20,to=25,length=100),
+                          r=seq(from=.1,to=5,length=100),
+                          stdev=1,
+                          sigma=.25,
+                          N=1000)
+
+stew(file=sprintf("crisp_i_2D_k_r_lik-1.rda",run_level),{
+  t_local_eval<-system.time({
+    foreach (theta=iter(slices_k_r_i,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts) %dopar% 
+    {
+      slices_k_r_i_pf<-pfilter(crisp_i,params=unlist(theta),Np=1000)
+      theta$loglik<-logLik(slices_k_r_i_pf)
+      theta
+    }->slices_k_r_i
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+slices_k_r_i_plot<-mutate(slices_k_r_i,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=slices_k_r_i_plot,mapping=aes(x=k,y=r,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=2.05)+
+  scale_fill_gradient("Log Likelihood")+
+  labs(x="k",y="r")
+```
+
+Simulating the data using the Ricker+<i>L. iners</i> model with N<sub>0</sub> = 9.75, e<sub>0</sub> = 0, $\begin{eqnarray}\sigma\end{eqnarray}$ = 0.25, <i>stdev</i> = 1, r = 3, and k = 23 gives apparently worse approximations of the <i>L. crispatus</i> counts than simulating with the basic Ricker model did. These simulations are substantially more volatile and span a much wider ranger of count values than the data. They suggest that modeling the <i>L. crispatus</i> population as part of a combined <i>L. crispatus</i> and <i>L. iners</i> population does not improve the basic Ricker model. 
+
+```{r iners_sim_1,echo=F,warning=F,message=F,fig.align="center"}
+coef(crisp_i)<-c(r=3,sigma=0.25,stdev=1,k=23)
+sims_i<-simulate(crisp_i,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+sims_i$simulation<-ifelse(sims_i$sim=="data","Data",ifelse(sims_i$sim=="1","Simulation 1",ifelse(sims_i$sim=="2","Simulation 2","Simulation 3")))
+ggplot(data=sims_i,mapping=aes(x=time,y=lcrisp_k))+
+  geom_line()+
+  facet_wrap(~simulation,nrow=2,ncol=2)+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  xlab("Time (weeks)")+
+  ylab(expression(italic("L. crispatus")~" count"))
+```
+</br>
+Instead simulating with r = 0.3 and k = 20.25 gives apparently better approximations of the data that lie within a narrower range of count values, some of which capture the peaks of <i>L. crispatus</i> count that occurs in menstrual cycles 1 (week 2), 2 (week 6), and 3 (week 11).
+
+```{r iners_sim_2,echo=F,warning=F,message=F,fig.align="center"}
+coef(crisp_i)<-c(r=.3,sigma=0.25,stdev=1,k=20.25)
+sims_i<-simulate(crisp_i,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+sims_i$simulation<-ifelse(sims_i$sim=="data","Data",ifelse(sims_i$sim=="1","Simulation 1",ifelse(sims_i$sim=="2","Simulation 2","Simulation 3")))
+ggplot(data=sims_i,mapping=aes(x=time,y=lcrisp_k))+
+  geom_line()+
+  facet_wrap(~simulation,nrow=2,ncol=2)+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  xlab("Time (weeks)")+
+  ylab(expression(italic("L. crispatus")~" count"))
+```
+
+------
+
+####5.2 Likelihood maximization of the Ricker+<i>L. iners</i> model
+</br>
+We will use IF2 to generate MLEs for the Ricker+<i>L. iners</i> model as above, with the following parameter space box to randomly draw staring parameter values from: 0.1 <u><</u> r <u><</u> 5 and 20 <u><</u> k <u><</u> 30. IF2 diagnostic plots and results are below.
+
+```{r iners_local_global,echo=F,fig.align="center"}
+run_level<-4
+coef(crisp_i)<-c(r=3,sigma=0.25,stdev=1,k=22.75)
+
+stew(file=sprintf("crisp_i_local_search-4.rda",run_level),{
+  t_local<-system.time({
+    mifs_local_i<-foreach(i=1:crisp_Nlocal,.packages='pomp',.combine=c,.options.multicore=mcopts) %dopar%  {
+      mif2(
+        crisp_i,
+        start=coef(crisp_i),
+        Np=crisp_Np,
+        Nmif=crisp_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=crisp_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          r=crisp_rw.sd,
+          k=crisp_rw.sd
+        )
+      )
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("crisp_i_lik_local-4.rda",run_level),{
+  t_local_eval<-system.time({
+    liks_local_i<-foreach(i=1:crisp_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals<-replicate(crisp_Neval,logLik(pfilter(crisp_i,params=coef(mifs_local_i[[i]]),Np=crisp_Np)))
+      logmeanexp(evals,se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+#global search
+crisp_box_i<-rbind(r=c(.1,5),k=c(20,30))
+crisp_fixed_params<-c(sigma=.25,stdev=1)
+run_level<-4
+
+stew(file=sprintf("crisp_i_box_eval-4.rda",run_level),{
+  t_global<-system.time({
+    mifs_global_i<-foreach(i=1:crisp_Nglobal,.packages='pomp',.combine=c,.options.multicore=mcopts) %dopar%  
+      mif2(
+        mifs_local_i[[1]],
+        start=c(apply(crisp_box_i,1,function(x)runif(1,x[1],x[2])),crisp_fixed_params)
+      )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("crisp_i_lik_global_eval-4.rda",run_level),{
+  t_global_eval<-system.time({
+    liks_global_i<-foreach(i=1:crisp_Nglobal,.packages='pomp',.combine=rbind,.options.multicore=mcopts) %dopar% {
+      evals<-replicate(crisp_Neval,logLik(pfilter(crisp_i,params=coef(mifs_global_i[[i]]),Np=crisp_Np)))
+      logmeanexp(evals,se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+plot(mifs_global_i)
+results_global_i<-data.frame(logLik=liks_global_i[,1],logLik_se=liks_global_i[,2],t(sapply(mifs_global_i,coef)))
+results_large_r_i<-results_global_i[which(results_global_i$r>1),]
+length_large_i<-length(results_large_r_i$logLik)
+avg_r_large_i<-round(mean(results_large_r_i$r),2)
+avg_k_large_i<-round(mean(results_large_r_i$k),2)
+avg_l_large_i<-round(mean(results_large_r_i$logLik),2)
+se_r_large_i<-round(sd(results_large_r_i$r)/sqrt(length_large_i),4)
+se_k_large_i<-round(sd(results_large_r_i$k)/sqrt(length_large_i),4)
+se_l_large_i<-round(sd(results_large_r_i$logLik)/sqrt(length_large_i),4)
+cat("Parameter set 1:","\n",
+    "\t","\t","Number of iterations converging on: ",length_large_i,"\n",
+    "\t","\t","Average r: ",avg_r_large_i,", Standard error: ",se_r_large_i,"\n",
+    "\t","\t","Average k: ",avg_k_large_i,", Standard error: ",se_k_large_i,"\n",
+    "\t","\t","Average log likelihood: ",avg_l_large_i,", Standard error: ",se_l_large_i,
+    sep="")
+
+results_small_r_i<-results_global_i[which(results_global_i$r<1),]
+length_small_i<-length(results_small_r_i$logLik)
+avg_r_small_i<-sprintf("%.2f",round(mean(results_small_r_i$r),2))
+avg_k_small_i<-round(mean(results_small_r_i$k),2)
+avg_l_small_i<-round(mean(results_small_r_i$logLik),2)
+se_r_small_i<-round(sd(results_small_r_i$r)/sqrt(length_small_i),4)
+se_k_small_i<-sprintf("%.4f",round(sd(results_small_r_i$k)/sqrt(length_small_i),4))
+se_l_small_i<-round(sd(results_small_r_i$logLik)/sqrt(length_small_i),4)
+cat("Parameter set 2:","\n",
+    "\t","\t","Number of iterations converging on smaller r: ",length_small_i,"\n",
+    "\t","\t","Average r: ",avg_r_small_i,", Standard error: ",se_r_small_i,"\n",
+    "\t","\t","Average k: ",avg_k_small_i,", Standard error: ",se_k_small_i,"\n",
+    "\t","\t","Average log likelihood: ",avg_l_small_i,", Standard error: ",se_l_small_i,
+    sep="")
+
+#logliks for large are normally distributedfor both
+large_r_normal_i<-shapiro.test(results_large_r_i$logLik)
+small_r_normal_i<-shapiro.test(results_small_r_i$logLik)
+
+#t test comparing loglik large r to loglik small r
+#p<2.2e-16
+loglik_p_i<-t.test(results_large_r_i$logLik,results_small_r_i$logLik)$p.value
+
+cat("t-test comparing log likelihoods: p = ",loglik_p_i,sep="")
+```
+</br>
+Similar to the prior two models, the effective sample size of the last iteration is quite high for all time points, there were no filtering failures, and both parameters converge on two values early in the iterations. These features suggest that IF2 performed well and give us confidence that we identified MLEs. Unlike the prior models, the diagnostic plots for the Ricker+<i>L. iners</i> model suggest that parameter set 2 better fits the data than parameter set 1: the effective sample size and conditional log likelihood (cond.logLik) are generally higher for the iterations that converged to parameter set 1, and log likelihood for these iterations is significantly higher (-84.09 versus -95.66, p = 8e<sup>-195</sup>). The log likelihood for parameter set 2 is lower than that of the MLE set for the basic Ricker model (-83.87), suggesting that modeling <i>L. crispauts</i> counts as part of a combined <i>L. crispatus</i> and <i>L. iners</i> population does not improve the basic Ricker model. The next and final model will explore whether including the menses effect in the Ricker model and modeling <i>L. crispauts</i> counts as part of a combined <i>L. crispatus</i> and <i>L. iners</i> population can improve the basic Ricker and the Ricker+menses models.
+
+------
+
+##6. Ricker model incorporating menses and <i>L. iners</i> count
+</br>
+The following model incoporates both menses and <i>L. iners</i> count as drivers of <i>L. crispatus</i> count:
+$$\begin{eqnarray} N_{n+1}=N_n*e^{r-r((N_n+iners_n)/k)-p(menses)+\epsilon_n}\end{eqnarray}$$
+<ul>
+  <li>$\begin{eqnarray}N_{n+1}\end{eqnarray}$, $\begin{eqnarray}N_n\end{eqnarray}$, $\begin{eqnarray}r\end{eqnarray}$, and $\begin{eqnarray}\epsilon_n\end{eqnarray}$ are the same as in the basic Ricker model</li>
+  <li>$\begin{eqnarray}p\end{eqnarray}$ and $\begin{eqnarray}menses\end{eqnarray}$ are the same as in the Ricker+menses model</li>
+   <li>$\begin{eqnarray}iners_n\end{eqnarray}$ and $\begin{eqnarray}k\end{eqnarray}$ are the same as in the Ricker+<i>L. iners</i> model</li>
+</ul>
+```{r ricker_plus_menses_iners,echo=F,message=F,warning=F}
+#deterministic skeleton
+skel_mi<-Csnippet("DN=N*exp((r-(r*(N+liners_k)/k))-(menses*p));")
+
+#process model
+stochStep_mi<-Csnippet("
+                      e=rnorm(0,sigma);
+                      N=N*exp(((r-(r*(N+liners_k)/k))-(menses*p))+e);
+                      ")
+
+#measurement model
+rmeas_mi<-Csnippet("lcrisp_k=rnorm(N,stdev);")
+dmeas_mi<-Csnippet("lik=dnorm(lcrisp_k,N,stdev,give_log);")
+
+#estimation scales
+fromEstimScale_mi<-Csnippet("
+                           Tr = exp(r);
+                           Tk = exp(k);
+                           ")
+
+toEstimScale_mi<-Csnippet("
+                         Tr = log(r);
+                         Tk = log(k);
+                         ")
+
+#initializer
+init_mi<-Csnippet("
+               N=9.75;
+               e=0;
+               ")
+
+#build pomp
+crisp_mi<-pomp(
+  data=crisp_series_k,
+  times="week",
+  t0=0,
+  skeleton=map(skel_mi),
+  rprocess=discrete.time.sim(step.fun=stochStep_mi,delta.t=.125),
+  rmeasure=rmeas_mi,
+  dmeasure=dmeas_mi,
+  statenames=c("N","e"),
+  paramnames=c("r","sigma","stdev","k","p"),
+  covar=covar_series,
+  tcovar="week",
+  covarnames=c("menses","liners_k"),
+  fromEstimationScale=fromEstimScale_mi,
+  toEstimationScale=toEstimScale_mi,
+  initializer=init_mi
+)
+```
+
+------
+
+####6.1 Exploring the likelihood surface of the Ricker+menses+<i>L. iners</i> model
+</br>
+Exploring the likelihood surfaces of the Ricker+menses+<i>L. iners</i> model suggests that there may be parameter identifiability issues for this model, as we saw with the Ricker+menses model. According to the k x r surface, log likelihood is maximized around k = 26.25 and r = 3.25. According to the k x p surface, log likelihood is maximized around k = 23 and p = 0.3. The r x p surface shows two log likelihood maxima: one around r = 0.5 and p = 0.2, and the other around r = 3 and p = 0.1.
+
+```{r menses_iners_2d,echo=F,message=F,warning=F,fig.align="center"}
+#2D likelihood
+slices_k_r_mi<-expand.grid(k=seq(from=22,to=28,length=100),
+                          r=seq(from=1,to=5,length=100),
+                          stdev=1,
+                          sigma=.25,
+                          p=1,
+                          N=1000)
+
+stew(file=sprintf("crisp_mi_2D_k_r_lik-1.rda",run_level),{
+  t_local_eval<-system.time({
+    foreach (theta=iter(slices_k_r_mi,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts) %dopar% 
+    {
+      slices_k_r_mi_pf<-pfilter(crisp_mi,params=unlist(theta),Np=1000)
+      theta$loglik<-logLik(slices_k_r_mi_pf)
+      theta
+    }->slices_k_r_mi
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+slices_k_r_mi_plot<-mutate(slices_k_r_mi,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=slices_k_r_mi_plot,mapping=aes(x=k,y=r,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=2.55)+
+  scale_fill_gradient("Log Likelihood")+
+  labs(x="k",y="r")
+
+slices_k_p_mi<-expand.grid(k=seq(from=22,to=28,length=100),
+                          p=seq(from=.1,to=3,length=100),
+                          stdev=1,
+                          sigma=.25,
+                          r=2,
+                          N=1000)
+
+stew(file=sprintf("crisp_mi_2D_k_p_lik-1.rda",run_level),{
+  t_local_eval<-system.time({
+    foreach (theta=iter(slices_k_p_mi,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts) %dopar% 
+    {
+      slices_k_p_mi_pf<-pfilter(crisp_mi,params=unlist(theta),Np=1000)
+      theta$loglik<-logLik(slices_k_p_mi_pf)
+      theta
+    }->slices_k_p_mi
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+slices_k_p_mi_plot<-mutate(slices_k_p_mi,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=slices_k_p_mi_plot,mapping=aes(x=k,y=p,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=4)+
+  scale_fill_gradient("Log Likelihood")+
+  labs(x="k",y="p")
+
+slices_r_p_mi<-expand.grid(r=seq(from=1,to=3,length=100),
+                          p=seq(from=.1,to=2,length=100),
+                          stdev=1,
+                          sigma=.25,
+                          k=23,
+                          N=1000)
+
+stew(file=sprintf("crisp_mi_2D_r_p_lik-1.rda",run_level),{
+  t_local_eval<-system.time({
+    foreach (theta=iter(slices_r_p_mi,"row"),.combine=rbind,.inorder=FALSE,.options.multicore=mcopts) %dopar% 
+    {
+      slices_r_p_mi_pf<-pfilter(crisp_mi,params=unlist(theta),Np=1000)
+      theta$loglik<-logLik(slices_r_p_mi_pf)
+      theta
+    }->slices_r_p_mi
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+slices_r_p_mi_plot<-mutate(slices_r_p_mi,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
+ggplot(data=slices_r_p_mi_plot,mapping=aes(x=r,y=p,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=3)+
+  scale_fill_gradient("Log Likelihood")+
+  labs(x="r",y="p")
+```
+
+Simulating the data using the Ricker+menses+<i>L. iners</i> model with N<sub>0</sub> = 9.75, e<sub>0</sub> = 0, $\begin{eqnarray}\sigma\end{eqnarray}$ = 0.25, <i>stdev</i> = 1, r = 3.25, k = 26.25, and p = 0.1 gives poor approximations of the <i>L. crispatus</i> counts. Some of the simulations capture the decrease in <i>L. crispatus</i> counts that occur during menses, but they all cover a much wider range of count values than the data. 
+```{r menses_iners_sim_1,echo=F,fig.align="center"}
+coef(crisp_mi)<-c(r=3.25,sigma=0.1,stdev=1,k=26.25,p=.1)
+sims_mi<-simulate(crisp_mi,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+sims_mi$simulation<-ifelse(sims_mi$sim=="data","Data",ifelse(sims_mi$sim=="1","Simulation 1",ifelse(sims_mi$sim=="2","Simulation 2","Simulation 3")))
+ggplot(data=sims_mi,mapping=aes(x=time,y=lcrisp_k))+
+  geom_line()+
+  facet_wrap(~simulation,nrow=2,ncol=2)+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  xlab("Time (weeks)")+
+  ylab(expression(italic("L. crispatus")~" count"))
+```
+</br>
+On the other hand, simulating with r = 0.5, k = 23, and p = 0.3 approximates the data fairly well. These simulations capture the decrease in <i>L. crispatus</i> counts during menses and are much less jagged and volatile than prior simulations.
+
+```{r menses_iners_sim_2,echo=F,fig.align="center"}
+coef(crisp_mi)<-c(r=.5,sigma=0.1,stdev=1,k=23,p=.3)
+sims_mi<-simulate(crisp_mi,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+sims_mi$simulation<-ifelse(sims_mi$sim=="data","Data",ifelse(sims_mi$sim=="1","Simulation 1",ifelse(sims_mi$sim=="2","Simulation 2","Simulation 3")))
+ggplot(data=sims_mi,mapping=aes(x=time,y=lcrisp_k))+
+  geom_line()+
+  facet_wrap(~simulation,nrow=2,ncol=2)+
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16))+
+  xlab("Time (weeks)")+
+  ylab(expression(italic("L. crispatus")~" count"))
+```
+
+------
+
+####6.2 Likelihood maximization of the Ricker+menses+<i>L. iners</i> model
+</br>
+We will use IF2 to generate MLEs for the Ricker+menses+<i>L. iners</i> model as above, with the following parameter space box to randomly draw staring values from: 0.1 <u><</u> r <u><</u> 5, 20 <u><</u> k <u><</u> 30, and 0.01 <u><</u> p <u><</u> 3. IF2 diagnostic plots and results are below.
+
+```{r menses_iners_local_global,echo=F,fig.align="center"}
+#local search of likelihood surface using mif2
+run_level<-4
+coef(crisp_mi)<-c(r=3,sigma=0.1,stdev=1,k=25,p=.5)
+
+stew(file=sprintf("crisp_mi_local_search-4.rda",run_level),{
+  t_local<-system.time({
+    mifs_local_mi<-foreach(i=1:crisp_Nlocal,.packages='pomp',.combine=c,.options.multicore=mcopts) %dopar%  {
+      mif2(
+        crisp_mi,
+        start=coef(crisp_mi),
+        Np=crisp_Np,
+        Nmif=crisp_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=crisp_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          r=crisp_rw.sd,
+          k=crisp_rw.sd,
+          p=crisp_rw.sd
+        )
+      )
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("crisp_mi_lik_local-4.rda",run_level),{
+  t_local_eval<-system.time({
+    liks_local_mi<-foreach(i=1:crisp_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals<-replicate(crisp_Neval,logLik(pfilter(crisp_mi,params=coef(mifs_local_mi[[i]]),Np=crisp_Np)))
+      logmeanexp(evals,se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+#global search
+crisp_box_mi<-rbind(r=c(.1,5),k=c(20,30),p=c(.01,3))
+crisp_fixed_params<-c(sigma=.25,stdev=1)
+run_level<-4
+
+stew(file=sprintf("crisp_mi_box_eval-4.rda",run_level),{
+  t_global<-system.time({
+    mifs_global_mi<-foreach(i=1:crisp_Nglobal,.packages='pomp',.combine=c,.options.multicore=mcopts) %dopar%  
+      mif2(
+        mifs_local_mi[[1]],
+        start=c(apply(crisp_box_mi,1,function(x)runif(1,x[1],x[2])),crisp_fixed_params)
+      )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("crisp_mi_lik_global_eval-4.rda",run_level),{
+  t_global_eval<-system.time({
+    liks_global_mi<-foreach(i=1:crisp_Nglobal,.packages='pomp',.combine=rbind,.options.multicore=mcopts) %dopar% {
+      evals<-replicate(crisp_Neval,logLik(pfilter(crisp_mi,params=coef(mifs_global_mi[[i]]),Np=crisp_Np)))
+      logmeanexp(evals,se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+plot(mifs_global_mi)
+results_global_mi<-data.frame(logLik=liks_global_mi[,1],logLik_se=liks_global_mi[,2],t(sapply(mifs_global_mi,coef)))
+results_large_r_mi<-results_global_mi[which(results_global_mi$r>1),]
+length_large_mi<-length(results_large_r_mi$logLik)
+avg_r_large_mi<-sprintf("%.2f",round(mean(results_large_r_mi$r),2))
+avg_k_large_mi<-round(mean(results_large_r_mi$k),2)
+avg_p_large_mi<-round(mean(results_large_r_mi$p),2)
+avg_l_large_mi<-round(mean(results_large_r_mi$logLik),2)
+se_r_large_mi<-round(sd(results_large_r_mi$r)/sqrt(length_large_mi),4)
+se_k_large_mi<-round(sd(results_large_r_mi$k)/sqrt(length_large_mi),4)
+se_p_large_mi<-round(sd(results_large_r_mi$p)/sqrt(length_large_mi),4)
+se_l_large_mi<-round(sd(results_large_r_mi$logLik)/sqrt(length_large_mi),4)
+cat("Parameter set 1:","\n",
+    "\t","\t","Number of iterations converging on larger r: ",length_large_mi,"\n",
+    "\t","\t","Average r: ",avg_r_large_mi,", Standard error: ",se_r_large_mi,"\n",
+    "\t","\t","Average k: ",avg_k_large_mi,", Standard error: ",se_k_large_mi,"\n",
+    "\t","\t","Average p: ",avg_p_large_mi,", Standard error: ",se_p_large_mi,"\n",
+    "\t","\t","Average log likelihood: ",avg_l_large_mi,", Standard error: ",se_l_large_mi,"\n",
+    sep="")
+
+results_small_r_mi<-results_global_mi[which(results_global_mi$r<1),]
+length_small_mi<-length(results_small_r_mi$logLik)
+avg_r_small_mi<-round(mean(results_small_r_mi$r),2)
+avg_k_small_mi<-sprintf("%.2f",round(mean(results_small_r_mi$k),2))
+avg_p_small_mi<-round(mean(results_small_r_mi$p),2)
+avg_l_small_mi<-round(mean(results_small_r_mi$logLik),2)
+se_r_small_mi<-round(sd(results_small_r_mi$r)/sqrt(length_small_mi),4)
+se_k_small_mi<-round(sd(results_small_r_mi$k)/sqrt(length_small_mi),4)
+se_p_small_mi<-round(sd(results_small_r_mi$p)/sqrt(length_small_mi),4)
+se_l_small_mi<-round(sd(results_small_r_mi$logLik)/sqrt(length_small_mi),4)
+cat("Parameter set 2:","\n",
+    "\t","\t","Number of iterations converging on smaller r: ",length_small_mi,"\n",
+    "\t","\t","Average r: ",avg_r_small_mi,", Standard error: ",se_r_small_mi,"\n",
+    "\t","\t","Average k: ",avg_k_small_mi,", Standard error: ",se_k_small_mi,"\n",
+    "\t","\t","Average p: ",avg_p_small_mi,", Standard error: ",se_p_small_mi,"\n",
+    "\t","\t","Average log likelihood: ",avg_l_small_mi,", Standard error: ",se_l_small_mi,"\n",
+    sep="")
+
+#logliks for large are normally distributedfor both
+large_r_normal_mi<-shapiro.test(results_large_r_mi$logLik)
+small_r_normal_mi<-shapiro.test(results_small_r_mi$logLik)
+
+#t test comparing loglik large r to loglik small r
+#p<2.2e-16
+loglik_p_mi<-t.test(results_large_r_mi$logLik,results_small_r_mi$logLik)$p.value
+
+cat("t-test comparing log likelihoods: p = ",loglik_p_mi,sep="")
+```
+</br>
+As before, the effective sample size of the last iteration is quite high for all time points, there were no filtering failures after the first few iterations, and all parameters converge on two values early in the iterations. These features suggest that IF2 performed well and give us confidence that we identified MLEs. The effective sample size and conditional log likelihood plots suggest that parameter set 2 better fits the data than parameter set 1. This is corroborated by the log likelihood for the two parameter sets: -80.85 versus -95.65 (p = 1e<sup>-253</sup>). The MLE set (parameter set 2) suggests that the vagina's combined carring capacity for <i>L. crispauts</i> and <i>L. iners</i> is around 22,300 organisms, that the maximum potential growth rate of the <i>L. crispatus</i> population in this combined community is 0.44, and that menses reduces the actual growth rate by 41% of the maximum potential growth rate. The log likelihood for this MLE set is greater than that of the basic Ricker model MLE set (-83.87) but less than that of the Ricker+menses MLE set (-77.07), suggesting that including the menses effect in the Ricker model and modeling <i>L. crispauts</i> counts as part of a combined <i>L. crispatus</i> and <i>L. iners</i> population improves the basic Ricker model, but that including the menses effect and considering <i>L. crispatus</i> as an isolated population performs the best of these four models.
+
+------
+
+##7. Conclusions
+</br>
+The goal of this analysis was to explore variations of the Ricker discrete population model as a POMP model of <i>L. crispatus</i> bacterial counts from lognitudinal vaginal microbiota composition data. Of the four models considered, the Ricker model accounting for the menses effect performed the best. This is not surprising given our observation that <i>L. crispaus</i> counts tend to decrease during menses, and <i>a priori</i> knowledge of the impact of menses on vaginal microbiota composition. More interestingly, the Ricker+menses model provides an estimate of the strength of the menses effect: menses appears to reduce the actual <i>L. crispatus</i> population growth rate by 68% of the maximum potential growth rate. Recent studies have found that <i>L. crispatus</i> dominated vaginal microbial communities are associated low vaginal pH and vaginal health,<sup>1,2</sup> which suggests that <i>L. crispatus</i> performs well at providing the vagina with colonization resistance against other microbes, including pathogens. As such, a decrease in <i>L. crispatus</i> growth rate of this magnitude during menses may confer risk of acquiring bacterial vaginosis and/or vaginal infections during menses, which is supported by the original epidemiologic analysis of this study's data (not yet published). It is important to note that we only applied these Ricker POMP models to a single woman's vaginal microbiota data, and the menses effect likely differs between different women. However, this analysis has shown that these POMP models may be a valuable method for vaginal microbiota data analysis. They could easily be applied to vaginal microbiota data from a cohort of women to assess whether there is an overall trend in the menses effect on <i>L. crisaptus</i> population growth rate.
+</br></br>
+It is somewhat dissapointing that including the menses effect in the Ricker model and modeling <i>L. crispauts</i> counts as part of a combined <i>L. crispatus</i> and <i>L. iners</i> population was not an improvement over the Ricker+menses model. In theory, this model should reflect the ecological processes of the vaginal microbiota better than the Ricker+menses model. It is likely that a more complicated and more effective model including the menses effect and modeling <i>L. crispauts</i> counts as part of a polymicrobial community can be specified, which would be of interest for future applications of POMP models to vaginal microbiota composition.
+
+------
+##8. References
+
+1. Ravel, J., et al. (2011). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3063603/"> "Vaginal microbiome of reproductive-age women." </a> Proc Natl Acad Sci U S A 108(Supplement 1): 4680-4687.
+
+2. Gajer, P., et al. (2012). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3722878/"> "Temporal Dynamics of the Human Vaginal Microbiota." </a>Sci. Transl. Med. 4(132): 132ra152-132ra152.
+
+3. Hickey, R. J., et al. (2012). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3444549/"> "Understanding vaginal microbiome complexity from an ecological perspective." </a> Transl Res 160(4): 267-282.
+
+4. Borges, S., et al. (2014). <a href="https://link.springer.com/article/10.1007%2Fs00404-013-3064-9"> "The role of lactobacilli and probiotics in maintaining vaginal health." </a> Arch Gynecol Obstet 289(3): 479-489.
+
+5. Brotman, R. M. (2011). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3225992/"> "Vaginal microbiome and sexually transmitted infections: an epidemiologic perspective." </a> J. Clin. Invest. 121(12): 4610-4617.
+
+6. van Oostrum, N., et al. (2013). <a href="https://academic.oup.com/humrep/article/28/7/1809/611205"> "Risks associated with bacterial vaginosis in infertility patients: a systematic review and meta-analysis." </a> Human Reproduction.
+
+7. Sharma, H., et al. (2014). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4148456/"> "Microbiota and Pelvic Inflammatory Disease." </a> Seminars in Reproductive Medicine 32(1): 43-49.
+
+8. Nelson, D. B., et al. (2016). <a href="https://www.sciencedirect.com/science/article/pii/S1075996416300981"> "The role of the bacterial microbiota on reproductive and pregnancy health." </a> Anaerobe 42: 67-73.
+
+9. Champer, M., et al. (2017). <a href="http://onlinelibrary.wiley.com/doi/10.1111/1471-0528.14631/full"> "The role of the vaginal microbiome in gynaecological cancer." </a> BJOG.
+
+10. van de Wijgert, J. H. H. M. and V. Jespers (2017). <a href="https://www.ncbi.nlm.nih.gov/pubmed/28257809"> "The global health impact of vaginal dysbiosis." </a> Res. Microbiol.
+
+11. Lopes dos Santos Santiago, G., et al. (2011). <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0028180"> "Longitudinal Study of the Dynamics of Vaginal Microflora during Two Consecutive Menstrual Cycles." </a> PLoS One 6(11): e28180.
+
+12. Hickey, R. J., et al. (2013). <a href="http://onlinelibrary.wiley.com/doi/10.1111/1471-0528.12151/abstract"> "Effects of tampons and menses on the composition and diversity of vaginal microbial communities over time." </a> BJOG: An International Journal of Obstetrics & Gynaecology 120(6): 695-706.
+
+13. Chaban, B., et al. (2014). <a href="https://microbiomejournal.biomedcentral.com/articles/10.1186/2049-2618-2-23"> "Characterization of the vaginal microbiota of healthy Canadian women through the menstrual cycle." </a> Microbiome 2(1): 1-12.
+
+14. Priestley, C. J., et al. (1997). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1195755/"> "What is normal vaginal flora?" </a> Genitourinary Medicine 73(1): 23-28.
+
+15. Eschenbach, D. A., et al. (2000). <a href="https://academic.oup.com/cid/article/30/6/901/432360"> "Influence of the Normal Menstrual Cycle on Vaginal Tissue, Discharge, and Microflora." </a> Clinical Infectious Diseases 30(6): 901-907.
+
+16. Srinivasan, S., et al. (2010). <a href="http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0010197"> "Temporal Variability of Human Vaginal Bacteria and Relationship with Bacterial Vaginosis." </a> PLoS One 5(4): e10197.
+
+17. Kozich, J. J., et al. (2013). <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3753973/"> "Development of a Dual-Index Sequencing Strategy and Curation Pipeline for Analyzing Amplicon Sequence Data on the MiSeq Illumina Sequencing Platform." </a> Applied and Environmental Microbiology 79(17): 5112-5120.
+
+18. Seekatz, A. M., et al. (2015). <a href="http://iai.asm.org/content/83/10/3838.full"> "Fecal Microbiota Transplantation Eliminates Clostridium difficile in a Murine Model of Relapsing Disease." </a> Infect. Immun. 83(10): 3838-3846.
+
+19. Ricker model (last updated 2018). <a href="https://en.wikipedia.org/wiki/Ricker_model"> https://en.wikipedia.org/wiki/Ricker_model </a> 
+
+20. Ionides, E. L., et al. (2015). <a href="http://www.pnas.org/content/112/3/719"> "Inference for dynamic and latent variable models via iterated, perturbed Bayes maps." </a> PNAS. 112(3): 719-724.
+
+

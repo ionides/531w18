@@ -1,0 +1,297 @@
+---
+title: <center> Analysis on the Google Flu Trend and CDC flu data </center>
+output:
+  html_document:
+    toc: yes
+---
+
+<style type="text/css">
+
+h1.title {
+  font-size: 32px;
+}
+h1 {
+  font-size: 24px;
+}
+h2 {
+  font-size: 20px;
+}
+
+</style>
+
+$$
+\
+\
+\
+$$
+
+<center> <h1> Introduction </h1> </center>
+
+Early prediction and prevention is important for influenza (flu for short), a common epidemic disease. When people find some symptoms of influenze-like illness (ILI for short) on themselves or people around them, they will probabily go the the internet for help before they go to a clinic. Therefore, we can use the proportion of people searching on the internet about flu to predict how many people are getting flu, and can use it to predict the number of people that go to a clinic and report a flu.
+
+A widely used source of internet searching data is the Google Flu Trends [1]. The Google Flue Trends is no longer publishing current data now, but they are putting some data of the past years on the website. The Google Flu Trends data is the number of flu-related search queries in 50 million search queries every week [2].
+
+The number of reports from clinics is tracked by the Centers for Disease Control and Prevention (CDC for short) [3]. It publishes the data collected from clinics across the United States every week. One of the data published is the Influenza-like illnesses, which includes all types of flu, as well as influenza on animals (like H1N1, poultry flu).
+
+A lot of studies have been done to analyze the two time series. Some studies focus on either the Google Trend data or the CDC visitor data and fitted Autoregressive Moving Average (ARMA) Models to them. Some studies try to predict number of visitors to clinics using the Google Flu Trends data with General Linear Models. In this analysis, we are going to try all the three approaches, and compare our results with the already published ones.
+
+<center> <h1> Data </h1> </center>
+
+The data set used in out analysis comes from Data Dryad [4]. The data was from a published study by Preis T and Moat HS (2014) [5][6]. The data set contains three variables, which we name week, visitors and google. The variable week is the starting Sunday of the week when the data point is collected, from January 03 2010 to September 15 2013. The variable visitors is the percentage of influenza-like illness reports out of all the reports in the week in the United States. The variable google is the number of queries about flu in this week on the Google search engine. The histograms of the variable visitor and google are shown below.
+
+```{r data preparation, echo=FALSE}
+rm(list=ls())
+dat=read.csv("PreisMoat2014.csv")
+names(dat)=c("week","visitors","google")
+dat$week=as.Date(dat$week,"%Y-%m-%d")
+dat$time=seq(1,194)
+datp=dat[,c("google","time","visitors")]
+datp$google=datp$google/50000000
+datp$pop=log(datp$google/(1-datp$google))
+datp$vis=log(datp$visitors/(100-datp$visitors))
+par(mfrow=c(1,2))
+plot(dat$week,dat$google,type="l",main="The Google Flu Trend by week")
+plot(dat$week,dat$visitors,type="l", main="Percentage of flu-related visitors by week")
+p=cor(dat$visitors,dat$google)
+```
+
+We can see from the plots that the two time series are similar, except for some peaks. The Pearson correlation coefficient between the two series is 0.883, which is even higher than in Ortiz et al., 2011 [7]. It is reasonable that one can predict the other.
+
+<center> <h1> ARMA Model Analysis </h1> </center>
+
+<h2> ARMA model for CDC ILI visitor data </h2>
+
+The autocorrelation function of the visitor and google series is plotted below. We can see from the plot that both the series are highly autocorrelated. So it is reasonable that we fit the ARMA models to the series.
+
+```{r acf,echo=FALSE}
+par(mfrow=c(1,2))
+acf(dat$visitors)
+acf(dat$google)
+```
+
+The Autoregressive Moving Average model is represented as:
+$$
+Y_n = \phi_1 Y_{n-1}+\phi_2Y_{n-2}+\dots+\phi_pY_{n-p} + \epsilon_n +\psi_1 \epsilon_{n-1} +\dots+\psi_q\epsilon_{n-q}.
+$$
+
+We fit ARMA models with different $p$ and $q$ to the visitor series, and select one with the smallest AIC. From the AIC table shown below, we can see that the ARMA(3,2) and ARMA(4,5) models have the smallest AIC. However, for a simpler model, we can consider the ARMA(3,2) model the best fit for the CDC ILI visitor data, which repeats the result by Preis T and Moat HS (2014) [5], and is similar to Dugas et al., 2013 [8], which proposed a GARMA(3,0) model to fit the CDC ILI data.
+
+```{r ARMA visitor, echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+vis_aic_table <- aic_table(dat$visitors,4,5)#arma(3,2)
+vis_aic_table
+```
+
+The coefficient of the ARMA(3,2) model is shown below:
+
+```{r visitor ARMA, echo=FALSE}
+vis_arma<-arima(dat$visitors,order=c(3,0,2))
+vis_arma$coef
+```
+
+<h2> ARMA model for the Google Flu Trends data </h2>
+
+We can do the same analysis to fit the Google Flu Trends data. From the AIC table we can see that ARMA(3,0) and ARMA(2,1) have the smallest AIC.
+
+```{r google ARMA, echo=FALSE}
+goo_aic_table <- aic_table(dat$google,4,5)
+goo_aic_table
+```
+
+The coefficient of the ARMA(3,0) model is shown below.
+
+```{r google coef, echo=FALSE}
+goo_arma=arima(dat$google,order=c(3,0,0))
+goo_arma$coef
+```
+
+<h2> ARMA model on logit scale </h2>
+
+However, when we look at the descriptive plot of the two time series, the value can only be positive. The CDC ILI visitor series can only have values from 0 to 100, and the Google Flu Trends series can only have values from 0 to 50000000. In addition, there are some peaks in the plot. Therefore, we can perform a logit transformation on these two time series.
+
+For the CDC ILI visitor data, the logit transformation is $log(\frac{p}{100-p})$. Fitting an ARMA model, we can find that still an ARMA(3,2) model can be preferred. However, the AIC of the model on logit scale is much smaller than on the original scale, which is proposed by Preis T and Moat HS (2014) [5]. The coefficients of the model are shown below
+
+```{r visitor logit, echo=FALSE}
+vis_logit_table <- aic_table(datp$vis,4,5)#arma(3,2)
+vis_logit_table
+vis_logit=arima(datp$vis,order=c(3,0,2))
+vis_logit$coef
+```
+
+For the Google Flu Trends data, the logit transformation is $log(\frac{q}{50000000-q})$. Fitting an ARMA model, we can find that an ARMA(3,1) model can be preferred. Still, the AIC of the model on logit scale is much smaller than on the original scale,
+
+```{r google logit, echo=FALSE}
+goo_logit_table <- aic_table(datp$pop,4,5)#arma(3,2)
+goo_logit_table
+goo_logit=arima(datp$pop,order=c(3,0,1))
+goo_logit$coef
+```
+
+<h2> ARMA model with trend on original scale</h2>
+
+Since there is some evidence showing that the Google Flu Trend is correlated with the CDC ILI visitor data, and we can it is reasonable that we fit an ARMA model with trend. The model is represented as:
+
+```{r trend original,echo=FALSE}
+aic_table2 <- function(data,data2,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q),xreg=data2)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+flu_reg_table <- aic_table2(dat$visitors,dat$google,4,5)#arma(3,3)
+flu_reg_table
+```
+
+By looking at the AIC table, we can suggested the ARMA(3,3) model with trend is the best. The coefficients of the ARMA(3,3) model with trend are:
+
+```{r original model,echo=FALSE}
+flu_reg_original <- arima(dat$visitors, order=c(3,0,3), xreg=dat$google)
+flu_reg_original$coef
+```
+
+<h2> ARMA model with trend on logit scale</h2>
+
+Ginsberg et al. (2009) [9] brought up a logit regression model to describe the relationship between CDC ILI visitor data and the Google Flu Trends search query data. The model is represented as:
+
+$$
+log(\frac{p}{1-p})=\beta_0+\beta_1log(\frac{q}{1-q})+\epsilon,\ \epsilon\sim N(0,\sigma^2)
+$$
+In the model, $p$ denotes the proportion of influenza-related reports in all clinical reports, which is visitors/100 in our data. $q$ denotes the proportion of influenza-related internet search queries in all queries, which is google/50000000 in out data. 
+
+In this analysis we want to look at this model in a time series way. We want to fit an ARMA model with trend to mimic this model. Therefore, we calculat $P=log(\frac{p}{1-p})$ and $Q=log(\frac{q}{1-q})$ and fit an ARMA model with trend. 
+
+```{r trend logit,echo=FALSE}
+flu_reg_table2 <- aic_table2(datp$vis,datp$pop,4,5)#arma(3,3)
+flu_reg_table2
+```
+
+By looking at the AIC table, we can suggest an ARMA(3,2) model with trend. The error of the linear regression model is autocorrelated, unlike in the model Ginsberg proposed. Fitting the model we proposed we can get the coefficients:
+
+```{r logit model,echo=FALSE}
+flu_reg_logit=arima(datp$vis,order=c(3,0,2),xreg=datp$pop)
+flu_reg_logit
+```
+
+This model has a much smaller AIC than the ARMA(3,3) model with trend in original scale. Therefore, an ARMA(3,2) model with trend in logit scale is the better model to fit the relationship between CDC ILI data and the Google Flu Trend data.
+
+<center> <h1> A POMP realization of the regression model </h1> </center>
+
+Partially observed Markov process (POMP for short) is a process with a latent or hidden markov process, and an observation process [10]. The correlation between the Google Flu Trend data and CDC ILI visitor data shows that the two have some relationship. The regression model tells us that you can even well predict the visitor data by Google Flu Trend data. However, obviously the relationship between the two variables are not causal. People going to clinic for flu cannot directly cause people to search about flu on the internet, and people searching about flu on the internet cannot directly cause people to go to clinic with flu. A better interpretation for the covariation of the two variable is there is a third variable, such as the number of people getting flu, causing both CDC ILI visitor number and Google Flu Trend number to change.
+
+Therefore, we can propose a POMP model, with the Google Flu Trend data as observation process, and the number of people getting flu as the hidden markov process. The hidden process of number of people getting flu is not available from the data. However, we can probably use the CDC ILI visitor number to reflect it. Since it is not easy to fit an ARMA(3,2) model in POMP analysis, we would suggest that the number of people getting flu is appropriate for a Ricker model. The Ricker model can be represented as:
+
+$$
+P_{n+1}=rP_ne^{(-P_n+\epsilon_n)},\ \epsilon_n\sim N(0,\sigma^2)
+$$
+
+In our POMP model, we will use the ricker model as the skeleton for the hidden markov process, and the logit regression function as our measurement model:
+
+$$
+Q=\frac{P-\beta_0-\phi}{\beta1}, \phi\sim N(0,\tau^2)
+$$
+
+In the measurement model, $Q$ denotes the logit of the Google Flue Trend $log(\frac{q}{1-q})$, and $P$ denotes the number of people getting flu from the hidden markov process. 
+
+In the POMP model, there are 5 parameters $\Theta=(\beta_0,\beta_1,\sigma,\tau,r)$. We will run a program with the POMP package in R to simulate to find the parameters giving us the maximum likelihood.
+
+```{r pomp construction, echo=FALSE}
+require(pomp)
+stochStep <- Csnippet("
+  e = rnorm(0,sigma);
+  N = r*N*exp(-N+e);
+")
+rmeas <- Csnippet("pop = (N-b0-rnorm(0,tau))/b1;")
+dmeas <- Csnippet("lik = dnorm(N-b0-b1*pop,0,tau,give_log);")
+statename=c("N","e")
+paramname=c("b0","b1","sigma","tau","r")
+initializer=Csnippet("N=1.945;e=0;")
+
+parus <- pomp(
+  data=datp,times="time",t0=1,
+  rprocess=discrete.time.sim(step.fun=stochStep,delta.t=1),
+  rmeasure=rmeas,
+  dmeasure=dmeas,
+  statenames=statename,
+  paramnames=paramname,
+  initializer=initializer
+)
+```
+
+```{r mifs,echo=FALSE}
+run_level <- 1
+switch(run_level,
+       {bsflu_Np=10; bsflu_Nmif=10; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=20000; bsflu_Nmif=100; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=100; bsflu_Nlocal=20}
+)
+parus_fixed=c(b0=16.56, b1=1.44, sigma=2, tau=0.5, r=10)
+
+rw.sd <- 0.02
+cooling.fraction.50 <- 0.5
+
+miff=mif2(     
+  parus,
+  start=parus_fixed,#apply(parus_box,1,function(x)runif(1,x[1],x[2])),
+  Np=bsflu_Np,
+  Nmif=bsflu_Nmif,
+  cooling.type="geometric",
+  cooling.fraction.50=cooling.fraction.50,
+  transform=FALSE,
+  rw.sd=rw.sd(
+    b0=rw.sd,
+    b1=rw.sd,
+    sigma=rw.sd,
+    tau=rw.sd,
+    r=rw.sd
+  )
+)
+
+miff@params
+```
+
+The coefficient of the parameters are shown above. Looking at the diagnostic plots below, the parameter estimates have not come to convergence yet. Because in the measurement process, the normal distribution density is not reliable, we cannot run more iterations.
+
+```{r diagnostic,echo=FALSE}
+plot(miff)
+```
+
+<center> <h1> Conclusion </h1> </center>
+
+The two time series, CDC ILI visitor data and the Google Flu Trends data are highly correlated. The CDC ILI visitor data can be appropriately fitted by an ARMA(3,2) model, while the Google Flu Trends data can be appropriately fiited by an ARMA(3,0) or an ARMA(2,1) model. We can use a logit regression to fit the relationship between the two series, using the Google Flu Trends data to predict the CDC ILI visitor data. However, when we take the variable time into account, the residuals are autocorrelated. Instead, the CDC ILI visitor data can be represented as an ARMA(3,2) model with the Google Flu Trends data as trend.
+
+For the POMP model, we propose a model with 5 parameters: 2 for the Ricker model as skeleton for the hidden markov process, and 3 for the logit regression for the measurement model. The model is not very stable, and can be adjusted to run more iterations. After 200 iterations should the parameter estimates become stable, and we can estimate the likelihood better.
+
+<center> <h1> References </h1> </center>
+
+[1]https://www.google.org/flutrends/about/
+
+[2]https://en.wikipedia.org/wiki/Google_Flu_Trends
+
+[3]https://www.cdc.gov/flu/weekly/fluactivitysurv.htm
+
+[4]https://datadryad.org/resource/doi:10.5061/dryad.r06h2
+
+[5]Preis T, Moat HS (2014) Adaptive nowcasting of influenza outbreaks using Google searches. Royal Society Open Science 1: 140095. https://doi.org/10.1098/rsos.140095
+
+[6]Preis T, Moat HS (2014) Data from: Adaptive nowcasting of influenza outbreaks using Google searches. Dryad Digital Repository. https://doi.org/10.5061/dryad.r06h2
+
+[7]Ortiz, J. R., Zhou, H., Shay, D. K., Neuzil, K. M., Fowlkes, A. L., & Goss, C. H. (2011). Monitoring influenza activity in the United States: a comparison of traditional surveillance systems with Google Flu Trends. PloS one, 6(4), e18687.
+
+[8]Dugas, A. F., Jalalpour, M., Gel, Y., Levin, S., Torcaso, F., Igusa, T., & Rothman, R. E. (2013). Influenza forecasting with Google flu trends. PloS one, 8(2), e56176.
+
+[9]Ginsberg, J., Mohebbi, M. H., Patel, R. S., Brammer, L., Smolinski, M. S., & Brilliant, L. (2009). Detecting influenza epidemics using search engine query data. Nature, 457(7232), 1012.
+
+[10]Class notes, https://ionides.github.io/531w18/09/notes09.html

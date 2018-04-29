@@ -1,0 +1,986 @@
+---
+title: "Final Project - POMP modeling dengue in San Juan, Puerto Rico"
+date: "4/16/2018"
+output: 
+  html_document:
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+options(repos=c(CRAN="https://cran.mtu.edu/"))
+library(ggplot2)
+library(pomp)
+library(readr)
+library(dplyr)
+library(knitr)
+install.packages('readr')
+# setwd('/afs/umich.edu/k/a/kasfaw/stats531/final_project')
+```
+
+# Introduction
+
+## Dengue fever
+
+Dengue fever is a tropical disease that is spread by the bite of a species of mosquito called Aedes Aegypti. The cause of the disease is the dengue virus, of which there are four serotypes (sub-types).^[1]^ A difficulty with this disease is that recovery from a primary infection with one strain of the disease seems to lead to an exacerbation of symptoms during future infections by another strain. The prevailing theory for this phenomenon is antibody-dependent enhancement (ADE), whereby cross-reactive antibodies developed from a prior infection bind to the new strain but do not eliminate it. ^[2]^
+
+## Motivation for the work
+
+In this project, we are going to try to model dengue case counts in San Juan, Puerto Rico using observed case counts between 1990 and 2009. In the midterm, we used a classical time-series ARIMA analysis with weather variables as signals and an ARIMA process as our noise process. We found that we were not able to capture most of the variability of the data using such a method. In this project, we will employ the infrastructure provided by POMP to build a state-space model incorporating all strains of the disease.
+
+## Data Preparation
+
+The dataset we'll use includes Dengue case counts in San Juan, Puerto Rico, between April 30, 1990 and April 23, 2009. It was provided by the National Oceanic and Atmospheric Administration. ^[3]^ It contains weekly case counts for each strain of the virus. There are 988 rows in this dataset.
+
+In preparing the dataset for analysis I noticed that many rows of data had a considerable number of cases where the strain information of a case was not known. To assign such cases to the possible serotypes, I looked back to the five previous weeks and multinomially assigned the unspecified cases to each strain based on how common each strain of the disease was in the recent past. This is based on the assumption that a prevailing strain of the disease exists at a given time, which can be seen by visually inspecting the data. The data were visualized below with years starting from 1990.
+
+```{r message = FALSE, echo = FALSE}
+sj_dengue = read_csv('http://dengueforecasting.noaa.gov/Training/San_Juan_Training_Data.csv')
+sj_dengue = sj_dengue %>% mutate(total_other = other_positive_cases + additional_cases, week = 0:(nrow(sj_dengue)-1))
+for(i in 7:nrow(sj_dengue)){
+  unassigned = sj_dengue$total_other[i]
+  sum_prev5_weeks = sj_dengue[c(
+    'denv1_cases', 'denv2_cases','denv3_cases','denv4_cases')][(i-5):(i-1),] %>%
+    apply(2, sum)
+  assignment = rmultinom(1, unassigned, sum_prev5_weeks)
+  sj_dengue[i,]$denv1_cases = sj_dengue[i,]$denv1_cases + assignment['denv1_cases', 1]
+  sj_dengue[i,]$denv2_cases = sj_dengue[i,]$denv2_cases + assignment['denv2_cases', 1]
+  sj_dengue[i,]$denv3_cases = sj_dengue[i,]$denv3_cases + assignment['denv3_cases', 1]
+  sj_dengue[i,]$denv4_cases = sj_dengue[i,]$denv4_cases + assignment['denv4_cases', 1]
+}
+dd = sj_dengue %>% select(week, y1 = denv1_cases, y2 = denv2_cases, y3 = denv3_cases, y4 = denv4_cases)
+dd_test = dd[1:2,]
+```
+
+```{r, echo = FALSE}
+ggplot(data=dd) + 
+  geom_line(mapping = aes(x = week/52, y = y1, color = "Strain 1"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = y2, color = "Strain 2"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = y3, color = "Strain 3"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = y4, color = "Strain 4"), alpha = 0.5) +
+  labs(x = "Year") + 
+  ggtitle("Case counts") +
+  scale_colour_manual("", 
+                      breaks = c("Strain 1", "Strain 2", "Strain 3", "Strain 4"),
+                      values = c("red", "blue", "green", "yellow"))
+```
+
+# Constructing the `pomp` object
+
+The process model and the deterministic trajectory of this work rely on the work of Recker et al. ^[4]^ and the main innovation of this project will be to introduce stochasticity and simulation-based likelihood inference through the POMP framework. The work of Recker et al. provides an epidemiological model for dengue transmission with two parameters representing the effects of ADE discussed above. The first parameter describes the enhancement of transmission during secondary infection through increased viremia whereas the second represents enhanced suspectibility to heterologous infection for those people who have experienced a primary infection. Due to the rarity of a third or fourth infection as outlined by Gibbons et al. ^[5]^, we make a simplifying assumption that only primary and secondary infections are possible. The code for the process model is quite long, so the reader can fold the code using the "Hide" option in the code chunk below. The model equations from ^[4]^ are shown below.
+
+\[
+\begin{eqnarray}
+\frac{ds}{dt} &=& \mu - s\sum_{k = 1}^{4}\lambda_{k} - \mu s\\
+\frac{dy_{i}}{dt} &=& s\lambda_{i} - (\sigma + \mu)y_{i}\\
+\frac{dr_{i}}{dt} &=& \sigma y_{i} - r_{i}(\mu + \sum_{j \neq i}^{}\gamma_{ij}\lambda_{j})\\
+\frac{dy_{ij}}{dt} &=& r_{i}\gamma_{ij}\lambda_{j} - (\sigma + \mu)y_{ij}, ~~ i \neq j \\
+\frac{dr}{dt} &=& \sigma \sum_{i = 1}^{4}\sum_{j \neq i}^{}y_{ij} - \mu r \\
+\end{eqnarray}
+\]
+
+```{r echo = FALSE}
+dengue_skel <- Csnippet('
+                        int numstrains = 4;
+// initialize all the phis and gammas
+                        double phi12, phi13, phi14, phi21, phi23, phi24, phi31, phi32, phi34, phi41, phi42, phi43;
+                        phi12 = phi13 = phi14 = phi21 = phi23 = phi24 = phi31 = phi32 = phi34 = phi41 = phi42 = phi43 = phi;
+                        double gamma12, gamma13, gamma14, gamma21, gamma23, gamma24, gamma31, gamma32, gamma34, gamma41, gamma42, gamma43;
+                        gamma12 = gamma13 = gamma14 = gamma21 = gamma23 = gamma24 = gamma31 = gamma32 = gamma34 = gamma41 = gamma42 = gamma43 = Gamma;
+// for now mu, sigma and bet are fixed
+                        //double mu = 1/(70*365);
+                        //double sigma = 1/3.65;
+                        //double bet = 400/365;
+                         double phis[4][4] = {{0, phi12, phi13, phi14}, {phi21, 0, phi23, phi24}, {phi31, phi32, 0, phi34}, {phi41, phi42, phi43, 0}};
+                         double n_sec[4][4] = {{0, n12, n13, n14}, {n21, 0, n23, n24}, {n31, n32, 0, n34}, {n41, n42, n43, 0}};
+                         double gammas[4][4] = {{0, gamma12, gamma13, gamma14}, {gamma21, 0, gamma23, gamma24}, {gamma31, gamma32, 0, gamma34}, {gamma41, gamma42, gamma43, 0}};
+                         double lambdas[4] = {0, 0, 0, 0};
+                         double n[4] = {n1, n2, n3, n4};
+                         double rs[4] = {r1, r2, r3, r4};
+                         double deltas[10];
+                         double deltas_sec[4][4];
+                         double sum_lambdas = 0;
+                         double sumprod = 0;
+                         double sumprodtwo = 0;
+                         for(int i = 0; i < numstrains; i++){
+                            sumprod = 0;
+                            for(int j = 0; j < numstrains; j++){
+                               if(i == j){
+                                  sumprod += 0;
+                               }
+                               else{
+                                  sumprod += phis[j][i]*n_sec[j][i];
+                               }
+                            }
+                            lambdas[i] = bet*(n[i] + sumprod);
+                            sum_lambdas += lambdas[i];
+                         }
+                         for(int i = 0; i < numstrains; i++){
+                            sumprodtwo = 0;
+                            for(int j = 0; j < numstrains; j++){
+                               if(i != j){
+                                  sumprodtwo += gammas[i][j]*lambdas[j];
+                               }
+                            }
+                            deltas[i+5] = sigma*n[i] - (rs[i]*(mu + sumprodtwo));
+                         }
+                         deltas[0] = mu - s*sum_lambdas - mu*s;
+                         for(int i = 0; i<numstrains; i++){
+                            deltas[i+1] = s*lambdas[i] - (sigma + mu)*n[i];
+                         }
+                         double sum_ys = 0;
+                         for(int i = 0; i<numstrains; i++){
+                            for(int j = 0; j<numstrains; j++){
+                               if(i == j) {
+                                  deltas_sec[i][j] = 0;
+                               }
+                               else{
+                                  deltas_sec[i][j] = rs[i]*gammas[i][j]*lambdas[j] - (sigma + mu)*n_sec[i][j];
+                                  sum_ys += n_sec[i][j];
+                               }
+                            }
+                         }
+                         deltas[9] = sigma*sum_ys - mu*r;
+                         Ds = (s + deltas[0]);
+                         Dn1 = (n1 + deltas[1]);
+                         Dn2 = (n2 + deltas[2]);
+                         Dn3 = (n3 + deltas[3]);
+                         Dn4 = (n4 + deltas[4]);
+                         Dr1 = (r1 + deltas[5]);
+                         Dr2 = (r2 + deltas[6]);
+                         Dr3 = (r3 + deltas[7]);
+                         Dr4 = (r4 + deltas[8]);
+                         Dr = (r + deltas[9]);
+                         Dn12 = (n12 + deltas_sec[0][1]);
+                         Dn13 = (n13 + deltas_sec[0][2]);
+                         Dn14 = (n14 + deltas_sec[0][3]);
+                         Dn21 = (n21 + deltas_sec[1][0]);
+                         Dn23 = (n23 + deltas_sec[1][2]);
+                         Dn24 = (n24 + deltas_sec[1][3]);
+                         Dn31 = (n31 + deltas_sec[2][0]);
+                         Dn32 = (n32 + deltas_sec[2][1]);
+                         Dn34 = (n34 + deltas_sec[2][3]);
+                         Dn41 = (n41 + deltas_sec[3][0]);
+                         Dn42 = (n42 + deltas_sec[3][1]);
+                         Dn43 = (n43 + deltas_sec[3][2]);
+                         ')
+
+```
+
+```{r}
+dengue_rprocess <- Csnippet('
+                        int numstrains = 4;
+                        int population = 2217968;
+
+                        // initialize all the phis and gammas
+                        double phi12, phi13, phi14, phi21, phi23, phi24, phi31, phi32, phi34, phi41, phi42, phi43;
+                        phi12 = phi13 = phi14 = phi21 = phi23 = phi24 = phi31 = phi32 = phi34 = phi41 = phi42 = phi43 = phi;
+                        double gamma12, gamma13, gamma14, gamma21, gamma23, gamma24, gamma31, gamma32, gamma34, gamma41, gamma42, gamma43;
+                        gamma12 = gamma13 = gamma14 = gamma21 = gamma23 = gamma24 = gamma31 = gamma32 = gamma34 = gamma41 = gamma42 = gamma43 = Gamma;
+
+                        // useful for calculations
+                        double phis[4][4] = {{0, phi12, phi13, phi14}, {phi21, 0, phi23, phi24}, {phi31, phi32, 0, phi34}, {phi41, phi42, phi43, 0}};
+                        double n_sec[4][4] = {{0, n12, n13, n14}, {n21, 0, n23, n24}, {n31, n32, 0, n34}, {n41, n42, n43, 0}};
+                        double lambdas[4] = {0, 0, 0, 0};
+                        double n[4] = {n1, n2, n3, n4};
+                        double sumprod = 0;
+                        double s_rate[5], s_trans[5], p_inf_rate[8], p_inf_trans[8], r_rate[16], r_trans[16], s_inf_rate[24], s_inf_trans[24], rec_rate[1], rec_trans[1];
+                        int sum_deaths = 0;
+                        int births;
+
+                        // calculate foi for each strain
+                        for(int i = 0; i < numstrains; i++){
+                          sumprod = 0;
+                          for(int j = 0; j < numstrains; j++){
+                            if(i == j){
+                              sumprod += 0;
+                            }
+                            else{
+                              sumprod += phis[j][i]*n_sec[j][i];
+                            }
+                          }
+                          lambdas[i] = bet*(n[i] + sumprod);
+                        }
+                        
+                        // rates from S to primary I
+                        s_rate[0] = lambdas[0]; // to I1
+                        s_rate[1] = lambdas[1]; // to I2
+                        s_rate[2] = lambdas[2]; // to I3
+                        s_rate[3] = lambdas[3]; // to I4
+                        s_rate[4] = mu; // natural death
+
+                        // transitions from S to primary I
+                        reulermultinom(5, floor(s*population), &s_rate[0], 1, &s_trans[0]);
+                        
+                        // rates from I_i to R_i and death
+                        p_inf_rate[0] = sigma;
+                        p_inf_rate[1] = mu;
+                        p_inf_rate[2] = sigma;
+                        p_inf_rate[3] = mu;
+                        p_inf_rate[4] = sigma;
+                        p_inf_rate[5] = mu;
+                        p_inf_rate[6] = sigma;
+                        p_inf_rate[7] = mu;
+
+                        // transitions from I_i to R_i and death
+                        reulermultinom(2, floor(n[0]*population), &p_inf_rate[0], 1, &p_inf_trans[0]);
+                        reulermultinom(2, floor(n[1]*population), &p_inf_rate[2], 1, &p_inf_trans[2]);
+                        reulermultinom(2, floor(n[2]*population), &p_inf_rate[4], 1, &p_inf_trans[4]);
+                        reulermultinom(2, floor(n[3]*population), &p_inf_rate[6], 1, &p_inf_trans[6]);
+
+                        // rates from R_i to I_ij and death
+                        r_rate[0] = gamma12*lambdas[1];
+                        r_rate[1] = gamma13*lambdas[2];
+                        r_rate[2] = gamma14*lambdas[3];
+                        r_rate[3] = mu;
+                        r_rate[4] = gamma21*lambdas[0];
+                        r_rate[5] = gamma23*lambdas[2];
+                        r_rate[6] = gamma24*lambdas[3];
+                        r_rate[7] = mu;
+                        r_rate[8] = gamma31*lambdas[0];
+                        r_rate[9] = gamma32*lambdas[1];
+                        r_rate[10] = gamma34*lambdas[3];
+                        r_rate[11] = mu;
+                        r_rate[12] = gamma41*lambdas[0];
+                        r_rate[13] = gamma42*lambdas[1];
+                        r_rate[14] = gamma43*lambdas[2];
+                        r_rate[15] = mu;
+                        
+                        // transitions from R_i to I_ij and death
+                        reulermultinom(4, floor(r1*population), &r_rate[0], 1, &r_trans[0]);
+                        reulermultinom(4, floor(r2*population), &r_rate[4], 1, &r_trans[4]);
+                        reulermultinom(4, floor(r3*population), &r_rate[8], 1, &r_trans[8]);
+                        reulermultinom(4, floor(r4*population), &r_rate[12], 1, &r_trans[12]);
+                        
+                        // rates from I_ij to R
+                        s_inf_rate[0] = sigma;
+                        s_inf_rate[1] = mu;
+                        s_inf_rate[2] = sigma;
+                        s_inf_rate[3] = mu;
+                        s_inf_rate[4] = sigma;
+                        s_inf_rate[5] = mu;
+                        s_inf_rate[6] = sigma;
+                        s_inf_rate[7] = mu;
+                        s_inf_rate[8] = sigma;
+                        s_inf_rate[9] = mu;
+                        s_inf_rate[10] = sigma;
+                        s_inf_rate[11] = mu;
+                        s_inf_rate[12] = sigma;
+                        s_inf_rate[13] = mu;
+                        s_inf_rate[14] = sigma;
+                        s_inf_rate[15] = mu;
+                        s_inf_rate[16] = sigma;
+                        s_inf_rate[17] = mu;
+                        s_inf_rate[18] = sigma;
+                        s_inf_rate[19] = mu;
+                        s_inf_rate[20] = sigma;
+                        s_inf_rate[21] = mu;
+                        s_inf_rate[22] = sigma;
+                        s_inf_rate[23] = mu;
+
+                        // transitions from secondary infection to permanent recovery
+                        reulermultinom(2, floor(n12*population), &s_inf_rate[0], 1, &s_inf_trans[0]);
+                        reulermultinom(2, floor(n13*population), &s_inf_rate[2], 1, &s_inf_trans[2]);
+                        reulermultinom(2, floor(n14*population), &s_inf_rate[4], 1, &s_inf_trans[4]);
+                        reulermultinom(2, floor(n21*population), &s_inf_rate[6], 1, &s_inf_trans[6]);
+                        reulermultinom(2, floor(n23*population), &s_inf_rate[8], 1, &s_inf_trans[8]);
+                        reulermultinom(2, floor(n24*population), &s_inf_rate[10], 1, &s_inf_trans[10]);
+                        reulermultinom(2, floor(n31*population), &s_inf_rate[12], 1, &s_inf_trans[12]);
+                        reulermultinom(2, floor(n32*population), &s_inf_rate[14], 1, &s_inf_trans[14]);
+                        reulermultinom(2, floor(n34*population), &s_inf_rate[16], 1, &s_inf_trans[16]);
+                        reulermultinom(2, floor(n41*population), &s_inf_rate[18], 1, &s_inf_trans[18]);
+                        reulermultinom(2, floor(n42*population), &s_inf_rate[20], 1, &s_inf_trans[20]);
+                        reulermultinom(2, floor(n43*population), &s_inf_rate[22], 1, &s_inf_trans[22]);
+
+                        // rate from permanent recovery to death
+                        rec_rate[0] = mu;
+
+                        // transitions from permanent recovery to death
+                        reulermultinom(1, floor(r*population), &rec_rate[0], 1, &rec_trans[0]);
+                        
+                        // updates
+                        // add up natural deaths from each box
+                        sum_deaths = s_trans[4] + p_inf_trans[1] + p_inf_trans[3] + p_inf_trans[5] + p_inf_trans[7] + r_trans[3] + r_trans[7] + r_trans[11] + r_trans[15] + s_inf_trans[1] + s_inf_trans[3] + s_inf_trans[5] + s_inf_trans[7] + s_inf_trans[9] + s_inf_trans[11] + s_inf_trans[13] + s_inf_trans[15] + s_inf_trans[17] + s_inf_trans[19] + s_inf_trans[21] + s_inf_trans[23] + rec_trans[0];
+                        births = sum_deaths;
+                     
+                        // updates
+                        s += (births - s_trans[0] - s_trans[1] - s_trans[2] - s_trans[3] - s_trans[4])/population;
+                        n1 += (s_trans[0] - p_inf_trans[0] - p_inf_trans[1])/population;
+                        n2 += (s_trans[1] - p_inf_trans[2] - p_inf_trans[3])/population;
+                        n3 += (s_trans[2] - p_inf_trans[4] - p_inf_trans[5])/population;
+                        n4 += (s_trans[3] - p_inf_trans[6] - p_inf_trans[7])/population;
+                        r1 += (p_inf_trans[0] - r_trans[0] - r_trans[1] - r_trans[2] - r_trans[3])/population;
+                        r2 += (p_inf_trans[2] - r_trans[4] - r_trans[5] - r_trans[6] - r_trans[7])/population;
+                        r3 += (p_inf_trans[4] - r_trans[8] - r_trans[9] - r_trans[10] - r_trans[11])/population;
+                        r4 += (p_inf_trans[6] - r_trans[12] - r_trans[13] - r_trans[14] - r_trans[15])/population;
+                        n12 += (r_trans[0] - s_inf_trans[0] - s_inf_trans[1])/population;
+                        n13 += (r_trans[1] - s_inf_trans[2] - s_inf_trans[3])/population;
+                        n14 += (r_trans[2] - s_inf_trans[4] - s_inf_trans[5])/population;
+                        n21 += (r_trans[4] - s_inf_trans[6] - s_inf_trans[7])/population;
+                        n23 += (r_trans[5] - s_inf_trans[8] - s_inf_trans[9])/population;
+                        n24 += (r_trans[6] - s_inf_trans[10] - s_inf_trans[11])/population;
+                        n31 += (r_trans[8] - s_inf_trans[12] - s_inf_trans[13])/population;
+                        n32 += (r_trans[9] - s_inf_trans[14] - s_inf_trans[15])/population;
+                        n34 += (r_trans[10] - s_inf_trans[16] - s_inf_trans[17])/population;
+                        n41 += (r_trans[12] - s_inf_trans[18] - s_inf_trans[19])/population;
+                        n42 += (r_trans[13] - s_inf_trans[20] - s_inf_trans[21])/population;
+                        n43 += (r_trans[14] - s_inf_trans[22] - s_inf_trans[23])/population;
+                        r += (s_inf_trans[0] + s_inf_trans[2] + s_inf_trans[4] + s_inf_trans[6] + s_inf_trans[8] + s_inf_trans[10] + s_inf_trans[12] + s_inf_trans[14] + s_inf_trans[16] + s_inf_trans[18] + s_inf_trans[20] + s_inf_trans[22] - rec_trans[0])/population;
+
+                        ')
+```
+
+The measurement model is written to incorporate a reporting rate ($\kappa$) as well as extrademographic stochasticity by using a negative binomial model parametrized with mean and dispersion parameters ($\psi$).
+
+```{r}
+dengue_rmeasure <- Csnippet('
+                        // measurement model of y1 given H = (n1 + n21 + n31 + n41)*population, for instance
+                        // mean: kappa*H, variance: kappa*H + (kappa^2)(H^2)/psi
+                        int population = 2217968;
+                        y1 = rnbinom_mu(psi, kappa*((n1 + n21 + n31 + n41)*population));
+                        y2 = rnbinom_mu(psi, kappa*((n2 + n12 + n32 + n42)*population));
+                        y3 = rnbinom_mu(psi, kappa*((n3 + n13 + n23 + n43)*population));
+                        y4 = rnbinom_mu(psi, kappa*((n4 + n14 + n24 + n34)*population));
+                        ')
+
+dengue_dmeasure <- Csnippet('
+                        // measurement density of y1 given H = (n1 + n21 + n31 + n41)*population, for instance
+                        // mean: kappa*H, variance: kappa*H + (kappa^2)(H^2)/psi
+                        int population = 2217968;
+                        double w1, w2, w3, w4;
+                        w1 = dnbinom_mu(y1, psi, kappa*((n1 + n21 + n31 + n41)*population), give_log);
+                        w2 = dnbinom_mu(y2, psi, kappa*((n2 + n12 + n32 + n42)*population), give_log);
+                        w3 = dnbinom_mu(y3, psi, kappa*((n3 + n13 + n23 + n43)*population), give_log);
+                        w4 = dnbinom_mu(y4, psi, kappa*((n4 + n14 + n24 + n34)*population), give_log);
+                        lik = (give_log) ? (w1 + w2 + w3 + w4) : (w1*w2*w3*w4);
+                        ')
+```
+
+The unknown parameters of our model are:
+
+1. $\gamma_{ij} \ge 1$: parameter for the enhancement of susceptibility to secondary infection
+2. $\phi_{ij} \ge 1$: parameter for the increase in transmissibility during secondary infection
+3. $\kappa \in [0,1]$: reporting rate of cases
+4. $\psi \in [0, \infty)$: dipersion parameter for measurement model
+
+The known, fixed parameters of our model are:
+
+1. $\mu$: death rate in Puerto Rico. Fixed at per day rate of: $\dfrac{1}{78.29*365}$ based on ^[6]^
+2. $\sigma$: recovery rate from infection. Fixed at per day rate of: $\dfrac{1}{3.65}$ based on ^[4]^
+3. $\beta$: transmission coefficient of all serotypes. Fixed at per day rate of: $\dfrac{400}{365}$
+
+Finally, the main challenge with this project is the complexity introduced by both the number of parameters (including initial value parameters) and the amount of data. We will discuss how we deal with the former issue in the next section. Since we only have limited computational resources for this project, we will subset 209 weeks (weeks 100 through 308) of data from our 1000-week dataset and construct our `pomp` object using this subsetted data.
+
+```{r echo = FALSE}
+
+dengue_statenames <- c("s","n1", "n2", "n3", "n4",
+                     "r1", "r2", "r3", "r4",
+                     "n12", "n13", "n14",
+                     "n21", "n23", "n24",
+                     "n31", "n32", "n34",
+                     "n41", "n42", "n43",
+                     "r")
+
+dengue_paramnames <- c("phi", "Gamma", "kappa", "psi", "mu", "sigma", "bet")
+dengue_obsnames <- c("y1", "y2", "y3", "y4")
+dengue_fromEstimationScale <- "
+ Tphi = exp(phi) + 1;
+ TGamma = exp(Gamma) + 1;
+ Tkappa = expit(kappa);
+ Tpsi = exp(psi);
+"
+
+dengue_toEstimationScale <- "
+ Tphi = log(phi - 1);
+ TGamma = log(Gamma - 1);
+ Tkappa = logit(kappa);
+ Tpsi = log(psi);
+"
+
+dengue_initializer <- "
+ s = (0.1);
+ n1 = (0.002);
+ n2 = (0.004);
+ n3 = (0.003);
+ n4 = (0.001);
+ r1 = 0.196;
+ r2 = 0.199;
+ r3 = 0.199;
+ r4 = 0.197;
+ n12 = 0.01;
+ n13 = 0.01;
+ n14 = 0.01;
+ n21 = 0.01;
+ n23 = 0.01;
+ n24 = 0.01;
+ n31 = 0.01;
+ n32 = 0.01;
+ n34 = 0.01;
+ n41 = 0.01;
+ n42 = 0.01;
+ n43 = 0.01;
+ r = 0;
+"
+
+dd_test_large = data.frame(week = c(0:1000000), y1 = c(0:1000000), y2 = c(0:1000000), y3 = c(0:1000000), y4 = c(0:1000000))
+subset_dd = dd[100:308,]
+dengue_pomp_test <- pomp(data = dd_test_large,
+                times = "week",
+                skeleton = map(dengue_skel, 1/7),
+                t0 = 0,
+                fromEstimationScale=Csnippet(dengue_fromEstimationScale),
+                toEstimationScale=Csnippet(dengue_toEstimationScale),
+                obsnames = dengue_obsnames,
+                statenames = dengue_statenames,
+                paramnames = dengue_paramnames,
+                initializer = Csnippet(dengue_initializer),
+                rprocess = euler.sim(
+                  step.fun = dengue_rprocess,
+                  delta.t=1/7),
+                rmeasure = dengue_rmeasure,
+                dmeasure = dengue_dmeasure
+                )
+dengue_pomp_only_skel <- pomp(data = dd_test_large,
+                times = "week",
+                skeleton = map(dengue_skel, 1/7),
+                paramnames = c("mu","sigma", "bet", 
+                               "phi","Gamma"),
+                initializer = Csnippet(dengue_initializer),
+                statenames = c("s",
+                               "n1", "n2", "n3", "n4",
+                               "r1", "r2", "r3", "r4",
+                               "n12", "n13", "n14",
+                               "n21", "n23", "n24",
+                               "n31", "n32", "n34",
+                               "n41", "n42", "n43",
+                               "r"),
+                t0 = 0
+)
+dengue_pomp <- pomp(
+                data = subset_dd,
+                times = "week",
+                skeleton = map(dengue_skel, 1/7),
+                t0 = 0,
+                fromEstimationScale=Csnippet(dengue_fromEstimationScale),
+                toEstimationScale=Csnippet(dengue_toEstimationScale),
+                obsnames = dengue_obsnames,
+                statenames = dengue_statenames,
+                paramnames = dengue_paramnames,
+                initializer = Csnippet(dengue_initializer),
+                rprocess = euler.sim(
+                  step.fun = dengue_rprocess,
+                  delta.t=1/7),
+                rmeasure = dengue_rmeasure,
+                dmeasure = dengue_dmeasure
+                )
+
+```
+
+# Dealing with initial states: a first attempt
+
+Given that we have 22 states, estimating initial value parameters for all states would lead to extremely long computation times. Given the time constraints of this project, I aim to estimate the parameters stated above *conditional* on the initial states. In other words, I will use the method outlined below to get a rough estimate for initial states and optimize the four parameters above given these initial states.
+
+The data were visualized in the first section. While we do not have access to the states of the process that generate these data, we have some idea of what periodicity to expect if we have the right initial states and parameters. Since dengue has presumably approached some level of stationary behavior in Puerto Rico (this assumption of endemicity should, however, be investigated), we can check which initializations produce similar cyclical behavior as the above plot. Using the initializations in the `pomp` objects above and plugging in some reasonable values for the parameters (which will be optimized with `mif2` later), we get the following plot of the trajectory of the latent infected counts (note that we've run the trajectory for the `pomp` object `dengue_pomp_test`, which doesn't need to include `rmeasure`, `dmeasure` or `rprocess` since we only need it for visualizing trajectories, for thousands of years so as to get an idea of the stationary behavior):
+
+```{r echo = FALSE}
+population = 2217968
+t = trajectory(dengue_pomp_test, params = c(phi = 2.1, Gamma = 1.9, kappa = 0.5, psi = 1, mu = 1/(78.29*365), sigma = 1/3.65, bet = 400/365))
+t2 = as.data.frame(t(as.data.frame(t[,1,]))) %>% mutate(week = dd_test_large$week)
+ggplot(data=(t2%>% filter(week > 52000 & week < 53040))) + 
+  geom_line(mapping = aes(x = week/52, y = (n1 + n12 + n13 + n14)*population, color = "Strain 1"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = (n2 + n21 + n23 + n24)*population, color = "Strain 2"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = (n3 + n31 + n32 + n34)*population, color = "Strain 3"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = (n4 + n41 + n42 + n43)*population, color = "Strain 4"), alpha = 0.5) +
+  labs(x = "Year", y = "Latent infected counts") + 
+  ggtitle("Latent infected counts") +
+  scale_colour_manual("", 
+                      breaks = c("Strain 1", "Strain 2", "Strain 3", "Strain 4"),
+                      values = c("red", "blue", "green", "yellow"))
+```
+
+The plot above possesses some of the cyclical behaviors we notice in the observed data (periods of about 2-3 years, strains move together with one dominating strain at a time). Since the plot above is for latent counts, we expect the counts to be higher than the observed counts in the previous figure.
+
+Given that the plot above looks like a reasonable place to start for initial states, let us take the stationary values of the states from the trajectory above and use these as initial states. Note here that given more time and computational resources I would try to set some initial states as parameters (making some simplifying assumptions about some being equal to each other) and get MLEs for these using `mif2`. 
+
+```{r echo = FALSE}
+dengue_initializer <- function(params, t0, ...){
+  return(c(
+  s = t2[1000001,'s'],
+  n1 = t2[1000001,'n1'],
+  n2 = t2[1000001,'n2'],
+  n3 = t2[1000001,'n3'],
+  n4 = t2[1000001,'n4'],
+  r1 = t2[1000001,'r1'],
+  r2 = t2[1000001,'r2'],
+  r3 = t2[1000001,'r3'],
+  r4 = t2[1000001,'r4'],
+  n12 = t2[1000001,'n12'],
+  n13 = t2[1000001,'n13'],
+  n14 = t2[1000001,'n14'],
+  n21 = t2[1000001,'n21'],
+  n23 = t2[1000001,'n23'],
+  n24 = t2[1000001,'n24'],
+  n31 = t2[1000001,'n31'],
+  n32 = t2[1000001,'n32'],
+  n34 = t2[1000001,'n34'],
+  n41 = t2[1000001,'n41'],
+  n42 = t2[1000001,'n42'],
+  n43 = t2[1000001,'n43'],
+  r = t2[1000001,'r']))
+}
+dengue_pomp <- pomp(dengue_pomp, initializer = dengue_initializer)
+```
+
+If we start from these initial states, we will not experience the volatile behaviors we'd see if we'd initialized at a non-stationary point. This can only help our particles survive for longer. The figure below shows the trajectory for the number of infections for each strain.
+
+```{r echo = FALSE}
+t3 = trajectory(dengue_pomp, params = c(phi = 2.1, Gamma = 1.9, kappa = 0.5, psi = 1, mu = 1/(78.29*365), sigma = 1/3.65, bet = 400/365))
+t3 = as.data.frame(t(as.data.frame(t3[,1,]))) %>% mutate(week = subset_dd$week)
+ggplot(data=t3) + 
+  geom_line(mapping = aes(x = week/52, y = (n1 + n12 + n13 + n14)*population, color = "Strain 1"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = (n2 + n21 + n23 + n24)*population, color = "Strain 2"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = (n3 + n31 + n32 + n34)*population, color = "Strain 3"), alpha = 0.5) + 
+  geom_line(mapping = aes(x = week/52, y = (n4 + n41 + n42 + n43)*population, color = "Strain 4"), alpha = 0.5) +
+  labs(x = "Year", y = "Latent infected counts") + 
+  ggtitle("Latent infected counts") +
+  scale_colour_manual("", 
+                      breaks = c("Strain 1", "Strain 2", "Strain 3", "Strain 4"),
+                      values = c("red", "blue", "green", "yellow"))
+# Good enough to start with. Now let's make sure we can run a particle filter using the `pomp` object we've created.
+```
+
+
+```{r echo = FALSE}
+#pf <- pfilter(dengue_pomp,Np=5000,params = c(phi = 2.1, Gamma = 1.9, kappa = 0.5, psi = 1, mu = 1/(78.29*365), sigma = 1/3.65, bet = 400/365))
+#logLik(pf)
+```
+
+# Dealing with starting values
+
+We will use likelihood slices to get an idea of where to fix our parameter box for our global search.
+
+```{r echo = FALSE, eval=FALSE}
+p <- sliceDesign(
+  c(phi = 2.1, Gamma = 1.9, kappa = 0.5, psi = 1, mu = 1/(78.29*365), sigma = 1/3.65, bet = 400/365),
+  phi=rep(seq(from=1.0,to=5.0,length=12),each=3),
+  Gamma=rep(seq(from=1.0,to=5.0,length=10),each=3),
+  kappa = rep(seq(from=0,to=1,length=20),each=3),
+  psi = rep(seq(from = 0, to = 20, length = 20), each = 3)) 
+
+require(foreach)
+require(doMC)
+
+registerDoMC(cores=19)        
+
+set.seed(998468235L,kind="L'Ecuyer")
+mcopts <- list(preschedule=FALSE,set.seed=TRUE)
+
+foreach (theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts) %dopar% 
+ {
+   pfilter(dengue_pomp,params=unlist(theta),Np=5000) -> pf
+   theta$loglik <- logLik(pf)
+   theta
+ } -> p
+```
+
+```{r echo = FALSE, out.width='50%'}
+img1 = "phi_slice.jpg"
+img2 = "gamma_slice.jpg"
+img3 = "kappa_slice.jpg"
+img4 = "psi_slice.jpg"
+include_graphics(c(img1, img2))
+include_graphics(c(img3, img4))
+
+```
+
+# Global search using random starting points
+
+Given the likelihood slices above, we have an idea of where to perform our global search. The reader will hopefully appreciate that global search step is highly iterative and, given the number of rows of data - 208 even in our subsetted dataset - and the number of parameters, time consuming. While the global maximization and likelihood evaluation shown here took about 27 hours, at least three times this effort was spent iteratively tweaking algorithmic parameters, running `mif2`, and investigating diagnostics.
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+run_level <- 2
+switch(run_level,
+       {dengue_Np=100; dengue_Nmif=10; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10}, 
+       {dengue_Np=5000; dengue_Nmif=50; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10}, 
+       {dengue_Np=60000; dengue_Nmif=300; dengue_Neval=10; dengue_Nglobal=100; dengue_Nlocal=20}
+)
+```
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+dengue_fixed_params <- c(mu = 1/(78.29*365), sigma = 1/3.65, bet = 400/365)
+dengue_box <- rbind(
+  kappa=c(0.05,0.7),
+  phi=c(2, 3),
+  Gamma = c(2, 3),
+  psi = c(1,20))
+```
+
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+# The output of our first global run give us these results (5000 particles, 50 MIF iterations):
+require(doParallel)
+cores <- 20
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer")
+
+dengue_rw.sd <- 0.02
+dengue_cooling.fraction.50 <- 0.5
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:dengue_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      dengue_pomp,
+      start=c(apply(dengue_box,1,function(x)runif(1,x[1],x[2])),dengue_fixed_params),
+      Np = dengue_Np,
+      Nmif = dengue_Nmif,
+      cooling.type = "geometric",
+      cooling.fraction.50 = dengue_cooling.fraction.50,
+        transform = TRUE,
+        rw.sd=rw.sd(
+          phi = dengue_rw.sd,
+          Gamma = dengue_rw.sd,
+          kappa = dengue_rw.sd,
+          psi = dengue_rw.sd
+        )
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+```
+
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:dengue_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(dengue_Neval, logLik(pfilter(dengue_pomp,params=coef(mifs_global[[i]]),Np=dengue_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+```
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+pairs(~logLik+Gamma+kappa+phi+psi,data=subset(results_global,logLik>max(logLik)-20000))
+```
+
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+# Another global search here with 10000 and 65
+require(doParallel)
+cores <- 20
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer")
+
+dengue_rw.sd <- 0.02
+dengue_cooling.fraction.50 <- 0.5
+stew(file=sprintf("box_eval_part2-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global2 <- foreach(i=1:dengue_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      dengue_pomp,
+      start=c(apply(dengue_box,1,function(x)runif(1,x[1],x[2])),dengue_fixed_params),
+      Np = dengue_Np,
+      Nmif = dengue_Nmif,
+      cooling.type = "geometric",
+      cooling.fraction.50 = dengue_cooling.fraction.50,
+        transform = TRUE,
+        rw.sd=rw.sd(
+          phi = dengue_rw.sd,
+          Gamma = dengue_rw.sd,
+          kappa = dengue_rw.sd,
+          psi = dengue_rw.sd
+        )
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+```
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+stew(file=sprintf("lik_global_eval_part2-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:dengue_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(dengue_Neval, logLik(pfilter(dengue_pomp,params=coef(mifs_global[[i]]),Np=dengue_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global2 <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global2$logLik,digits=5)
+```
+
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+pairs(~logLik+Gamma+kappa+phi+psi,data=subset(results_global2,logLik>max(logLik)-20000))
+```
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+# Yet another with 15000 and 65
+require(doParallel)
+cores <- 20
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer")
+
+dengue_rw.sd <- 0.02
+dengue_cooling.fraction.50 <- 0.5
+stew(file=sprintf("box_eval_part3-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:dengue_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      dengue_pomp,
+      start=c(apply(dengue_box,1,function(x)runif(1,x[1],x[2])),dengue_fixed_params),
+      Np = dengue_Np,
+      Nmif = dengue_Nmif,
+      cooling.type = "geometric",
+      cooling.fraction.50 = dengue_cooling.fraction.50,
+        transform = TRUE,
+        rw.sd=rw.sd(
+          phi = dengue_rw.sd,
+          Gamma = dengue_rw.sd,
+          kappa = dengue_rw.sd,
+          psi = dengue_rw.sd
+        )
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+```
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+stew(file=sprintf("lik_global_eval_part3-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:dengue_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(dengue_Neval, logLik(pfilter(dengue_pomp,params=coef(mifs_global[[i]]),Np=dengue_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global3 <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+
+summary(results_global3$logLik,digits=5)
+```
+
+```{r, echo = FALSE, message = FALSE, eval = FALSE}
+pairs(~logLik+Gamma+kappa+phi+psi,data=subset(results_global3,logLik>max(logLik)-20000))
+```
+
+```{r}
+run_level <- 3
+switch(run_level,
+       {dengue_Np=100; dengue_Nmif=10; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10}, 
+       {dengue_Np=15000; dengue_Nmif=65; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10}, 
+       {dengue_Np=30000; dengue_Nmif=75; dengue_Neval=10; dengue_Nglobal=25; dengue_Nlocal=10}
+)
+
+dengue_rw.sd <- 0.02
+dengue_cooling.fraction.50 <- 0.5
+stew(file=sprintf("box_eval_part4-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:dengue_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      dengue_pomp,
+      start=c(apply(dengue_box,1,function(x)runif(1,x[1],x[2])),dengue_fixed_params),
+      Np = dengue_Np,
+      Nmif = dengue_Nmif,
+      cooling.type = "geometric",
+      cooling.fraction.50 = dengue_cooling.fraction.50,
+        transform = TRUE,
+        rw.sd=rw.sd(
+          phi = dengue_rw.sd,
+          Gamma = dengue_rw.sd,
+          kappa = dengue_rw.sd,
+          psi = dengue_rw.sd
+        )
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+```
+
+
+```{r}
+stew(file=sprintf("lik_global_eval_part4-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:dengue_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(dengue_Neval, logLik(pfilter(dengue_pomp,params=coef(mifs_global[[i]]),Np=dengue_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global4 <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global4$logLik,digits=5)
+```
+
+```{r echo = FALSE}
+pairs(~logLik+Gamma+kappa+phi+psi,data=subset(results_global4,logLik>max(logLik)-20000))
+```
+
+```{r message = FALSE, echo = FALSE, eval = FALSE}
+  write.table(results_global4,
+              file="mif_dengue_params.csv", append=TRUE, col.names=TRUE, row.names=FALSE)
+```
+
+It is concerning that our standard errors have not quite reached the 1 log unit mark. This implies that there is still a significant amount of Monte Carlo error in our estimates. Given more time and computing resources, we would use more particles in the particle filters within a `mif2` run to alleviate this problem. Furthermore, let us look at the `mif2` diagnostic plots for our global search.
+
+```{r echo = FALSE, warning=FALSE}
+plot(mifs_global)
+```
+
+There are many things to notice here. First, note that for most of the `Nmif` iterations, our effective sample size (for the last `pfilter` iteration) drops immediately and requires resampling to get the sample size back up. A couple of our iterations (green and blue) don't seem to recover for some time and generally seem to be exploring lower likelihood regions, as evidenced by their low conditional log-likelihood numbers. I believe the reason for the steep fall in effective sample size from the beginning is that our **initial states are inconsistent with the data**. Our somewhat naïve attempt for getting initial states seems not to be good enough.
+
+Another thing to notice from the convergence diagnostics is that we not quite converging for $\phi$ and $\psi$ whereas we seem to be making progress with $\kappa$ and $\gamma$ parameters. We saw with the likelihood slices for $\psi$ that the likelihood seemed to be flat for all $\psi$ values. Perhaps $\psi$ is an unnecessary parameter for the measurement model and hence why `mif2` seems to be having a hard time getting a convergence result for this parameter. In the case of $\phi$ it looks like we can get somewhat better convergence by tweaking with the cooling fraction. If I had more time, I would do so.
+
+# Local search using global search candidate MLE
+
+Although in practice the issues above should be dealt with before moving the local maximization, let's take what we have and maximize. We get the following results:
+
+```{r}
+dengue_params <- read.table("mif_dengue_params.csv",row.names=NULL,header=TRUE)
+dengue_mle <- unlist(dengue_params[which.max(dengue_params[,"logLik"]),][dengue_paramnames])
+print(dengue_mle)
+```
+
+
+```{r echo = FALSE}
+dengue_rw.sd <- 0.02
+dengue_cooling.fraction.50 <- 0.5
+
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:dengue_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        dengue_pomp,
+        start=dengue_mle,
+        Np=dengue_Np,
+        Nmif=dengue_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=dengue_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          phi = dengue_rw.sd,
+          Gamma = dengue_rw.sd,
+          kappa = dengue_rw.sd,
+          psi = dengue_rw.sd
+        )
+      )
+      
+    }
+  })
+  
+},seed=900242057,kind="L'Ecuyer")
+```
+
+```{r echo = FALSE}
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+    t_local_eval <- system.time({
+    liks_local <- foreach(i=1:dengue_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(dengue_Neval, logLik(pfilter(dengue_pomp,params=coef(mifs_local[[i]]),Np=dengue_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+final_mle = unlist(results_local[which.max(results_local[,"logLik"]),])
+```
+
+Once again we notice significant Monte Carlo error in our estimates. I achieved this result using 30,000 particles whereas if I had more time and computational resources I'd run things with more particles and more iterations.
+
+Below are plots of a simulation using the MLE candidate from our local search. Comparing the simulated observations to the case counts for the subsetted data, we see that there is still much room for improvement. I believe getting initial states right would  improve these plots significantly. In this project, we used states that produce a periodicity behavior in the long-run that looks like the periodicity we see in our data. In doing so, we've sacrificed a lot in terms of bias. We've fixed our initial states at values that are inconsistent with the data. Maximization with respect to these intial states, therefore, produces simulations which are not close to the observed data.
+
+```{r message = FALSE, echo = FALSE}
+dengue.sim <- simulate(dengue_pomp, params = final_mle[dengue_paramnames])
+dengue.sim.obs <- as.data.frame(t(dengue.sim@data))
+
+require(gridExtra)
+plot1 = ggplot(data = dengue.sim.obs) + 
+  geom_line(mapping = aes(x = subset_dd$week, y = y1, color = 'Simulated Cases')) +
+  geom_line(mapping = aes(x = subset_dd$week, y = subset_dd$y1, color = 'Observed Cases')) +
+  labs(x = "Week", y = "Strain 1 cases")+
+  scale_colour_manual("", 
+                      breaks = c("Observed Cases", "Simulated Cases"),
+                      values = c("blue", "red"))
+  
+plot2 = ggplot(data = dengue.sim.obs) + 
+  geom_line(mapping = aes(x = subset_dd$week, y = y2, color = 'Simulated Cases')) +
+  geom_line(mapping = aes(x = subset_dd$week, y = subset_dd$y2, color = 'Observed Cases')) +
+  labs(x = "Week", y = "Strain 2 cases")+
+  scale_colour_manual("", 
+                      breaks = c("Observed Cases", "Simulated Cases"),
+                      values = c("blue", "red"))
+
+plot3 = ggplot(data = dengue.sim.obs) + 
+  geom_line(mapping = aes(x = subset_dd$week, y = y3, color = 'Simulated Cases')) +
+  geom_line(mapping = aes(x = subset_dd$week, y = subset_dd$y3, color = 'Observed Cases')) +
+  labs(x = "Week", y = "Strain 3 cases")+
+  scale_colour_manual("", 
+                      breaks = c("Observed Cases", "Simulated Cases"),
+                      values = c("blue", "red")) 
+
+plot4 = ggplot(data = dengue.sim.obs) + 
+  geom_line(mapping = aes(x = subset_dd$week, y = y4, color = 'Simulated Cases')) +
+  geom_line(mapping = aes(x = subset_dd$week, y = subset_dd$y4, color = 'Observed Cases')) +
+  labs(x = "Week", y = "Strain 4 cases")+
+  scale_colour_manual("", 
+                      breaks = c("Observed Cases", "Simulated Cases"),
+                      values = c("blue", "red")) 
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
+```
+
+# Summary and future works
+
+We've made significant progress with getting our data into `pomp` and creating process and measurement models that can be fine-tuned further. Judging by our diagnostic plots, it is clear that running `mif2` with better initial states and more particles will improve our results. The biggest hurdle will likely be incorporating initial states and estimating these as parameters. We'll need some simplifying assumptions to make it computationally feasible to estimate these initial states. If we do accomplish this, however, it seems that we can alleviate the low effective sample size issues we noted above as well as simulations that mimic our observations.
+
+Furthermore, with more time and computational resources, I suspect we can improve the convergence problems we are observing in the diagnostic plots by running particle filters with more particles. 
+
+# References
+
+1. World Health Organization, Dengue and severe dengue,  http://www.who.int/mediacentre/factsheets/fs117/en/, April 2017
+
+2. Wikipedia, Aedes Aegypti,  https://en.wikipedia.org/wiki/Aedes_aegypti, February 2018
+
+3. National Oceanic and Atmospheric Administration, Dengue Forecasting,  http://dengueforecasting.noaa.gov/
+
+4. Immunological Serotype Interactions and Their Effect on the Epidemiological Pattern Of Dengue
+M. Recker-K. Blyuss-C. Simmons-T. Hien-B. Wills-J. Farrar-S. Gupta - Proceedings Of the Royal Society B: Biological Sciences - 2009
+
+5. Analysis of repeat hospital admissions for dengue to estimate the frequency of third or fourth dengue infections resulting in admissions and dengue hemorrhagic fever, and serotype sequences
+Gibbons et al. - American Journal of Tropical Medicine Hygiene - 2007
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```

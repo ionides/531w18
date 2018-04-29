@@ -1,0 +1,394 @@
+---
+title: "Stochastic Volatility of Nasdaq index"
+date: "4/24/2018"
+output:
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Raising A Question
+
+From my midterm project, we can find that Nasdaq index can't be predicted perfectly by ARIMA models, since Nasdaq index is a stock market index of the common stocks and similar securities listed on the NASDAQ stock market. People are very interested in analyzing it since it indicates the change of American financial market to some degree.
+
+Why ARIMA is not a good model? One possible reason is that the volatility of differenced data is not constant. We can see that high volatility cluster and low volatility cluster of the data. However, ARIMA model is a stationary model, that's why it can't fit the model very well.
+
+There are many kinds of volatility models like Heston model, CEV model, SABR volatility model, GARCH model, 3/2 model etc. In our project, we are going to use Heston model to compute volatility.
+
+# 2. Data Analysis
+
+We can download Nasdaq index from November 23th 2017 to April 24th 2018 data from: [Yahoo Finance](https://finance.yahoo.com/)
+
+```{r cache=TRUE}
+Nas=read.csv(file = "NDAQ.csv",header = T)
+Nas_log=diff(log(Nas$Adj.Close))
+Nas_hp=Nas_log - mean(Nas_log)
+par(mfrow=c(1,2))
+plot(Nas$Adj.Close,type='l',main="Adjusted Nasdaq")
+plot(Nas_hp,type = 'l',main="Demeaned log return")
+```
+
+# 3. Mathematical Representation of Heston Model
+
+Heston model is mostly used for stock model, better than Black Scholes model which assumes that volatility is constant. Since the volatility is also a stochastic process, we can use pomp model to estimate the parameters for it.
+
+Heston model assumes that the stock price $S_t$ is a Geometric Brownian Motion which is determined by a stochastic process as follows:
+$$
+dS_t=\mu S_tdt+\sqrt{v_t}S_tdW_t^1
+$$
+where $v_t$, the volatility function, which is a CIR process:
+$$
+dv_t=\kappa (\theta-v_t)dt+\xi v_tdW_t^2
+$$
+and $W_t^1$ and $W_t^2$ are two Brownian Motion, with correlation $\rho$.
+
+Since we have already detrended data, now the drift term is zero in our equation of $S_t$. And based on the discrete form of a CIR process (from *David Backus et al., 1998*[2]), we could write Heston model in a discrete form, which can be compute by R later:
+$$
+Y_n= \sqrt{V_n} \epsilon_n\\
+V_n=(1-\phi)\theta+\phi V_{n-1}+\sqrt{V_{n-1}}\omega_n
+$$
+where ${\epsilon_n}$ is an iid $N(0,1)$ (standard Gaussian) sequence, and ${\omega_n}$ is an iid $N(0,\sigma_\omega^2)$ sequence.  $Y$ denotes the log return of index, which is an observed process, and $V$ is the volatility, which is the latent process. 
+
+Here, we have some constrains on our parameters:
+$$
+0<\phi<1, \theta>0, \sigma_\omega>0
+$$
+With this constrains, our model can be interpreted by financial views, like $\sigma_\omega$ should be positive because it's the volatility.
+
+
+# 4. Construct A POMP Model
+
+We build a POMP model with R based on our Heston model as follows:
+
+First we define the variables and two rprocesses of Hesten above for our model:
+
+```{r,message=FALSE, cache=TRUE}
+require(pomp)
+
+Nas_statenames <- c("V","Y_state")
+Nas_rp_names <- c("sigma_omega","phi","theta")
+Nas_ivp_names <- c("V_0")
+Nas_paramnames <- c(Nas_rp_names,Nas_ivp_names)
+Nas_covarnames <- "covaryt"
+
+rproc1 <- "
+  double omega;
+  omega = rnorm(0,sigma_omega);
+  V = theta*(1 - phi) + phi*sqrt(V) + sqrt(V)*omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,sqrt(V) );
+ "
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+Nas_rproc.sim <- paste(rproc1,rproc2.sim)
+Nas_rproc.filt <- paste(rproc1,rproc2.filt)
+```
+
+Now define the initializer, and also assume that the measurement process is a perfect observation of $Y_t$ component of the state space. 
+
+```{r cache=TRUE}
+Nas_initializer <- "
+  V = V_0;
+  Y_state = rnorm( 0,sqrt(V) );
+"
+Nas_rmeasure <- "
+   y=Y_state;
+"
+Nas_dmeasure <- "
+   lik=dnorm(y,0,sqrt(V),give_log);
+"
+```
+
+Since the parameters have constrains claimed above, we use log/exp transformation to control our parameters within (0,1) or larger than 1. $\theta$ and $\sigma_\omega$ should be positive so we use exp transformation, $\phi$ should between (0,1) so we use log transformation.
+
+```{r cache=TRUE}
+Nas_toEstimationScale <- "
+  Tsigma_omega = log(sigma_omega);
+  Ttheta = log(theta);
+  Tphi = logit(phi);
+"
+Nas_fromEstimationScale <- "
+  Tsigma_omega = exp(sigma_omega);
+  Ttheta = exp(theta);
+  Tphi = expit(phi);
+"
+```
+
+Now let's first simulate our data with several choices of parameters. Comparing simulation with original data, we can see that with the following choice of parameters, the simulation seems fitting quite well.
+
+```{r cache=TRUE}
+Nas.filt <- pomp(data=data.frame(y=Nas_hp,
+                     time=1:length(Nas_hp)),
+              statenames=Nas_statenames,
+              paramnames=Nas_paramnames,
+              covarnames=Nas_covarnames,
+              times="time",
+              t0=0,
+              covar=data.frame(covaryt=c(0,Nas_hp),
+                     time=0:length(Nas_hp)),
+              tcovar="time",
+              rmeasure=Csnippet(Nas_rmeasure),
+              dmeasure=Csnippet(Nas_dmeasure),
+              rprocess=discrete.time.sim(step.fun=Csnippet(Nas_rproc.filt),delta.t=1),
+              initializer=Csnippet(Nas_initializer),
+              toEstimationScale=Csnippet(Nas_toEstimationScale), 
+              fromEstimationScale=Csnippet(Nas_fromEstimationScale)
+)
+
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+
+params_test <- c(
+     sigma_omega = 0.001,
+     phi = 0.001,
+     theta = 0.0004,
+     V_0= 0.002
+  )
+
+sim1.sim <- pomp(Nas.filt, 
+               statenames=Nas_statenames,
+               paramnames=Nas_paramnames,
+               covarnames=Nas_covarnames,
+               rprocess=discrete.time.sim(step.fun=Csnippet(Nas_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+plot(Y_state~time,data=sim1.sim,type='l',col="red",ylim=c(-0.06,0.1))
+lines(Nas_hp,type='l')
+legend("topleft",legend=c("Original","Simulated"),col=c("black","red"),
+       cex=0.8,lty=1,bty="n")
+```
+```{r,fig.height=4,fig.width=12, cache=TRUE}
+par(mfrow=c(1,2))
+plot(V~time,data=sim1.sim,type='l',main="Simulated Volatility")
+plot(Y_state~time,data=sim1.sim,type='l',main="Simulated Y_state")
+plot(sim1.sim)
+```
+
+Also we can find that the simulation results are very sensitive to our choice of parameters. This will affect the choice of box evaluation later. We can start our filter with initial parameters the same as above.
+
+# 5. Filtering on simulated data
+
+Next, let's check that the basic particle filter is working. Also we can know more information about the estimation range of our parameters. We set three different run levels. And we get logLikelihood is 261.6 with standard error of 0.0049.
+
+```{r cache=TRUE}
+run_level <- 1 
+Nas_Np <-          c(100,1e3,5e3)
+Nas_Nmif <-        c(10, 100,200)
+Nas_Nreps_eval <-  c(4,  10,  20)
+Nas_Nreps_local <- c(10, 20, 20)
+Nas_Nreps_global <-c(10, 20, 40)
+```
+
+```{r message=FALSE, cache=TRUE}
+require(doParallel)
+registerDoParallel(2)
+```
+
+```{r cache=TRUE}
+sim1.filt <- pomp(sim1.sim, 
+  covar=data.frame(
+    covaryt=c(obs(sim1.sim),NA),
+    time=c(timezero(sim1.sim),time(sim1.sim))),
+  tcovar="time",
+  statenames=Nas_statenames,
+  paramnames=Nas_paramnames,
+  covarnames=Nas_covarnames,
+  rprocess=discrete.time.sim(step.fun=Csnippet(Nas_rproc.filt),delta.t=1)
+)
+
+stew(file=sprintf("pf1.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:Nas_Nreps_eval[run_level],.packages='pomp',
+                   .options.multicore=list(set.seed=TRUE), .export = c('sim1.filt','Nas_Np','run_level')) %dopar% try(
+                     pfilter(sim1.filt,Np=Nas_Np[run_level])
+                   )
+  )
+},seed=493536993,kind="L'Ecuyer")
+(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+# 6. A local search on logLikelihood surface of stochastic volatility model to Nasdaq data
+
+Now we can start filter on Nasdaq data, with a set of claimed initial values, which is a local search for logLikelihood surface. We set run level from 1 to 3.
+
+```{r}
+run_level <- 2 
+Nas_Np <-          c(100, 1e3, 1e4)
+Nas_Nmif <-        c(10, 200, 200)
+Nas_Nreps_eval <-  c(4, 10, 20)
+Nas_Nreps_local <- c(10, 20, 20)
+Nas_Nreps_global <-c(10, 20, 40)
+
+Nas_rw.sd_rp <- 0.001
+Nas_rw.sd_ivp <- 0.001
+Nas_cooling.fraction.50 <- 0.5
+
+params_test <- c(
+     sigma_omega = 0.001,  
+     phi = 0.001,
+     theta = 1,
+     V_0= 0.02
+  )
+
+stew(file=sprintf("mif1-%d.rda",run_level),{
+   t.if1 <- system.time({
+   if1 <- foreach(i=1:Nas_Nreps_global[run_level],
+                  .packages='pomp', .combine=c,
+                  .options.multicore=list(set.seed=TRUE), .export = c('Nas.filt','Nas_Nmif','run_level','params_test','Nas_Np','Nas_rw.sd_rp','Nas_rw.sd_ivp','Nas_cooling.fraction.50')) %dopar% try(
+                    mif2(Nas.filt,
+                         start=params_test,
+                         Np=Nas_Np[run_level],
+                         Nmif=Nas_Nmif[run_level],
+                         cooling.type="geometric",
+                         cooling.fraction.50=Nas_cooling.fraction.50,
+                         transform=TRUE,
+                         rw.sd = rw.sd(
+                            sigma_omega  = Nas_rw.sd_rp,
+                            theta      = Nas_rw.sd_rp,
+                            phi       = Nas_rw.sd_rp,
+                            V_0       = ivp(Nas_rw.sd_ivp)
+                         )
+                    )
+                  )
+   L.if1 <- foreach(i=1:Nas_Nreps_global[run_level],.packages='pomp',
+                      .combine=rbind,.options.multicore=list(set.seed=TRUE), .export = c('Nas_Nreps_eval','run_level','Nas.filt','Nas_Np')) %dopar% 
+                      {
+                        logmeanexp(
+                          replicate(Nas_Nreps_eval[run_level],
+                                    logLik(pfilter(Nas.filt,params=coef(if1[[i]]),Np=Nas_Np[run_level]))
+                          ),
+                          se=TRUE)
+                      }
+    
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level>1) 
+  write.table(r.if1,file="Nas_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+```
+
+This is a local search for the logLikelihood surface, We can see that the largest logLikelihood is -37.8234 for this POMP model. 
+
+Comparing the initial and last iteration value of parameters, $\theta$ has decreased from 1 to 0.3362 while the other three didn't change significantly.
+
+```{r cache=TRUE}
+r.if1[which.max(r.if1$logLik),]
+```
+
+From the logLikelihood surface with respect to different parameters below, we see that logLikelihood has a strong negative linear relationship with $\theta$. And we can get largest logLikelihood when $\theta$ is around 0.03.
+
+What's more, there is no significant evidence that there are peaks for other two parameters with logLikelihood, which maybe because the iteration times is small, we can increase the number of particles to see if there is evidence of convergence. However, we can also see that the change scale for other two parameters are not very large. where $\sigma_\omega$ is no more than 0.0011 and $\phi$ is no more than 0.002.
+
+```{r cache=TRUE}
+pairs(~logLik+sigma_omega+theta+phi,data=r.if1)
+```
+
+```{r cache=TRUE}
+plot(if1)
+```
+
+According to the filter and convergence diagnostic, the efficient sample size is large enough, also they are all in the interval of [999.995, 999.998], which is a very small interval, we can say that it is almost a line. And the logLikelihood achieves the maximum at the end of iteration. $\theta$ seems to converge perfectly to around 0.3. Although other three parameters seem not to be convergent, they stay in very small range of intervals. The result seems quite satisfying.
+
+# 7. Likelihood maximization using randomized starting values
+
+Now we do global search on likelihood surface, which will start with different initial values picked randomly in an interval. We could set a value box in parameter space and then randomly choose initial values from this box. Conditioning on the result of local search above, we choose the value box as below, which seems like an appropriate start.
+
+
+```{r cache=TRUE}
+run_level <- 3
+
+Nas_box <- rbind(
+  sigma_omega=c(0.001,0.005),
+  theta    = c(0.9,1),
+  phi = c(0.001,0.005),
+  V_0 = c(0.02,0.03)
+)
+
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:Nas_Nreps_global[run_level],.packages='pomp',.combine=c,
+                  .options.multicore=list(set.seed=TRUE), .export = c('if1','Nas_box','Nas_Nreps_eval','run_level')) %dopar%  
+      mif2(
+        if1[[1]],
+        start=apply(Nas_box,1,function(x)runif(1,x[1],x[2]))
+      )
+    
+    L.box <- foreach(i=1:Nas_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                      .options.multicore=list(set.seed=TRUE), .export = c('if1','Nas_box','Nas_Nreps_eval','run_level','Nas.filt','Nas_Np')) %dopar% {
+                        set.seed(87932+i)
+                        logmeanexp(
+                          replicate(Nas_Nreps_eval[run_level],
+                                    logLik(pfilter(Nas.filt,params=coef(if.box[[i]]),Np=Nas_Np[run_level]))
+                          ), 
+                          se=TRUE)
+                      }
+  })
+},seed=290860873,kind="L'Ecuyer")
+```
+
+```{r cache=TRUE}
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="Nas_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+r.box[which.max(r.box$logLik),]
+```
+
+We can see that the maximum logLikelihood is -33.76998, which is larger than local search before, and parameters which maximizes the logLikelihood are also shown as above.
+
+From the logLikelihood surface, when $\theta = 0.31$, $\phi = 0.0013$ and $\sigma_\omega = 0.004$, we have the maximum of logLikelihood value.
+
+Thus our model is like follows:
+
+$$
+Y_n= \sqrt{V_n} \epsilon_n\\
+V_n=0.3096+0.0013*V_{n-1}+\sqrt{V_{n-1}}\omega_n
+$$
+
+```{r cache=TRUE}
+pairs(~logLik+sigma_omega+theta+phi+V_0,data=r.box)
+plot(if.box)
+```
+
+Seeing that there is still strong negative correlations between $\theta$ and logLikelihood, and the other two parameters still didn't show significant evidence of peaks.
+
+Again, the efficient sample size is large enough, and also we can see it stays in a very small interval [999.975,999.995]. And the logLikelihood converges at the end of iteration. $\theta$ has the best convergence and other parameters converge within a very small interval: $\phi$ is around [0.001, 0.005]
+
+
+# 8. Evaluate Success of Our Model Comparing with GARCH Models
+
+Finally, we compare our model with GARCH model to evaluate the success of our model.
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+library(tseries)
+library(fGarch)
+garch11 = garchFit(~garch(1,1), data = Nas_hp, cond.dist = c("norm"), include.mean = FALSE, algorithm = c("nlminb"), hessian = c("ropt"))
+summary(garch11)
+```
+
+The GARCH(1,1) has a maximized logLikelihood of 308.8497 with 3 parameters. Which is larger than value of logLikelihood we get from Heston model. Thus the logLikelihood favors GARCH model. However, we can see that the first two parameters are both not significant, which is not we like, and from Ljung-Box test we can see that there are still correlations among residuals. Also from diagnostic plot above, we can see that our likelihood converges at the end, which indicating that our model works for explaining dynamics of log returns.
+
+# 9. Conclusion
+
+From diagnostic plot on global search on likelihood surface, we can see that with increase of iteration times, logLikelihood seems to converges, indicating that Heston model can be used to interpret dynamics of log returns and it's volatility.
+
+$\theta$ is the constant term in volatility function, and we find it converges significantly to 0.3.
+
+Although $\phi$ and $\sigma_\omega$ seem not to be convergent, they are both stay in a small intervals, which still works for interpreting our model.
+
+Our model are very sensitive to the choice of parameters. This maybe because the data size is not very large. Also our iteration times is not large enough.
+
+# Reference 
+[1]¡°Heston model¡±, https://en.wikipedia.org/wiki/Heston_model
+
+[2]David Backus, Silvio Foresi, Chris I. Telmer, 1998. Discrete Time Models of Bond Pricing. http://repository.cmu.edu/cgi/viewcontent.cgi?article=1504&context=tepper
+
+[3]Lecture notes. https://ionides.github.io/531w18/#class-notes

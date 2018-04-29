@@ -1,0 +1,114 @@
+---
+title: "Stats 531 (Winter 2018) <br>Final projects"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+------
+
+* Projects with source code are posted anonymously on the class webpage.
+
+* Everyone has the opportunity to have your name attached to your project, if you like, after the course is over and the class grades are assigned.
+
+* Here are the projects. In most cases, source code and data are available from [https://github.com/ionides/531w18/tree/master/final_project](https://github.com/ionides/531w16/tree/master/final_project). For computationally expensive analysis, results saved as .rda files may or may not be available.
+
+
+----------
+
+----------
+
+1. [Financial Volatility of Google Stock](https://ionides.github.io/531w18/final_project/1/final.html)
+
+2. [Modeling Crisis Call Volume in Ann Arbor](https://ionides.github.io/531w18/final_project/2/final.html)
+
+3. [Relationship between CNH to USD Exchange Rate and S&P 500 Index](https://ionides.github.io/531w18/final_project/3/final.html)
+
+4. [POMP Modeling for Spot-futures Spreads by a Variation of CIR Model](https://ionides.github.io/531w18/final_project/4/final.html)
+
+5. [Hepatitis A in Michigan from 1966 to 1987](https://ionides.github.io/531w18/final_project/5/final.html)
+
+6. [Coursera learner activity patterns over time](https://ionides.github.io/531w18/final_project/6/final.html)
+
+7. [POMP modeling of temperature effects on population dynamics of a parasitoid–host system](https://ionides.github.io/531w18/final_project/7/final.html)
+
+8. [SV in Mean Model for NASDAQ Index](https://ionides.github.io/531w18/final_project/8/final.html)
+
+9. [Variations of the Ricker POMP model of <i>Lactobacillus crispatus</i> bacterial counts in the vaginal microbiota](https://ionides.github.io/531w18/final_project/9/final.html)
+
+10. [Bison population of Yellowstone National Park](https://ionides.github.io/531w18/final_project/10/final.html)
+
+11. [Human Proximal Small Intestinal pH Model](https://ionides.github.io/531w18/final_project/11/final.html)
+
+12. [POMP Model Fitting for US Mass Shooting Data](https://ionides.github.io/531w18/final_project/12/final.html)
+
+13. [Applying POMP SIR models to Youtube Videos](https://ionides.github.io/531w18/final_project/13/final.html)
+
+14. [POMP Model on Brazilian Industrial Production Index](https://ionides.github.io/531w18/final_project/14/final.html)
+
+15. [A case study on Smallpox transmission dynamic in California 1928-1935](https://ionides.github.io/531w18/final_project/15/final.html)
+
+16. [Stochastic Volatility of Nasdaq index](https://ionides.github.io/531w18/final_project/16/final.html)
+
+17. [1928-1931 Detroit Mumps Infection Analysis](https://ionides.github.io/531w18/final_project/17/final.html)
+
+18. [Modeling Dengue Transmission via POMP](https://ionides.github.io/531w18/final_project/18/final.html)
+
+19. [Analysis of SP500 Volatility](https://ionides.github.io/531w18/final_project/19/final.html)
+
+20. [POMP modeling dengue in San Juan, Puerto Rico](https://ionides.github.io/531w18/final_project/20/final.html)
+
+21. [Weekly stock price data of Altaba Inc. from 2005 to 2018](https://ionides.github.io/531w18/final_project/21/final.html)
+
+22. [A case study of acute hepatitis A infection in Florida](https://ionides.github.io/531w18/final_project/22/final.html)
+
+23. [Dengue in Malaysia](https://ionides.github.io/531w18/final_project/23/final.html)
+
+24. [Transmission of Smallpox in Michigan from 1928 to 1945](https://ionides.github.io/531w18/final_project/24/final.html)
+
+25. [Analysis on the Google Flu Trend and CDC flu data](https://ionides.github.io/531w18/final_project/25/final.html)
+
+26. [Potential Models for the Population of Nicholson's Blowflies](https://ionides.github.io/531w18/final_project/26/final.html)
+
+27. [Time Series Analysis of Nintendo stock price](https://ionides.github.io/531w18/final_project/27/final.html)
+
+28. [Modeling Dynamic Gene Expression with Extended Kalman Filter](https://ionides.github.io/531w18/final_project/28/final.html)
+
+29. [A TS and POMP model for Tuberculosis](https://ionides.github.io/531w18/final_project/29/final.html)
+
+30. [How Segmentation Affects Driving Motion Model Performance](https://ionides.github.io/531w18/final_project/30/final.html)
+
+31. [Studying Gun Purchasing Behavior During the Obama Administration](https://ionides.github.io/531w18/final_project/31/final.html)
+
+32. [Population of black-tail jackrabbits in Sevilleta National Wildlife Refuge](https://ionides.github.io/531w18/final_project/32/final.html)
+
+33. [The Ebola Epidemic of 2014-2016: Sierra Leone](https://ionides.github.io/531w18/final_project/33/final.html)
+
+34. [Mixture Hidden Markov Model for Poverty Measurement using Longitudinal Data](https://ionides.github.io/531w18/final_project/34/final.html)
+
+35. [Analyzing the Volatility of Bitcoin Market Price](https://ionides.github.io/531w18/final_project/35/final.html)
+
+36. [Financial Volatility Analysis](https://ionides.github.io/531w18/final_project/36/final.html)
+
+37. [Shigellosis Transmission in South Korea from 2001 to 2016](https://ionides.github.io/531w18/final_project/37/final.html)
+
+38. [Volatility of the SNE Stock](https://ionides.github.io/531w18/final_project/38/final.html)
+
+39. [A case study in measles](https://ionides.github.io/531w18/final_project/39/final.html)
+
+40. [Financial Volatility Analysis of Dow Jones Industrial Average](https://ionides.github.io/531w18/final_project/40/final.html)
+
+41. [Study of Varicella in Maryland](https://ionides.github.io/531w18/final_project/41/final.html)
+
+42. [Modelling of SARS in Beijing April-June, 2003](https://ionides.github.io/531w18/final_project/42/final.html)
+
+43. [Donation behavior: is the donor alive or dead? Governing the observed number of donors making a donation each month](https://ionides.github.io/531w18/final_project/43/final.html)
+
+44. [Time Series Analysis for the Henry Hub US Natural Gas Spot Price](https://ionides.github.io/531w18/final_project/44/final.html)
+
+
+
+----------
+
+-----------

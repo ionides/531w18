@@ -1,0 +1,214 @@
+---
+title: "Modeling Dynamic Gene Expression with Extended Kalman Filter"
+date: "April 25, 2018"
+output:
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+------
+
+------
+
+#1. Introduction
+
+The rapid development and lower economic cost in transcriptome profiling have provided unprecedented information to describe biological activities under different scenarios. Nowadays the community is marching from a static profiling towards a dynamic understanding to reveal the intrinsic regulatory network among genes and how the biological entities react to environmental changes.
+
+However, gene expression is a fundamentally stochastic process, where stochasticity comes from fluctuations in transcription and translation. [1] Understanding its mechanism can help us reveal how genes interact and explore the dynamic cellular regulation as well as non-genetic individuality, providing precise foundation for further manipulation of the complicated system.
+
+Here we use extended Kalman filter (EKF) to model the gene expression during yeast metabolic cycle. We chose EKF over other methods because this method is suitable for short time series and can easily handle the nonlinear nature in gene regulatory network. [2] We focus on a single gene in this project. Further research could explore the gene regulatory network during yeast metabolic cycle based on this analysis. 
+
+
+------
+
+------
+
+#2. Data Overview
+
+The dataset for yeast metabolic cycle is from a research paper[3]. The authors described a robust cycle in budding yeast under nutrient-limited conditions, explored gene clusters and discussed how gene expression relates to cell activities.
+
+Data is available on website: http://moment.utmb.edu/cgi-bin/dload.cgi.
+The CEL files of microarray were loaded in R followed by a standard protocol to acquire a normalized and background corrected set of expression values using the RMA method with R package affy.
+
+The gene MRPL10 (gene_id: YNL284C; affymetrix_id: 9155_at) is used as the example here. This gene is a representer of the Ox supercluster, encoding a mitochondrial ribosomal protein. It  is one of the most periodic genes, and its expression peaks when cells begin to cease oxygen consumption.
+
+This time series is measured every 25 mins and lasts 15 hours (36 time points). The most common period of transcript oscillation was estimated to be ∼300 min and there are 3 complete cycles.
+
+Prior to use any analysis method, let's take a look at the visualization of the time series.
+
+```{r, fig.align='center', echo=FALSE, message=FALSE, warning = FALSE, results='hide'}
+data <- read.csv("YMC.csv")
+df <- data.frame(time = 1:36, Y = unlist(data[,3:38]))
+rownames(df) <- c()
+plot(df$Y, type = "l", main = "Time course of MRPL10 in 3 metabolic cycles", xlab = "sampling time point", ylab = "expression levels")
+abline(v = c(12,24, 36), lty = 2)
+```
+
+From the figure, we could see that the expression of MRPL10 is highly periodic and the three cycles are very clear.
+
+------
+
+------
+
+#3. Data Analysis
+
+This analysis require the following packages: "pomp".
+
+## 3.1 Model setup
+This model is inspired by the paper by Wang et al to apply EKF to model nonlinear dynamic gene regulatory networks. [2]
+
+Let's assume $y_t$ is the random variable to denote the measured gene expression at time $t$.
+
+The underlying state is the true expression $x_t$ without measurement error. And the relation between $x_t$ and $y_t$ is:
+$$y_t = x_t + \nu_t$$
+where $\nu_t \sim N(0, \sigma_{\mu}^2)$, $R > 0$($\{\nu_t\}$ is a zero-mean Gaussian white noise sequence with constant covariance R).
+
+The transition process of $\{x_t\}$ is composed of a linear regulatory relationship among genes (here is simplified to a first order autoregression of itself), a nonlinear relationship $f(x_t,\mu)$, a constant external bias $I$ and the noise term $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$.
+$$x_{t+1} = a x_t + f(x_t, \mu) + I + \epsilon_t$$
+The nonlinear function is chosen to be a logistic function here. 
+$$f(x_t, \mu) = \frac{1}{1+e^{-x_t\mu}}$$
+
+The parameters here are a, u, I, $\sigma_{\epsilon}$ and $\sigma_{\nu}$.
+
+
+## 3.2 Model implementation
+
+The POMP model is generated as following:
+
+```{r, fig.align='center', echo=TRUE, message=FALSE, warning = FALSE, results='hide'}
+library(pomp)
+
+YMC_obsnames <- c("Y")
+YMC_statenames <- c("X", "nu", "epsilon")
+YMC_paramnames <- c("a", "u", "I", "sigma_epsi", "sigma_nu")
+
+# rprocess
+YMC_rproc <- Csnippet("
+  epsilon = rnorm(0, sigma_epsi);
+  nu = rnorm(0,sigma_nu);
+  X += a*X + 1/(1+exp(-X*u)) + epsilon + I;
+")
+
+# rmeasure
+YMC_rmeas <- Csnippet("
+  Y = X + nu;
+")
+
+# dmeasure
+YMC_dmeas <- Csnippet("
+  lik = dnorm(nu,0,sigma_nu,give_log);
+")
+
+YMC_dproc <- Csnippet("
+  lik = dnorm(epsilon,0,sigma_epsi,give_log);
+")
+
+YMC_init <- Csnippet("
+X = 5;
+nu = 0;
+epsilon = 0;
+")
+
+skel <- Csnippet("
+  DX = a*X + 1/(1+exp(-X*u)) + I;
+")
+
+YMC <- pomp(
+  data=df,
+  times="time",
+  t0=1,
+  rprocess=discrete.time.sim(
+    YMC_rproc,
+    delta.t=1
+  ),
+  skeleton=map(skel,delta.t=1),
+  rmeasure=YMC_rmeas,
+  dmeasure=YMC_dmeas,
+  obsnames = YMC_obsnames,
+  statenames= YMC_statenames,
+  paramnames= YMC_paramnames,
+  initializer= YMC_init
+)
+```
+
+## 3.3 Model simulation
+
+Different combinations of parameters were tested, and here shows the simulation result of one of the tested parameter set.
+
+```{r, fig.align='center', echo=TRUE, message=FALSE, warning = FALSE, results='hide'}
+param1 <- c(a = 0.01, u = 0.6, I = -0.9, sigma_epsi = 0.5, sigma_nu = 0.5)
+
+simStates <- as.data.frame(simulate(YMC,nsim=10,params=param1,states=TRUE))
+
+matplot(time(YMC), t(matrix(simStates["X",],10)),type='l',lty=1,
+        xlab="time",ylab="H",bty='l',col='blue')
+lines(time(YMC),obs(YMC,"Y"),lwd=2,col='black')
+```
+The blue lines are simulations and the black line is the original data.
+
+From above results, we can see that under current parameter setting, the simulation is nearly monotonic. It is very hard to find good initial choice of parameters to simulate the cyclic behavior of original data. This model could also explode to negative infinity or positive infinity given different parameters.(not shown here) And there is no guarantee that the expression level is always positive.
+
+## 3.4 Test with a particle filter
+
+Run basic particle filtering first.
+
+```{r, fig.align='center', echo=TRUE, message=FALSE, warning = FALSE, results='hide'}
+pf <- pfilter(YMC,params=param1,Np=10000)
+plot(pf)
+```
+
+```{r, fig.align='center', echo=TRUE, message=FALSE, warning = FALSE, results='hide'}
+run_level <- 3
+switch(run_level,
+       {bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=20000; bsflu_Nmif=100; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=100; bsflu_Nlocal=20}
+)
+
+require(doParallel)
+cores <- 2  
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(0,kind="L'Ecuyer")
+
+stew(file=sprintf("pf-%d.rda",run_level),{
+  t_pf <- system.time(
+    pf <- foreach(i=1:2,.packages='pomp',
+                  .options.multicore=mcopts) %dopar% try(
+                    pfilter(YMC,params=param1,Np=bsflu_Np)
+                  )
+  )
+  
+},seed=1320290398,kind="L'Ecuyer")
+```
+
+```{r, fig.align='center', echo=TRUE, message=FALSE, warning = FALSE}
+print(L_pf <- logmeanexp(sapply(pf,logLik),se=TRUE))
+```
+
+The estimate of log likelihood and Monte standard error are listed above.
+
+------
+
+------
+
+#4. Conclusion, Limitation and Future Work
+
+We have constructed a pomp model to try to charaterize the cycling expression profile of yeast metabolic cycles, based on an extended Kalman filter. Few models of gene expression have been built with pomp setting.
+
+Due to limitation of time and failure to find good parameter estimates to start with, this project could not perform the iterated filtering. However, it is still of great interest to explore the likelihood surface for different parameter combinations, uncover the influence of different paramters and help understand the dynamic cyclic behavior of the gene.
+
+Besides iterated filtering of parameter space, there could be more sophisticated hidden states, including transcription factor binding etc. In addition, this model can be extended to more than one genes, therefore it can be used to construct a gene regulatory network based on the estimated interactions.
+
+------
+
+------
+
+#5. Reference
+[1] Kærn, M., Elston, T. C., Blake, W. J., & Collins, J. J. (2005). Stochasticity in gene expression: from theories to phenotypes. Nature Reviews Genetics, 6(6), 451.
+
+[2] Wang, Zidong, et al. "An extended Kalman filtering approach to modeling nonlinear dynamic gene regulatory networks via short gene expression time series." IEEE/ACM Transactions on Computational Biology and Bioinformatics (TCBB) 6.3 (2009): 410-419.
+
+[3] Tu, B. P., Kudlicki, A., Rowicka, M., & McKnight, S. L. (2005). Logic of the yeast metabolic cycle: temporal compartmentalization of cellular processes. Science, 310(5751), 1152-1158.

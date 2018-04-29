@@ -1,0 +1,949 @@
+---
+title: "Stats 531 Final Project: POMP modeling of temperature effects on population dynamics of a parasitoid–host system"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    df_print: paged
+    number_sections: true
+  html_notebook: default
+  pdf_document: default
+---
+
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+
+# Indroduction
+
+## Background
+
+Parasitoid-host systems are prevalent in nature. Parasitoidism is one of six major evolutionary strategies within parasitism[1], and is used as a major biological control agent in agriculture and conservation[2]. It involves three stages in the most common scenario: the parasitoid lay egg in the body of their host; hatched larva feed on host until killing them; the larva keep feeding on host until they become adult and finally emerge. Thus in some sense parasitoidism is similar to both parasitism and predation.
+
+The parasitoid-host system studied here is pea aphids and their most common parasitoid, *Aphidius ervi*. Number of living aphids(both unparasitized and parasitized, they are not differentiable from look) and dead aphids("mummies") containing parasitoid larvas are documented in different set-up of lab experiments.
+
+## Objectives
+Temperature can be a key factor in many types of ecology systems. Here we try to build a POMP model to study its effects on a specific parasitoid-host system, which is done in this paper[3] but using a different statistical method. More specifically, we want to test whether the POMP method will give comparable results to it affects several demographic rates in the system. 
+
+# Data selection and preprocess
+All the data are from this paper:[Meisner MH, Harmon JP, Ives AR (2014) Temperature effects on long-term population dynamics in a parasitoid-host system](http://dx.doi.org/10.1890/13-1933.1). The two time-series are obtained in long-term lab experiments, while the values of some factors in the model are fitted from previous short-term experiments. The original paper used data from 8 set-ups of experiments: 2 different temperatures($20^\circ C$, and $27^\circ C$), 2 different initial host densities(low and high), then repeat each combination 2 times. They fit all 8 sets of data together using a Maximum Likelihood Estimation(MLE) method, with additional parameters corresponding to changes in demographic rates with temperature. But this is beyond our computational resource and it would be awkward to do so with POMP since different data are of different length. So instead, we pick two experiments with the same initial host density, one in low temperature and one in high temperature. We fit our POMP model to them separately, then compare the fitted parameters. This result won't be directly comparable to results in the original paper but hopefully it can give us some intuitions at least. Moreover, the observations are made irregularly in the lab experiments, varying from consecutive days to once in several days. We can either let POMP omit those days with no data when it's calculating conditional likelihood, but this makes many plots ugly since more than half of the days don't have data; or as we did in this case, interpolating missing data by nearby ones. The resulting data that are used in fitting our POMP model are plotted below.
+
+```{r, echo=FALSE, message=FALSE}
+library(zoo) #used for interpolating
+para_fulldata <- read.csv("MeisnerLongtermCageData.csv", head=T)
+#preprocess cool data
+para_data.c.with_na <- para_fulldata[which(para_fulldata$replicate==1),]
+para_data.c <- data.frame(
+  day=seq(0,max(para_data.c.with_na$day)),
+  mummies=NA,
+  aphids=NA
+)
+para_data.c[para_data.c.with_na$day+1,] <- para_data.c.with_na[,c('day','mummies','aphids')]
+para_data.c <- data.frame(na.approx(para_data.c))
+#preprocess hot data
+para_data.h.with_na <- para_fulldata[which(para_fulldata$replicate==3),]
+para_data.h <- data.frame(
+  day=seq(0,max(para_data.h.with_na$day)),
+  mummies=NA,
+  aphids=NA
+)
+para_data.h[para_data.h.with_na$day+1,] <- para_data.h.with_na[,c('day','mummies','aphids')]
+para_data.h <- data.frame(na.approx(para_data.h))
+```
+
+```{r, echo=FALSE}
+par(mfrow=c(1,2))
+plot(aphids~day, data=para_data.c, type='l',col='red', main="Low temperature", ylab="Population size")
+lines(mummies~day, data=para_data.c, type='l',col='blue')
+legend("topright", legend=c("aphids", "mummies"),
+       col=c("red", "blue"), lty=1, cex=0.8)
+plot(aphids~day, data=para_data.h, type='l',col='red', main="High temperature", ylab="Population size")
+lines(mummies~day, data=para_data.h, type='l',col='blue')
+legend("topleft", legend=c("aphids", "mummies"),
+       col=c("red", "blue"), lty=1, cex=0.8)
+```
+
+# Study with POMP model
+
+## POMP representation
+
+The POMP model we use is slightly modified from the original state-space model proposed in the paper and can be summarized as below(equations extracted from the original paper):
+
+* Hidden states: 
+    + $\vect{X}$: a multivariate time series of dimension $n$; $X_i, 1\le i\le n$ denotes the number of unparasitized aphids(host) of age $i$(days), $n$ being the max lifespan.
+    + $\vect{Y}$: a multivariate time series of dimension $m$; $Y_j, 1\le j\le m-1$ denotes the number of *A.ervi*(parasitoid) of age $j$(days). All *A.ervi* of age less than $m$ is within their hosts' body, then emerge on day $m$ as they become adults. $Y_m$ denotes the number of female adults of age $m$ or more.
+
+* Hidden Markov chain:
+
+$$
+\begin{split}
+\vect{X}(t+1) &= S(z(t))\cdot\vect{A}(x(t),Y_m(t)|T)\cdot(\vect{L}(T)\vect{X}(t))\cdot e^{\vect{\epsilon}(t)} \\
+Y_1(t+1) &= S_y(z(t))\cdot(1-\vect{A}(x(t),Y_m(t)|T))'\vect{L}(T)\vect{X}(t) \\
+Y_i(t+1) &= s_iS_y(z(t))Y_{i-1}(t)e^{\epsilon_y(t)} \quad \text{for}(i=1,...,m_1) \\
+Y_i(t+1) &= Y_{i-1}(t) \quad \text{for}(i=m_1+1,...,m-1) \\
+Y_m(t+1) &= \Big(s_yY_m(t)+\frac{1}{2}Y_{m-1}(t)\Big)e^{\epsilon_y(t)}
+\end{split}
+$$
+
+where $m_1$ is the number of days parasitoids remain in the still-living hosts, dot means element-by-element multiplication, and prime denotes matrix transpose.
+$\vect{L}(T)$ encodes the survival and reproduction rates as
+
+$$
+\vect{L}(T)=
+  \begin{pmatrix}
+    0 & f_1 & f_2 & \cdots & f_{n-1} \\
+    s_1 & 0 & 0   &        & 0 \\
+    0   & s_2 & 0 & & 0 \\
+    \vdots & & &\ddots & 0 \\
+    0 & 0 & \cdots & s_{n-1} & 0
+  \end{pmatrix}
+$$
+where $s_i$ and $f_i$ denotes survival rates and fecundities of age class $i$, respectively. They are either estimated by short-term experiments for both cold and hot environments, or cited from other sources, as all other parameters not presented in the "Fitting parameters" list below. The parasitoid-attack survival rate $\vect{A}(x(t),Y_m(t)|T)$ depends on total number of unparasitized aphids $x(t)$, number of attackers $Y_m(t)$ and temperature $T$, in the form of
+$$
+A_i = \Big(1+\frac{a\alpha(T)p_iY_m}{k(hx+1)}\Big)^{-k}
+$$
+where $p_i$ is the age-specific relative attack rates, $\alpha$ is the explicit temperature dependence, and $h$ is the "handling time" that makes the whole thing depend on host density. The "intraspecific density dependence[3]" makes survival diminish with increasing density of living aphids for both hosts and parasitoid:
+$$
+\begin{split}
+S(z) &= (1+\frac{z}{K})^{-1} \\
+S_y(z) &= (1+\frac{z}{K_y})^{-1}
+\end{split}
+$$
+where
+$$
+z = \sum_{i=1}^nX_i+\sum_{i=1}^{m_1}Y_i
+$$
+is the total living aphids. The random terms $\vect{\epsilon}(t)$ and $\epsilon_y(t)$ describes the demographic and environmental stochasticity on population dynamics. $\vect{\epsilon}(t)=\vect{\epsilon}_d(t)+\epsilon_e(t)$, where $\vect{\epsilon}_d(t)\sim iid\mathcal{N}(0,min((1+z(t))^{-1},1/2))$, and $\vect{\epsilon}_e(t)\sim \mathcal{N}(0,\sigma_x^2)$. Here is the only modification we made to the model presented in the paper[3], as they modeled $\epsilon_e$ as a multivariate random variable as well, and assumed a correlation $\rho$ between all its elements. But later they fitted $\rho$ to be $1$ and justified it as different age classes react to environment almost the same way. So to use this information and simplify, we just assumed one environmental random term to all age classes. The exact same type of equations apply to $\epsilon_y$, contributing another fitting parameter $\sigma_y$. Finally, $s_y$ is the survival rate of adult *A.ervi* and 1/2 appeared in the final equation because the female sex ratio of *A.ervi* is 50%.
+
+As was done in the original paper, we set this POMP model as a discrete model with $\delta_t$ being 1 day.
+
+* Observables:
+    + $x^*$: the number of observed living aphids, modeled as 
+      $$
+        x^*(t) = z(t) e^{\gamma_x(t)}
+      $$
+      where $\gamma_x\sim\mathcal{N}(0, \sigma_{\gamma_x})$.
+    + $y^*$: the number of observed mummies, as
+      $$
+        y^*(t) = \Big(\sum_{i=m_1+1}^{m-1}Y_i(t)\Big) e^{\gamma_y(t)}
+      $$
+      where $\gamma_y\sim\mathcal{N}(M, \sigma_m^2)$. The parameter $M$ is set because mummies are constantly under-counted as some of them are hidden, under leaves for example.   
+
+* Fitting parameters(total of 10):
+    + $a$: basic parasitoid attach rate
+    + $K$: aphid density dependence
+    + $K_yc$: ratio of parasitized aphid density dependence to aphid density dependence($K_y/K$)
+    + $k$: parasitoid aggregation
+    + $h$: handling time
+    + $s_y$: parasitoid adult daily survival
+    + $sigma_x$: environmental standard deviation for aphids
+    + $sigma_y$: environmental standard deviation for parasitoids
+    + $M$: mummy observation error offset
+    + $\sigma_m$: mummy observation error standard variation
+
+## Evaluation of estimated parameters by original paper in our model
+
+```{r, echo=FALSE}
+#All parameters all extracted from either the original paper, or the matlab file they provide containing the MLE computation
+#cold parameters
+n.c <- as.integer(28)
+m1.c <- as.integer(9)
+m.c <- as.integer(17)
+sigma_xm.c <- 0.2015
+alpha.c <- 0.3595
+p.c <- alpha.c * c(rep(0.12, 2), rep(0.27, 2), rep(0.39, 2), rep(0.16, 2), rep(0.06, 19), 0)
+f.c <- c(rep(0,8),2.5925,4.4312,5.1403,5.5190,5.6633,5.6010,5.4577,5.2904,5.0613,4.6970,3.3577,1.5946,1.0817,0.9666,0.8333,0.4689,0.0709,0,0)
+s.c <- c(rep(0.9745,8),1,0.9949,0.9818,0.9534,0.8805,0.8367,0.8532,0.8786, 0.8823,0.8748,0.8636,0.8394,0.8118,0.8096,0.8240,0.8333,0.7544,0.5859,0.4155)
+
+para_mle.c <- c("a"=2.32,"K"=0.000467,"K_yc"=1.57,"k"=0.35,"h"=0.008,"s_y"=0.69,"sigma_x"=0.44,"sigma_y"=0.70,"M"=-0.22,"sigma_m"=16.8)
+
+covtable.c <- data.frame(
+  day=c(-1,para_data.c$day),
+  Ym_add=0
+)
+covtable.c[c(1,3,5),2] <- 2
+#hot parameters
+n.h <- as.integer(28)
+m1.h <- as.integer(7)
+m.h <- as.integer(10)
+sigma_xm.h <- 0.2015
+alpha.h <- 0.6405
+p.h <- alpha.h * c(rep(0.12, 1), rep(0.27, 1), rep(0.39, 1), rep(0.16, 2), rep(0.06, 23))
+f.h <- c(rep(0,5),3.1975,5.4563,6.2996,6.7372,6.9030,6.8210,6.6100,6.1962,5.1653,4.1837,3.6029,3.1023,2.4799,1.6909,1.1750,1.0148,0.9096,0.7821,0.6430,0.5000,0.3531,0)
+s.h <- c(rep(0.9849,5),1,0.9986,0.9951,0.9874,0.9675,0.9552,0.9550,0.9549, 0.9462,0.8992,0.8571,0.8408,0.8281,0.8062,0.7699,0.7500,0.7559,0.7649,0.7240,0.4367,0,0)
+
+para_mle.h <- c("a"=2.32,"K"=0.000467,"K_yc"=1.57,"k"=0.35,"h"=0.029,"s_y"=0.69,"sigma_x"=0.44,"sigma_y"=0.70,"M"=-0.22,"sigma_m"=16.8)
+
+covtable.h <- data.frame(
+  day=c(-1,para_data.h$day),
+  Ym_add=0
+)
+covtable.h[c(1,3,5),2] <- 2
+```
+
+```{r, echo=FALSE, message=FALSE}
+#POMP model
+require(pomp)
+stopifnot(packageVersion("pomp")>="0.75-1")
+para_paramnames <- c("a","K","K_yc","k","h","s_y","sigma_x","sigma_y","M","sigma_m")
+para_obsnames <- c("aphids","mummies")
+
+para_dmeasure <- Csnippet("
+  const double *x = &X1;
+  const double *y = &Y1;
+  const int m1 = *get_pomp_userdata_int(\"m1r\");
+  const int m = *get_pomp_userdata_int(\"mr\");
+  const int n = *get_pomp_userdata_int(\"nr\");
+  const double sigma_xm = *get_pomp_userdata_double(\"sigma_xmr\");
+  int i;
+  double sumx = 0, sumy = 0;
+
+  if (ISNA(mummies)) {
+    lik = (give_log) ? 0 : 1;
+  } else {
+    for (i=0; i<n; i++) sumx += x[i];
+    for (i=0; i<m1; i++) sumx += y[i];
+    for (i=m1; i<m-1; i++) sumy += y[i]; 
+    lik = dnorm(log(aphids/(sumx+1e-6)+1e-6), 0, sigma_xm, give_log) + dnorm(log(mummies/(sumy+1e-6)+1e-6), M , sigma_m, give_log);
+  }
+")
+
+para_rmeasure <- Csnippet("
+  const double *x = &X1;
+  const double *y = &Y1;
+  const int m1 = *get_pomp_userdata_int(\"m1r\");
+  const int m = *get_pomp_userdata_int(\"mr\");
+  const int n = *get_pomp_userdata_int(\"nr\");
+  const double sigma_xm = *get_pomp_userdata_double(\"sigma_xmr\");
+  int i;
+  double sumx = 0, sumy = 0;
+
+  for (i=0; i<n; i++) sumx += x[i];
+  for (i=0; i<m1; i++) sumx += y[i];
+  for (i=m1; i<m-1; i++) sumy += y[i];
+  aphids = sumx * exp(rnorm(0, sigma_xm));
+  mummies = sumy * exp(rnorm(M, sigma_m));
+")
+
+para_rprocess <- Csnippet("
+  double *x = &X1;
+  double *y = &Y1;
+  const double *p = get_pomp_userdata_double(\"pr\");
+  const double *f = get_pomp_userdata_double(\"fr\");
+  const double *s = get_pomp_userdata_double(\"sr\");
+  const int m1 = *get_pomp_userdata_int(\"m1r\");
+  const int m = *get_pomp_userdata_int(\"mr\");
+  const int n = *get_pomp_userdata_int(\"nr\");
+  int i;
+  double z, unprst_x=0;
+
+  for (i=0; i<n; i++) unprst_x += x[i];
+  z = unprst_x;
+  for (i=0; i<m1; i++) z += y[i];
+  
+  double sz = 1/(1+z/K);
+  double sz_y = 1/(1+z/K_yc/K);
+  
+  double A[n];
+  for (i=0; i<n; i++) A[i] = pow(1+a*p[i]*y[m-1]/k/(h*unprst_x+1), -k);
+  
+  double eps_x[n], eps_y;
+  double eps_ex, eps_ey;
+  eps_ex = rnorm(0, sigma_x);
+  eps_ey = rnorm(0, sigma_y);
+  for (i=0; i<n; i++) eps_x[i] = rnorm(0, fmin(1/(1+z),0.5)) + eps_ex;
+  eps_y = rnorm(0, fmin(1/(1+y[m-1]),0.5)) + eps_ey;
+  
+  double temp;
+  double LX[n];
+  LX[0] = 0;
+  for (i=0; i<n-1; i++) {
+    LX[0] += f[i] * x[i+1];
+    LX[i+1] = s[i] * x[i];
+  }
+  
+  for (i=n-1; i>0; i--) {
+    temp = sz * A[i] * LX[i] * exp(eps_x[i]);
+    x[i] = fmin(x[i-1], temp);
+  }
+
+  x[0] = sz * A[0] * LX[0] * exp(eps_x[0]);
+
+  temp = (s_y*y[m-1]+0.5*y[m-2])*exp(eps_y);
+  y[m-1] = fmin(y[m-1]+y[m-2], temp) + Ym_add;
+  for (i=m-2; i>m1-1; i--) y[i] = y[i-1];
+  for (i=m1-1; i>0; i--) y[i] = fmin(y[i-1], s[i-1]*sz_y*y[i-1]*exp(eps_x[i]));
+  y[0] = 0;
+  for (i=0; i<n; i++) y[0] += sz_y * (1-A[i]) * LX[i];
+")
+
+para_fromEstimationScale <- Csnippet("
+ Ta = exp(a);
+ TK = exp(K);
+ TK_yc = exp(K_yc);
+ Tk = exp(k);
+ Th = exp(h);
+ Ts_y = expit(s_y);
+ Tsigma_x = exp(sigma_x);
+ Tsigma_y = exp(sigma_y);
+ Tsigma_m = exp(sigma_m);
+")
+
+para_toEstimationScale <- Csnippet("
+ Ta = log(a);
+ TK = log(K);
+ TK_yc = log(K_yc);
+ Tk = log(k);
+ Th = log(h);
+ Ts_y = logit(s_y);
+ Tsigma_x = log(sigma_x);
+ Tsigma_y = log(sigma_y);
+ Tsigma_m = log(sigma_m);
+")
+
+para_initializer <- Csnippet("
+  double *x = &X1;
+  double *y = &Y1;
+  const int m = *get_pomp_userdata_int(\"mr\");
+  const int n = *get_pomp_userdata_int(\"nr\");
+  int i;
+  for (i=0; i<n; i++) {
+    if (i<10) x[i] = 2.;
+    else x[i] = 0.;
+  }
+  for (i=0; i<m; i++) y[i] = 0.;
+")
+
+para2.c <- pomp(
+  data=para_data.c,
+  times="day",
+  t0=-1,
+  rprocess=discrete.time.sim(step.fun=para_rprocess,delta.t=1),
+  rmeasure=para_rmeasure,
+  dmeasure=para_dmeasure,
+  covar=covtable.c,
+  tcovar="day",
+  fromEstimationScale=para_fromEstimationScale,
+  toEstimationScale=para_toEstimationScale,
+  obsnames = para_obsnames,
+  statenames=c(sprintf("X%d",1:n.c),sprintf("Y%d",1:m.c)),
+  paramnames=para_paramnames,
+  covarnames=c("Ym_add"),
+  initializer=para_initializer,
+  m1r=m1.c,
+  mr=m.c,
+  nr=n.c,
+  pr=p.c,
+  fr=f.c,
+  sr=s.c,
+  sigma_xmr=sigma_xm.c
+)
+
+para2.h <- pomp(
+  data=para_data.h,
+  times="day",
+  t0=-1,
+  rprocess=discrete.time.sim(step.fun=para_rprocess,delta.t=1),
+  rmeasure=para_rmeasure,
+  dmeasure=para_dmeasure,
+  covar=covtable.h,
+  tcovar="day",
+  fromEstimationScale=para_fromEstimationScale,
+  toEstimationScale=para_toEstimationScale,
+  obsnames = para_obsnames,
+  statenames=c(sprintf("X%d",1:n.h),sprintf("Y%d",1:m.h)),
+  paramnames=para_paramnames,
+  covarnames=c("Ym_add"),
+  initializer=para_initializer,
+  m1r=m1.h,
+  mr=m.h,
+  nr=n.h,
+  pr=p.h,
+  fr=f.h,
+  sr=s.h,
+  sigma_xmr=sigma_xm.h
+)
+```
+
+After building our POMP model according to the previously stated equations. We first run some simulations with parameters estimated by the paper(they can be viewed as prior estimates for us). The values of parameters are
+```{r, echo=FALSE, message=FALSE}
+require(knitr)
+require(kableExtra)
+require(magrittr)
+para_mle <- rbind.data.frame(para_mle.c, para_mle.h)
+colnames(para_mle) <- names(para_mle.c)
+rownames(para_mle) <- c("Cold", "Hot")
+kable(para_mle, "html") %>%
+  kable_styling(full_width = FALSE)
+```
+The simulations are shown below:
+```{r,echo=FALSE, message=FALSE}
+sims.c <- simulate(para2.c, nsim=3, as.data.frame=TRUE,include.data=TRUE, params=para_mle.c)
+sims.h <- simulate(para2.h, nsim=3, as.data.frame=TRUE,include.data=TRUE, params=para_mle.h)
+
+require(ggplot2)
+library(gridExtra)
+sp.c<-ggplot(sims.c, aes(x=time,y=aphids,group=sim,color=sim=="data"))+
+  geom_point()+
+  geom_line()+
+  theme_bw()+
+  ggtitle("Simulation under low temperature")
+sp.h<-ggplot(sims.h, aes(x=time,y=aphids,group=sim,color=sim=="data"))+
+  geom_point()+
+  geom_line()+
+  theme_bw()+
+  ggtitle("Simulation under high temperature")
+grid.arrange(sp.c, sp.h, ncol=2)
+
+```
+
+Both simulations under low and high temperatures are pretty bad: we run 3 simulations for both cases but they are all essentially 0 for aphids numbers. This seems to suggest either the model is just bad or this set of parameters are not fitted well for a single set of data. 
+
+We next run particle filters on these estimated parameters. This gives very small but accurate log-likelihood(standard error is very small), confirming that these parameters are not good fit.
+
+```{r,echo=FALSE}
+stew(file="particle_filter.rda", {
+  pf.c <- replicate(10, pfilter(para2.c,Np=5000,params=para_mle.c))
+  llpf.c <- sapply(pf.c,logLik)
+  pf.h <- replicate(10, pfilter(para2.h,Np=5000,params=para_mle.h))
+  llpf.h <- sapply(pf.h,logLik)
+})
+data.frame("Cold"=logmeanexp(llpf.c,se=TRUE),"Hot"=logmeanexp(llpf.h,se=TRUE),row.names = c("logLik","se"))
+```
+
+## Fit the POMP model
+
+We use the iterated filtering algorithm IF2[4] to fit our POMP model. We first do a local search with prior estimated parameters(estimation by paper using a global MLE method). This gives summaries of log-likelihood of 20 local searches for low temperature to be:
+
+```{r, echo=FALSE, message=FALSE}
+#require(doParallel)
+#cores <- 20  # The number of cores on this machine 
+#registerDoParallel(cores)
+#mcopts <- list(set.seed=TRUE)
+
+run_level <- 3
+switch(run_level,
+       {para_Np=10; para_Nmif=10; para_Neval=10; para_Nglobal=4; para_Nlocal=2}, 
+       {para_Np=20000; para_Nmif=100; para_Neval=10; para_Nglobal=10; para_Nlocal=10}, 
+       {para_Np=60000; para_Nmif=300; para_Neval=10; para_Nglobal=100; para_Nlocal=20}
+)
+para_rw.sd <- 0.02
+para_cooling.fraction.50 <- 0.5
+```
+
+```{r, echo=FALSE}
+stew(file=sprintf("local_c_new-%d.rda",run_level),{
+  
+  t_lobal.c <- system.time({
+    mifs_local.c <- foreach(i=1:para_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar% 
+      mif2(     
+      para2.c,
+      start=para_mle.c,
+      Np=para_Np,
+      Nmif=para_Nmif,
+      cooling.type="geometric",
+      cooling.fraction.50=para_cooling.fraction.50,
+      transform=TRUE,
+      rw.sd=rw.sd(
+        a=para_rw.sd,
+        K=para_rw.sd,
+        K_yc=para_rw.sd,
+        k=para_rw.sd,
+        h=para_rw.sd,
+        s_y=para_rw.sd,
+        sigma_x=para_rw.sd,
+        sigma_y=para_rw.sd,
+        M=para_rw.sd,
+        sigma_m=para_rw.sd
+      )
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+```
+
+```{r,echo=FALSE}
+stew(file=sprintf("lik_local_c_new-%d.rda",run_level),{
+    t_local_eval.c <- system.time({
+    liks_local.c <- foreach(i=1:para_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(para_Neval, logLik(pfilter(para2.c,params=coef(mifs_local.c[[i]]),Np=para_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+results_local.c <- data.frame(logLik=liks_local.c[,1],logLik_se=liks_local.c[,2],t(sapply(mifs_local.c,coef)))
+summary(results_local.c$logLik,digits=5)
+```
+
+and for high temperature to be:
+```{r, echo=FALSE}
+stew(file=sprintf("local_h_new-%d.rda",run_level),{
+  
+  t_lobal.h <- system.time({
+    mifs_local.h <- foreach(i=1:para_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar% 
+      mif2(     
+      para2.h,
+      start=para_mle.h,
+      Np=para_Np,
+      Nmif=para_Nmif,
+      cooling.type="geometric",
+      cooling.fraction.50=para_cooling.fraction.50,
+      transform=TRUE,
+      rw.sd=rw.sd(
+        a=para_rw.sd,
+        K=para_rw.sd,
+        K_yc=para_rw.sd,
+        k=para_rw.sd,
+        h=para_rw.sd,
+        s_y=para_rw.sd,
+        sigma_x=para_rw.sd,
+        sigma_y=para_rw.sd,
+        M=para_rw.sd,
+        sigma_m=para_rw.sd
+      )
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+```
+
+```{r,echo=FALSE}
+stew(file=sprintf("lik_local_h_new-%d.rda",run_level),{
+    t_local_eval.h <- system.time({
+    liks_local.h <- foreach(i=1:para_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(para_Neval, logLik(pfilter(para2.h,params=coef(mifs_local.h[[i]]),Np=para_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+results_local.h <- data.frame(logLik=liks_local.h[,1],logLik_se=liks_local.h[,2],t(sapply(mifs_local.h,coef)))
+
+summary(results_local.h$logLik,digits=5)
+```
+
+The range of both results are small(several log units), indicating our choice of hyper parameters such as number of particle filters and iteration times are big enough for convergence. But more importantly, we see these log-likelihoods are much higher than those obtained with prior estimates. This is because even we choose the prior estimates as initial values of parameters, some of the parameters ended up very different values. This becomes clearer as we analyze global search results, obtained by choosing initial parameters from a large range. This gives log-likelihood under low temperature to be:  
+
+```{r, echo=FALSE}
+#global search box
+set.seed(396658101,kind="L'Ecuyer")
+para_box.c <- rbind(
+  a = c(0.5, 3),
+  K = c(0.0001, 0.001),
+  K_yc = c(0.5, 3),
+  k = c(0.1, 0.5),
+  h = c(0.005, 0.015),
+  s_y = c(0.5, 0.9),
+  sigma_x = c(0.1, 1.0),
+  sigma_y = c(0.1, 1.0),
+  M = c(-0.5, 0.5),
+  sigma_m = c(10, 20)
+)
+
+para_box.h <- rbind(
+  a = c(0.5, 3),
+  K = c(0.0001, 0.001),
+  K_yc = c(0.5, 3),
+  k = c(0.1, 0.5),
+  h = c(0.015, 0.04),
+  s_y = c(0.5, 0.9),
+  sigma_x = c(0.1, 1.0),
+  sigma_y = c(0.1, 1.0),
+  M = c(-0.5, 0.5),
+  sigma_m = c(10, 20)
+)
+```
+
+```{r, echo=FALSE}
+stew(file=sprintf("global_c_new-%d.rda",run_level),{
+  
+  t_global.c <- system.time({
+    mifs_global.c <- foreach(i=1:para_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar% 
+      mif2(     
+      para2.c,
+      start=c(apply(para_box.c,1,function(x)runif(1,x[1],x[2]))),
+      Np=para_Np,
+      Nmif=para_Nmif,
+      cooling.type="geometric",
+      cooling.fraction.50=para_cooling.fraction.50,
+      transform=TRUE,
+      rw.sd=rw.sd(
+        a=para_rw.sd,
+        K=para_rw.sd,
+        K_yc=para_rw.sd,
+        k=para_rw.sd,
+        h=para_rw.sd,
+        s_y=para_rw.sd,
+        sigma_x=para_rw.sd,
+        sigma_y=para_rw.sd,
+        M=para_rw.sd,
+        sigma_m=para_rw.sd
+      )
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_global_eval_c_new-%d.rda",run_level),{
+  t_global_eval.c <- system.time({
+    liks_global.c <- foreach(i=1:para_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(para_Neval, logLik(pfilter(para2.c,params=coef(mifs_global.c[[i]]),Np=para_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global.c <- data.frame(logLik=liks_global.c[,1],logLik_se=liks_global.c[,2],t(sapply(mifs_global.c,coef)))
+summary(results_global.c$logLik,digits=5)
+```
+
+and under high temperature:
+```{r, echo=FALSE}
+stew(file=sprintf("global_h_new-%d.rda",run_level),{
+  
+  t_global.h <- system.time({
+    mifs_global.h <- foreach(i=1:para_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar% 
+      mif2(     
+      para2.h,
+      start=c(apply(para_box.h,1,function(x)runif(1,x[1],x[2]))),
+      Np=para_Np,
+      Nmif=para_Nmif,
+      cooling.type="geometric",
+      cooling.fraction.50=para_cooling.fraction.50,
+      transform=TRUE,
+      rw.sd=rw.sd(
+        a=para_rw.sd,
+        K=para_rw.sd,
+        K_yc=para_rw.sd,
+        k=para_rw.sd,
+        h=para_rw.sd,
+        s_y=para_rw.sd,
+        sigma_x=para_rw.sd,
+        sigma_y=para_rw.sd,
+        M=para_rw.sd,
+        sigma_m=para_rw.sd
+      )
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_global_eval_h_new-%d.rda",run_level),{
+  t_global_eval.h <- system.time({
+    liks_global.h <- foreach(i=1:para_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(para_Neval, logLik(pfilter(para2.h,params=coef(mifs_global.h[[i]]),Np=para_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global.h <- data.frame(logLik=liks_global.h[,1],logLik_se=liks_global.h[,2],t(sapply(mifs_global.h,coef)))
+summary(results_global.h$logLik,digits=5)
+```
+
+Notice that in each case, the maximum is only slightly larger than that of the local search, and even minimum is larger than those with prior estimates. We present here the pair plots among most relevant parameters:
+```{r,echo=FALSE}
+pairs(~logLik+a+K+K_yc+h+s_y, data=subset(results_global.c,logLik>max(logLik)-10), main='Low temperature')
+```
+
+```{r,echo=FALSE}
+pairs(~logLik+a+K+K_yc+h+s_y, data=subset(results_global.h,logLik>max(logLik)-20), main='High temperature')
+```
+There seems to be no apparent correlations among them. The plots between log-likelihood and other parameters also show good convergence behavior, especially for $a$ and $K$. We can further check which parameters are estimated most differently than their prior estimates by comparing our globally fitted parameters(post estimate) to the prior estimate:
+```{r,echo=FALSE}
+para_my_mle.c <- unlist(results_global.c[which.max(results_global.c[,"logLik"]),][para_paramnames])
+para_my_mle.h <- unlist(results_global.h[which.max(results_global.h[,"logLik"]),][para_paramnames])
+para_mle <- rbind.data.frame(para_mle, para_my_mle.c, para_my_mle.h)
+rownames(para_mle) <- c("Cold Prior", "Hot Prior", "Cold Post", "Hot Post")
+kable(para_mle, "html") %>%
+  kable_styling(full_width = FALSE)
+```
+
+We can see all parameters have comparable post and prior estimates, they differ at most by one order, except for $K$, for which our model gives $10^7$ larger fit! It is very hard to believe both of them are reasonable in a natural system, and we believe our estimate is better. The reasoning lies in the meaning of this parameter: look at the equation where $K$ appears, that is the intraspecific density dependence:
+$$
+S(z) = (1+\frac{z}{K})^{-1}
+$$
+$S(z)\rightarrow 0$ as $K\rightarrow 0$, this means any finite population will suddenly be suppressed to 0! And this is exactly the case of our above simulations! On the other hand, large $K$ means $S(z)\rightarrow 1$, just denoting neglectable intraspecific density dependence, which is totally reasonable. This is clearer by simulating with our own estimated parameters, which shows reasonable similarity with data.
+
+```{r,echo=FALSE}
+sims.c <- simulate(para2.c, nsim=3, as.data.frame=TRUE,include.data=TRUE, params=para_my_mle.c)
+sims.h <- simulate(para2.h, nsim=3, as.data.frame=TRUE,include.data=TRUE, params=para_my_mle.h)
+
+require(ggplot2)
+library(gridExtra)
+sp.c<-ggplot(sims.c, aes(x=time,y=aphids,group=sim,color=sim=="data"))+
+  geom_line()+
+  theme_bw()+
+  ggtitle("Simulation under low temperature")
+sp.h<-ggplot(sims.h, aes(x=time,y=aphids,group=sim,color=sim=="data"))+
+  geom_line()+
+  theme_bw()+
+  ggtitle("Simulation under high temperature")
+grid.arrange(sp.c, sp.h, ncol=2)
+```
+
+## Diagnostics of fitted model
+
+We present diagnostics of fitted POMP model for both low and high temperatures below.
+```{r}
+#low temperature diagnostic plot
+plot(mifs_global.c)
+```
+
+```{r}
+#high temperature diagnostic plot
+plot(mifs_global.h)
+```
+
+A couple of statements we can make for both fits: firstly, the effective sample size and conditional log-likelihood of the last iteration is high during the whole time, besides, the number of fails of MIF2 iteration is always 0, these mean generally speaking our model fits pretty well; secondly, most of the parameters and log-likelihood show good-enough convergence, especially $k$, $h$, $s_y$, $\sigma_x$ and $\sigma_y$; finally, $K$ and $M$ have poorest convergence behavior, we should definitely try to improve them in the future.
+
+## Profile likelihood study on temperature effects
+
+The original paper concluded $h$ shows significant temperature dependence under their model, while $K$ and $k$ don't, as opposed to the initial guess. As limited by time and computational resources, we decided only to test for $h$ and $K$, but unfortunately only managed to accomplish that for $K$ in time. 
+
+Due to the difference of estimation methods, we don't have a single statistic telling us whether the dependence on temperature is significant, so instead we use a heuristic method: we construct a profile likelihood and then calculate the 95% confidence intervals of $K$ for both temperatures, and we draw our conclusions based on their overlap. The less they overlap, the higher probability that $K$ does dependent on temperature. The code used is modified from homework solution of previous class[4].
+
+The plots of profile likelihood test are shown below:
+```{r, echo=FALSE}
+run_level <- 6
+switch(run_level,
+       {para_Np=100; para_Nmif=10; para_Neval=10; para_Nglobal=10; para_Nlocal=10}, 
+       {para_Np=20000; para_Nmif=100; para_Neval=10; para_Nglobal=10; para_Nlocal=10}, 
+       {para_Np=60000; para_Nmif=300; para_Neval=10; para_Nglobal=100; para_Nlocal=20},
+       {para_Np=5000; para_Nmif=100; para_Neval=10; para_Nglobal=100; para_Nlocal=20; h_profile_n = 50; h_profile_nprof=20; low_r=0.1; high_r=5},
+       {para_Np=10000; para_Nmif=200; para_Neval=10; para_Nglobal=100; para_Nlocal=20; h_profile_n = 20; h_profile_nprof=50; low_r=0.5; high_r=2},
+       {para_Np=5000; para_Nmif=100; para_Neval=10; para_Nglobal=100; para_Nlocal=20; h_profile_n = 20; h_profile_nprof=20; low_r=0.5; high_r=2}
+)
+
+K_profile_box.c <- profileDesign(  
+  K = seq(low_r*para_my_mle.c['K'],high_r*para_my_mle.c['K'],length.out=h_profile_n),
+  lower = pmin(0.5*para_my_mle.c, 2*para_my_mle.c),
+  upper = pmax(0.5*para_my_mle.c, 2*para_my_mle.c),
+  nprof = h_profile_nprof
+)
+
+K_profile_box.h <- profileDesign(  
+  K = seq(low_r*para_my_mle.h['K'],high_r*para_my_mle.h['K'],length.out=h_profile_n),
+  lower = pmin(0.5*para_my_mle.h, 2*para_my_mle.h),
+  upper = pmax(0.5*para_my_mle.h, 2*para_my_mle.h),
+  nprof = h_profile_nprof
+)
+```
+
+```{r,eval=FALSE,echo=FALSE}
+#first round of mif2
+stew(file=sprintf("K_profile_c-%d.rda",run_level),{
+  
+  t_globalp.c <- system.time({
+    mifs_globalp.c <- foreach(i=1:nrow(K_profile_box.c),.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%
+      # Find MLE
+      mif2(
+        para2.c,
+        start=c(unlist(K_profile_box.c[i,])),
+        Np=para_Np,
+        Nmif=para_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=para_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          a=para_rw.sd,
+          #K=para_rw.sd,
+          K_yc=para_rw.sd,
+          k=para_rw.sd,
+          h=para_rw.sd,
+          s_y=para_rw.sd,
+          sigma_x=para_rw.sd,
+          sigma_y=para_rw.sd,
+          M=para_rw.sd,
+          sigma_m=para_rw.sd
+        )
+      )        
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("K_profile_h-%d.rda",run_level),{
+  
+  t_globalp.h <- system.time({
+    mifs_globalp.h <- foreach(i=1:nrow(K_profile_box.h),.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%
+      # Find MLE
+      mif2(
+        para2.h,
+        start=c(unlist(K_profile_box.h[i,])),
+        Np=para_Np,
+        Nmif=para_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=para_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          a=para_rw.sd,
+          #K=para_rw.sd,
+          K_yc=para_rw.sd,
+          k=para_rw.sd,
+          h=para_rw.sd,
+          s_y=para_rw.sd,
+          sigma_x=para_rw.sd,
+          sigma_y=para_rw.sd,
+          M=para_rw.sd,
+          sigma_m=para_rw.sd
+        )
+      )        
+  })
+},seed=1270401374,kind="L'Ecuyer")
+```
+
+```{r, echo=FALSE}
+stew(file=sprintf("K_profile_lik_global_eval_c-%d.rda",run_level),{
+  t_global_evalp.c <- system.time({
+    liks_globalp.c <- foreach(i=1:nrow(K_profile_box),.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(para_Neval, logLik(pfilter(para2.c,params=coef(mifs_globalp.c[[i]]),Np=para_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+  results_globalp.c <- data.frame(logLik=liks_globalp.c[,1],logLik_se=liks_globalp.c[,2],t(sapply(mifs_globalp.c,coef)))
+},seed=442141592,kind="L'Ecuyer")
+
+stew(file=sprintf("K_profile_lik_global_eval_h-%d.rda",run_level),{
+  t_global_evalp.h <- system.time({
+    liks_globalp.h <- foreach(i=1:nrow(K_profile_box),.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(para_Neval, logLik(pfilter(para2.h,params=coef(mifs_globalp.h[[i]]),Np=para_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+  results_globalp.h <- data.frame(logLik=liks_globalp.h[,1],logLik_se=liks_globalp.h[,2],t(sapply(mifs_globalp.h,coef)))
+},seed=442141592,kind="L'Ecuyer")
+```
+
+```{r, echo=FALSE, message=FALSE}
+require(plyr)
+require(reshape2)
+require(magrittr)
+## mif2 again for highest 10 lik for each K
+results_globalp.c %>% 
+  ddply(~K,subset,rank(-logLik)<=10) %>%
+  subset(select=para_paramnames) -> pars
+
+for(i in 1:ncol(pars)){
+  pars[is.na(pars[,i]), i] <- mean(pars[,i], na.rm = TRUE)
+}
+
+stew(file=sprintf("K_profile_c-2-%d.rda",run_level),{
+  
+  t_globalp2.c <- system.time({
+    prof.llh.c <- foreach(i=1:(nrow(pars)),.packages='pomp', .combine=rbind, .options.multicore=mcopts) %dopar%{
+      # Find MLE
+      mif2(
+        mifs_globalp.c[[1]],
+        start=unlist(pars[i,]),
+        Np=5000,Nmif=50
+      )->mifs_globalp2.c
+      # evaluate llh 
+      pf= replicate(10,pfilter(mifs_globalp2.c,Np=5000))
+      evals=sapply(pf,logLik)
+      ll=logmeanexp(evals, se=TRUE)  
+      nfail=sapply(pf,getElement,"nfail")
+      
+      data.frame(as.list(coef(mifs_globalp2.c)),
+                 loglik = ll[1],
+                 loglik.se = ll[2],
+                 nfail.max=max(nfail))
+    }
+  })
+}, seed=931129, kind="L'Ecuyer")
+
+results_globalp.h %>% 
+  ddply(~K,subset,rank(-logLik)<=10) %>%
+  subset(select=para_paramnames) -> pars
+
+for(i in 1:ncol(pars)){
+  pars[is.na(pars[,i]), i] <- mean(pars[,i], na.rm = TRUE)
+}
+
+stew(file=sprintf("K_profile_h-2-%d.rda",run_level),{
+  
+  t_globalp2.h <- system.time({
+    prof.llh.h <- foreach(i=1:(nrow(pars)),.packages='pomp', .combine=rbind, .options.multicore=mcopts) %dopar%{
+      # Find MLE
+      mif2(
+        mifs_globalp.h[[1]],
+        start=unlist(pars[i,]),
+        Np=5000,Nmif=50
+      )->mifs_globalp2.h
+      # evaluate llh 
+      pf= replicate(10,pfilter(mifs_globalp2.h,Np=5000))
+      evals=sapply(pf,logLik)
+      ll=logmeanexp(evals, se=TRUE)  
+      nfail=sapply(pf,getElement,"nfail")
+      
+      data.frame(as.list(coef(mifs_globalp2.h)),
+                 loglik = ll[1],
+                 loglik.se = ll[2],
+                 nfail.max=max(nfail))
+    }
+  })
+}, seed=931129, kind="L'Ecuyer")
+```
+
+```{r, echo=FALSE}
+prof.llh.c %<>%
+  subset(nfail.max==0) %>%
+  mutate(K=exp(signif(log(K),5))) %>%
+  ddply(~K,subset,rank(-loglik)<=1)
+
+a.c=max(prof.llh.c$loglik)
+b.c=a.c-1.92
+CI.c=which(prof.llh.c$loglik>=b.c)
+c.c=prof.llh.c$K[min(CI.c)]
+d.c=prof.llh.c$K[max(CI.c)]
+
+
+prof.llh.c %>%
+  ggplot(aes(x=K,y=loglik))+
+  geom_point()+
+  geom_smooth(method="loess")+
+  geom_hline(aes(yintercept=b.c+1.92),linetype="dashed")+ #put a instead of b+1.92 gives weird plot...
+  geom_hline(aes(yintercept=b.c),linetype="dashed")+
+  geom_vline(aes(xintercept=c.c),linetype="dashed")+
+  geom_vline(aes(xintercept=d.c),linetype="dashed")+
+  ggtitle("Profile likelihood of K under low temperature") -> Kp.c
+
+prof.llh.h %<>%
+  subset(nfail.max==0) %>%
+  mutate(K=exp(signif(log(K),5))) %>%
+  ddply(~K,subset,rank(-loglik)<=1)
+
+prof.llh.h <- prof.llh.h[which(prof.llh.h['K']<3000),] #because of non-monotonic
+
+a.h=max(prof.llh.h$loglik)
+b.h=a.h-1.92
+CI.h=which(prof.llh.h$loglik>=b.h)
+c.h=prof.llh.h$K[min(CI.h)]
+d.h=prof.llh.h$K[max(CI.h)]
+
+
+prof.llh.h %>%
+  ggplot(aes(x=K,y=loglik))+
+  geom_point()+
+  geom_smooth(method="loess")+
+  geom_hline(aes(yintercept=b.h+1.92),linetype="dashed")+ #put a instead of b+1.92 gives weird plot...
+  geom_hline(aes(yintercept=b.h),linetype="dashed")+
+  geom_vline(aes(xintercept=c.h),linetype="dashed")+
+  geom_vline(aes(xintercept=d.h),linetype="dashed")+
+  ggtitle("Profile likelihood of K under high temperature") -> Kp.h
+
+grid.arrange(Kp.c, Kp.h, ncol=2)
+```
+
+The first plot tells us the range of $K$ we choose is too small, the confidence interval seems to be much larger than ~[300, 3500]. The second plot also shows we didn't set lower boundary small enough, but it should be close to ~1000. In short, the confidence interval under low temperature seems to include the one under high temperature completely, and their means are relatively close. So based on this information, we certainly didn't see any evidence supporting a significant temperature dependence of $K$.
+
+# Conclusion
+
+Firstly, the POMP model we build fits reasonably well with data; the value of one of the parameters we fit makes more sense than what is estimated in the original paper. Secondly, we didn't find significant temperature dependence of one of the parameters, which agrees with the original paper's claim.
+
+# Possible extensions
+
+There are a lot of limits of this project due to restrictions of time and computational resources and even more for us to do in the future. For example, we could build a POMP model including both low and high temperature data together, making the results directly comparable with those made by the paper. In terms of computation itself, we could also try different and larger global search ranges for the parameters for better convergence. More CPU time would also give us a complete and more accurate estimate of confidence intervals by profile likelihood methods.
+
+
+Reference:
+
+[1]https://en.wikipedia.org/wiki/Parasitoid
+
+[2]Dominic C. Henri, F.J. Frank Van Veen, in Advances in Ecological Research, 2011
+
+[3]Meisner MH, Harmon JP, Ives AR (2014) Temperature effects on long-term population dynamics in a parasitoid-host system
+
+[4]Previous homework solution: https://ionides.github.io/531w16/hw/sol09.html
+
+[5]Course materials: https://ionides.github.io/531w18/

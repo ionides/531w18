@@ -1,0 +1,459 @@
+---
+title: "Transmission of Smallpox in Michigan from 1928 to 1945"
+date: "April 24, 2018"
+output:
+  html_document:
+    toc: yes
+---
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+setwd("~/Desktop/531final")
+options(cores=4)
+set.seed(594709947L)
+require(ggplot2)
+theme_set(theme_bw())
+require(plyr)
+require(reshape2)
+require(magrittr)
+require(foreach)
+require(doMC)
+require(pomp)
+require(mFilter)
+stopifnot(packageVersion("pomp")>="0.69-1")
+```
+
+#1. Introduction
+[Smallpox](https://en.wikipedia.org/wiki/Smallpox) was an infectious disease caused by one of two virus variants, *Variola major* and *Variola minor*.
+
+Variola major was the severe and most common form, with a more extensive rash and higher fever. Variola minor was a less common presentation, and a much less severe disease, with historical death rates of 1 percent or less.
+
+Smallpox is highly contagious, but generally spreads more slowly and less widely than some other viral diseases, perhaps because transmission requires close contact and occurs after the onset of the rash. The overall rate of infection is also affected by the short duration of the infectious stage.
+
+Smallpox has already been eliminated since 1980s due to the intensified efforts of World Health Organization. Reasearch on the history of the eradication of this disease may be enlightening for the development of new vaccines for other virus. We are going to investigate the transmission of smallpox in Michigan from 1928 to 1945 in this project.
+
+#2. Exploratory Data Analysis
+
+The smallpox cases data in Michigan from 1928 to 1945 is obtained from [Project Tycho](https://www.tycho.pitt.edu/). Besides, we can get the approximate population of Michigan from 1928 to 1945 from [United States Census Bureau](https://www.census.gov/) by doing some simple linear interpolation.
+
+```{r,echo=FALSE,message=FALSE}
+## ----read-in-data--------------------------------------
+
+#Smallpox
+case<-read.table("MI_data.csv",header = TRUE,sep=',')
+pop<-read.table("MI_population.csv",sep=',')
+colnames(pop)<-c("Year","pop")
+
+case$Month<-ceiling(case$Week/4)
+
+case[case$Cases=='-',]$Cases<-0 # Set NA to 0
+case$Cases<-as.numeric(as.character(case$Cases))
+
+casesum<-aggregate(case,by=list(case$Year,case$Month),'sum')
+casesum<-casesum[order(casesum$Group.1,casesum$Group.2),]
+case<-casesum[,c(1,2,5)]
+colnames(case)<-c("Year","Month","Cases")
+case$time<-case$Year+case$Month/13
+
+#Combine data
+
+case<-join(case,pop,type='left',match='all',by="Year")
+case$newborns<-floor(0.02*case$pop)
+
+
+case_data<- case[,c(4,3,5,6)]
+ggplot(data=case,aes(x=time,y=Cases))+geom_line()
+
+##-------smallpox-cases----------------------------------
+
+summary(case_data$Cases)
+
+case_low<-ts(loess(case_data$Cases~case_data$time,span=0.5)$fitted,start = 1928,frequency = 13)
+case_high<-ts(loess(case_data$Cases~case_data$time,span=0.1)$fitted,start = 1928,frequency = 13)
+case_cycles<-case_data$Cases-case_low-case_high
+u1<-ts.union(case_data$Cases,case_low,case_high,case_cycles)
+colnames(u1)=c("Value","Trend","Noise","Cycles")
+plot(u1,main = "Decomposition of smallpox cases as trend + noise + cycles")
+```
+
+From the time plot above, we can see that there were many outbreaks of smallpox in late 1920s to early 1930s. Besides, there was a local maxima in 1939. The overall decreasing trend is obvious from the decomposition plot. There were only a few cases after 1941 and the virus was almost eradicated from Michigan.
+
+We also include population and the number of newborns as covariate variables in our model. Since the number of newborns is inaccessible, it can be estimated as 2% of the total population.
+
+```{r,echo=FALSE}
+##------Covariate-variable-------------------------------
+covartable <- data.frame(
+  time=case_data$time,
+  P=predict(smooth.spline(x=1928:1945,y=case_data$pop[13*(1:18)]),x=case_data$time)$y,
+  newborns=floor(predict(smooth.spline(x=1928:1945,y=case_data$newborns[13*(1:18)]),x=case_data$time)$y)
+)
+covartable %>% melt(id="time") %>%
+  ggplot(aes(x=time,y=value))+geom_point()+facet_wrap(~variable,ncol=1,scales="free_y")
+
+```
+
+#3. POMP Model for Smallpox
+
+We construct a similar model with the one in the case study of polio and take the effects of vaccines into consideration.
+
+The state vector of our model is
+$$X(t)=\big(S^B_1(t),...,S^B_6(t), I^B(t),S^O(t),V(t),I^O(t),R(t) \big).$$
+
+where $S^B_1(t),...,S^B_6(t)$ are the susceptible babies in each of six one-month birth cohorts, $I^B(t)$ is the infected babies, $S^O(t)$ is the susceptible older individuals, $V(t)$ is the vaccined susceptible individuals, $I^O$ is the infected older individuals and $R(t)$ is the recovered people with lifelong immunity. 
+
+We prefer the discreter time model here. In the project, we fitted monthly observations from January 1969 to December 1980, so we define
+$$t_n=1928+ n/13,\ n=1,\dots,N$$
+
+Babies under six months are modeled as fully protected from symptomatic smallpox; older infections lead to reported cases at a rate $\rho$. 
+
+The mean force of infection, in units of $\mathrm{yr}^{-1}$, is modeled as
+$$\bar\lambda_n=\left( \beta_n \frac{I^O_n+I^B_n}{P_n} + \psi \right)$$
+where $P_n$ is census population interpolated to time $t_n$.
+
+Seasonality of transmission is modeled as
+$$\beta_n=\exp\left\{ \sum_{k=1}^K b_k\xi_k(t_n) \right\},$$
+with $\{\xi_k(t),k=1,\dots,K\}$ being a periodic B-spline basis. We set $K=7$. 
+
+The force of infection has a stochastic perturbation,
+$$\lambda_n = \bar\lambda_n \epsilon_n,$$
+where $\epsilon_n$ is a Gamma random variable with mean 1 and variance $\sigma^2_{\mathrm{env}} + \sigma^2_{\mathrm{dem}}\big/\bar\lambda_n$. These two terms capture variation on the environmental and demographic scales, respectively. All compartments suffer a mortality rate, set at $\delta=1/60\mathrm{yr}^{-1}$. 
+
+Within each month, all susceptible individuals are modeled as having exposure to constant competing hazards of mortality and smallpox infection.  The chance of remaining in the susceptible population when exposed to these hazards for one month is therefore
+$$p_n = \exp\big\{ -(\delta+\lambda_n)/12\big\},$$
+with the chance of smallpox infection being 
+$$q_n = (1-p_n)\lambda_n\big/(\lambda_n+\delta).$$
+
+Writing $B_n$ for births in month $n$, we obtain the dynamic model is:
+$$\begin{array}{rcl}
+S^B_{1,n+1}&=&B_{n+1}\\
+S^B_{k,n+1}&=&p_nS^B_{k-1,n} \quad\mbox{for $k=2,\dots,6$}\\
+S^O_{n+1}&=& p_n(S^B_{6,n})\\
+V_{n+1} &=& p_n (V_n+S^O_n)\\
+I^B_{n+1}&=& q_n \sum_{k=1}^6 S^B_{k,n}\\
+I^O_{n+1}&=& q_n (S^O_n + V_n)\\
+\end{array}$$
+
+The model for the reported observations, conditional on the state, is a discretized normal distribution truncated at zero, with both environmental and Poisson-scale contributions to the variance:
+$$Y_n= \max\{\mathrm{round}(Z_n),0\}, \quad Z_n\sim\mathrm{normal}\left(\rho I^O_n, \big(\tau  I^O_n\big)^2 + \rho I^O_n\right).$$
+
+Additional parameters are used to specify initial state values at time $t_0=1928$. 
+We will suppose there are parameters $\big(\tilde S^B_{1,0},...,\tilde S^B_{6,0}, \tilde I^B_0,\tilde I^O_0,\tilde S^O_0,\tilde V_0\big)$ that specify the population in each compartment at time $t_0$ via
+$$ S^B_{1,0}= {\tilde S}^B_{1,0} ,...,S^B_{6,0}= \tilde S^B_{6,0}, \quad I^B_{0}= P_0 \tilde I^B_{0},\quad S^O_{0}= P_0 \tilde S^O_{0}, \quad I^O_{0}= P_0 \tilde I^O_{0},\quad V_{0}= P_0 \tilde V_{0}.$$
+
+We assume $\tilde I^B_{0}=0,\tilde V_{0}=0$ and use monthly births in the preceding months (ignoring infant mortality) to fix $\tilde S^B_{k,0}=B_{-1}=Monthly\ Birth\ in\ 1928$ for $k=1,\dots,6$. The estimated initial conditions are then defined by the two parameters $\tilde I^O_{0}$ and $\tilde S^O_{0}$
+
+#4. Fit a POMP model
+
+```{r,message=FALSE,cache=FALSE,warning=FALSE}
+## ----smallpox_names------------------------------------
+smallpox_statenames <- c("SB1","SB2","SB3","SB4","SB5","SB6","IB","SO","V","IO")
+smallpox_obsnames <- "Cases"
+smallpox_t0 <- 1928
+
+## ----rprocess------------------------------------------------------------
+
+smallpox_K <- 7
+smallpox_tcovar <- case_data$time
+smallpox_bspline_basis <- periodic.bspline.basis(smallpox_tcovar,nbasis=smallpox_K,degree=3,period=1)
+colnames(smallpox_bspline_basis)<- paste("xi",1:smallpox_K,sep="")
+covartable <- data.frame(
+  time=case_data$time,
+  smallpox_bspline_basis,
+  P=predict(smooth.spline(x=1928:1945,y=case_data$pop[13*(1:18)]),x=case_data$time)$y,
+  B=floor(predict(smooth.spline(x=1928:1945,y=case_data$newborns[13*(1:18)]),x=case_data$time)$y)
+)
+
+## ----rp_names------------------------------------------------------------
+smallpox_rp_names <- c("b1","b2","b3","b4","b5","b6","b7","psi","rho","tau","sigma_dem","sigma_env")
+
+## ----ivp_names------------------------------------------------------------
+smallpox_ivp_names <- c("SO_0","IO_0")
+
+## ----fixed_parameters------------------------------------------------------------
+
+smallpox_fp_names <- c("delta","K","SB1_0","SB2_0","SB3_0","SB4_0","SB5_0","SB6_0")
+smallpox_paramnames <- c(smallpox_rp_names,smallpox_ivp_names,smallpox_fp_names)
+smallpox_fixed_params <- c(delta=1/60,K=smallpox_K,SB1_0=case_data$newborns[12],
+                          SB2_0=case_data$newborns[11],SB3_0=case_data$newborns[10],
+                          SB4_0=case_data$newborns[9],SB5_0=case_data$newborns[8],
+                          SB6_0=case_data$newborns[7])
+
+## ----smallpox_mle------------------------------------------------------------
+smallpox_params <- data.matrix(read.csv("smallpox_params.csv",row.names=NULL,header=TRUE))
+smallpox_mle <- c(smallpox_params[which.max(smallpox_params[,"logLik"]),][smallpox_paramnames])
+
+## ----process_model------------------------------------------------------------
+
+smallpox_rprocess <- Csnippet("
+  double lambda, beta, var_epsilon, p, q;
+                           
+beta = exp(dot_product( (int) K, &xi1, &b1));
+lambda = (beta * (IO+IB) / P + psi);
+var_epsilon = pow(sigma_dem,2)/ lambda +  pow(sigma_env,2);
+lambda *= (var_epsilon < 1.0e-6) ? 1 : rgamma(1/var_epsilon,var_epsilon);
+p = exp(- (delta+lambda)/12);
+q = (1-p)*lambda/(delta+lambda);
+SB1 = B;
+SB2= SB1*p;
+SB3=SB2*p;
+SB4=SB3*p;
+SB5=SB4*p;
+SB6=SB5*p;
+SO= (SB6)*p;
+V = (V+SO)*p;
+IB=(SB1+SB2+SB3+SB4+SB5+SB6)*q;
+IO=(SO+V)*q;
+                           ")
+
+## ----measurement_model------------------------------------------------------------
+
+smallpox_dmeasure <- Csnippet("
+double tol = 1.0e-25;
+double mean_cases = rho*IO;
+double sd_cases = sqrt(pow(tau*IO,2) + mean_cases);
+if(Cases > 0.0){
+lik = pnorm(Cases+0.5,mean_cases,sd_cases,1,0) - pnorm(Cases-0.5,mean_cases,sd_cases,1,0) + tol; 
+} else{
+lik = pnorm(Cases+0.5,mean_cases,sd_cases,1,0) + tol;
+}
+if (give_log) lik = log(lik);
+                           ")
+
+
+smallpox_rmeasure <- Csnippet("
+  Cases = rnorm(rho*IO, sqrt( pow(tau*IO,2) + rho*IO ) );
+if (Cases > 0.0) {
+Cases = nearbyint(Cases);
+} else {
+Cases = 0.0;
+}
+                           ")
+
+## ----initializer------------------------------------------------------------
+
+smallpox_initializer <- Csnippet("
+  SB1 = SB1_0;
+  SB2 = SB2_0;
+  SB3 = SB3_0;
+  SB4 = SB4_0;
+  SB5 = SB5_0;
+  SB6 = SB6_0;
+  IB = 0;
+  V = 0;
+  IO = IO_0 * P;
+  SO = SO_0 * P;
+")
+
+## ----Transformation------------------------------------------------------------
+
+smallpox_toEstimationScale <- Csnippet("
+ Tpsi = log(psi);
+ Trho = logit(rho);
+ Ttau = log(tau);
+ Tsigma_dem = log(sigma_dem);
+ Tsigma_env = log(sigma_env);
+ TSO_0 =  logit(SO_0);
+ TIO_0 = logit(IO_0);
+                                    ")
+
+smallpox_fromEstimationScale <- Csnippet("
+ Tpsi = exp(psi);
+ Trho = expit(rho);
+ Ttau = exp(tau);
+ Tsigma_dem = exp(sigma_dem);
+ Tsigma_env = exp(sigma_env);
+ TSO_0 =  expit(SO_0);
+ TIO_0 = expit(IO_0);
+                                      ")
+
+## ----POMP_object------------------------------------------------------------
+
+smallpox2 <- pomp(
+  data=subset(case_data, 
+              (time > smallpox_t0+0.01 ) & (time < 1946+0.01),    
+              select=c("Cases","time")),
+  times="time",
+  t0=smallpox_t0,
+  params=smallpox_mle,
+  rprocess = euler.sim(step.fun = smallpox_rprocess, delta.t=1/13),
+  rmeasure= smallpox_rmeasure,
+  dmeasure = smallpox_dmeasure,
+  covar=covartable,
+  tcovar="time",
+  obsnames = smallpox_obsnames,
+  statenames = smallpox_statenames,
+  paramnames = smallpox_paramnames,
+  covarnames = c("xi1","B","P"),
+  initializer=smallpox_initializer,
+  toEstimationScale=smallpox_toEstimationScale, 
+  fromEstimationScale=smallpox_fromEstimationScale
+)
+plot(smallpox2)
+```
+
+
+```{r,message=FALSE,cache=FALSE,warning=FALSE}
+## ----run_level------------------------------------------------------------
+run_level = 1
+
+smallpox_Np <-          c(100,2e3,1e4)
+smallpox_Nmif <-        c(10, 100,300)
+smallpox_Nreps_eval <-  c(2,  10,  20)
+smallpox_Nreps_local <- c(10, 10, 40)
+smallpox_Nreps_global <-c(10, 10, 80)
+smallpox_Nsim <-        c(50,100, 500) 
+
+require(doMC)
+registerDoMC()
+
+## ----likelihood_evaluation------------------------------------------------------------
+stew(file=sprintf("pf1-%d.rda",run_level),{
+  t1 <- system.time(
+    pf1 <- foreach(i=1:20,.packages='pomp',
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     pfilter(smallpox,Np=smallpox_Np[run_level])
+                   )
+  )
+},seed=493536993,kind="L'Ecuyer")
+
+## ----local_persistence------------------------------------------------------------
+stew(sprintf("persistence-%d.rda",run_level),{
+  t_sim <- system.time(
+    sim <- foreach(i=1:smallpox_Nsim[run_level],.packages='pomp',
+                   .options.multicore=list(set.seed=TRUE)) %dopar% 
+      simulate(smallpox2)
+  )
+},seed=493536993,kind="L'Ecuyer")
+
+no_cases_data <- sum(obs(smallpox2)==0)
+no_cases_sim <- sum(sapply(sim,obs)==0)/length(sim)
+fadeout1_sim <- sum(sapply(sim,function(Ru)states(Ru)["IB",]+states(Ru)["IO",]<1))/length(sim)
+fadeout100_sim <- sum(sapply(sim,function(Ru)states(Ru)["IB",]+states(Ru)["IO",]<100))/length(sim)
+imports_sim <- coef(smallpox2)["psi"]*mean(sapply(sim,function(Ru) mean(states(Ru)["V",]+states(Ru)["SO",]+states(Ru)["SB1",]+states(Ru)["SB2",]+states(Ru)["SB3",]+states(Ru)["SB4",]+states(Ru)["SB5",]+states(Ru)["SB6",])))/13
+
+mle_simulation <- simulate(smallpox2,seed=127)
+plot(mle_simulation)
+```
+
+```{r,message=FALSE,cache=FALSE,warning=FALSE}
+smallpox_rw.sd_rp <- 0.02
+smallpox_rw.sd_ivp <- 0.2
+smallpox_cooling.fraction.50 <- 0.5
+
+stew(sprintf("mif-%d.rda",run_level),{
+  t2 <- system.time({
+    m2 <- foreach(i=1:smallpox_Nreps_local[run_level],
+                  .packages='pomp', .combine=c,
+                  .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                    mif2(smallpox2,
+                         Np=smallpox_Np[run_level],
+                         Nmif=smallpox_Nmif[run_level],
+                         cooling.type="geometric",
+                         cooling.fraction.50=smallpox_cooling.fraction.50,
+                         transform=TRUE,
+                         rw.sd=rw.sd(
+                           b1=smallpox_rw.sd_rp,
+                           b2=smallpox_rw.sd_rp,
+                           b3=smallpox_rw.sd_rp,
+                           b4=smallpox_rw.sd_rp,
+                           b5=smallpox_rw.sd_rp,
+                           b6=smallpox_rw.sd_rp,
+                           b7=smallpox_rw.sd_rp,
+                           psi=smallpox_rw.sd_rp,
+                           rho=smallpox_rw.sd_rp,
+                           tau=smallpox_rw.sd_rp,
+                           sigma_dem=smallpox_rw.sd_rp,
+                           sigma_env=smallpox_rw.sd_rp,
+                           IO_0=ivp(smallpox_rw.sd_ivp),
+                           SO_0=ivp(smallpox_rw.sd_ivp)
+                         )
+                    )
+                  )
+    
+    lik_m2 <- foreach(i=1:smallpox_Nreps_local[run_level],.packages='pomp',
+                      .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                      {
+                        logmeanexp(
+                          replicate(smallpox_Nreps_eval[run_level],
+                                    logLik(pfilter(smallpox2,params=coef(m2[[i]]),Np=smallpox_Np[run_level]))
+                          ),
+                          se=TRUE)
+                      }
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r2 <- data.frame(logLik=lik_m2[,1],logLik_se=lik_m2[,2],t(sapply(m2,coef)))
+summary(r2$logLik, digits=5)
+```
+
+```{r}
+## ----matplot------------------------------------------------------------
+pairs(~logLik+psi+rho+tau+sigma_dem+sigma_env,data=subset(r2,logLik>max(logLik)-100))
+```
+
+```{r}
+## ----global_likelihood_maximization------------------------------------------------------------
+smallpox_box <- rbind(
+  b1=c(-2,8),
+  b2=c(-2,8),
+  b3=c(-2,8),
+  b4=c(-2,8),
+  b5=c(-2,8),
+  b6=c(-2,8),
+  b7=c(-2,8),
+  psi=c(0,0.05),
+  rho=c(0,0.5),
+  tau=c(0,0.1),
+  sigma_dem=c(0,0.5),
+  sigma_env=c(0,2),
+  SO_0=c(0,1),
+  IO_0=c(0,0.01)
+)
+
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t3 <- system.time({
+    m3 <- foreach(i=1:smallpox_Nreps_global[run_level],.packages='pomp',.combine=c,
+                  .options.multicore=list(set.seed=TRUE)) %dopar%  
+      mif2(
+        m2[[1]],
+        start=c(apply(smallpox_box,1,function(x)runif(1,x[1],x[2])),smallpox_fixed_params)
+      )
+    
+    lik_m3 <- foreach(i=1:smallpox_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                      .options.multicore=list(set.seed=TRUE)) %dopar% {
+                        set.seed(87932+i)
+                        logmeanexp(
+                          replicate(smallpox_Nreps_eval[run_level],
+                                    logLik(pfilter(smallpox2,params=coef(m3[[i]]),Np=smallpox_Np[run_level]))
+                          ), 
+                          se=TRUE)
+                      }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+
+r3 <- data.frame(logLik=lik_m3[,1],logLik_se=lik_m3[,2],t(sapply(m3,coef)))
+if(run_level>1) write.csv(rbind(r2,r3),file="smallpox_params.csv",row.names=FALSE)
+summary(r3$logLik,digits=5)
+```
+
+```{r}
+pairs(~logLik+psi+rho+tau+sigma_dem+sigma_env,data=r3)
+```
+
+```{r}
+## ----diagnosis_of_the_maximization_procedure------------------------------------------------------------
+plot(m3[r3$logLik>mean(r3$logLik)])
+```
+
+The diagnositc plot is shown above. The loglikelihood stay at a relative high value and the maximum value is -1041. The plot of loglikelihood shows a good sign of convergence.
+
+#5. Conclusion
+
+* As for the case of smallpox, the POMP model works very well.
+* From the simulation we can see that, the work of WHO had exerted some influence on the incidence rate of smallpox. We know that after 1978, there are no more cases of smallpox.
+* We can increase the number of particles($N_p$) and modify the value of `cooling.fraction` and `rw.sd` in futher research.
+
+#6. References
+
+* [Lecture notes Winter 2018](https://ionides.github.io/531w18/#class-notes) 
+* [Final projects of last class Winter 2016](http://ionides.github.io/531w16/final_project/)

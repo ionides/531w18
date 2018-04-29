@@ -1,0 +1,3099 @@
+activity_date,course_item_type_category,course_item_type_desc,count
+2016-09-10 03:00:00,notebook,notebook,40
+2016-09-10 03:00:00,programming,graded programming,4756
+2016-09-11 03:00:00,programming,graded programming,420
+2016-09-11 03:00:00,notebook,notebook,52
+2016-09-12 03:00:00,lecture,lecture,4
+2016-09-12 03:00:00,programming,graded programming,88
+2016-09-12 03:00:00,notebook,notebook,60
+2016-09-13 03:00:00,notebook,notebook,8
+2016-09-14 03:00:00,notebook,notebook,20
+2016-09-15 03:00:00,notebook,notebook,16
+2016-09-15 03:00:00,programming,graded programming,2504
+2016-09-19 03:00:00,notebook,notebook,16
+2016-09-20 03:00:00,notebook,notebook,16
+2016-09-21 03:00:00,notebook,notebook,24
+2016-09-21 03:00:00,programming,graded programming,352
+2016-09-21 03:00:00,lecture,lecture,4
+2016-09-25 03:00:00,lecture,lecture,99
+2016-09-25 03:00:00,notebook,notebook,8
+2016-09-26 03:00:00,notebook,notebook,44
+2016-09-26 03:00:00,lecture,lecture,4
+2016-09-26 03:00:00,programming,graded programming,928
+2016-09-27 03:00:00,notebook,notebook,108
+2016-09-27 03:00:00,lecture,lecture,4
+2016-09-27 03:00:00,programming,graded programming,472
+2016-09-28 03:00:00,notebook,notebook,20
+2016-09-28 03:00:00,programming,graded programming,22700
+2016-09-29 03:00:00,programming,graded programming,15412
+2016-09-30 03:00:00,programming,graded programming,8348
+2016-10-01 03:00:00,programming,graded programming,17664
+2016-10-01 03:00:00,notebook,notebook,16
+2016-10-02 03:00:00,programming,graded programming,100
+2016-10-02 03:00:00,notebook,notebook,8
+2016-10-04 03:00:00,supplement,supplement,680
+2016-10-04 03:00:00,notebook,notebook,676
+2016-10-04 03:00:00,,others,30
+2016-10-04 03:00:00,lecture,lecture,3166
+2016-10-04 03:00:00,programming,graded programming,29104
+2016-10-04 03:00:00,quiz,exam,348
+2016-10-05 03:00:00,quiz,exam,344
+2016-10-05 03:00:00,notebook,notebook,532
+2016-10-05 03:00:00,lecture,lecture,2455
+2016-10-05 03:00:00,supplement,supplement,312
+2016-10-05 03:00:00,programming,graded programming,39100
+2016-10-05 03:00:00,,others,3
+2016-10-06 03:00:00,notebook,notebook,416
+2016-10-06 03:00:00,supplement,supplement,152
+2016-10-06 03:00:00,lecture,lecture,2066
+2016-10-06 03:00:00,quiz,exam,324
+2016-10-06 03:00:00,programming,graded programming,1144
+2016-10-06 03:00:00,,others,12
+2016-10-07 03:00:00,notebook,notebook,432
+2016-10-07 03:00:00,programming,graded programming,3312
+2016-10-07 03:00:00,supplement,supplement,152
+2016-10-07 03:00:00,,others,6
+2016-10-07 03:00:00,quiz,exam,152
+2016-10-07 03:00:00,lecture,lecture,1512
+2016-10-08 03:00:00,quiz,exam,280
+2016-10-08 03:00:00,lecture,lecture,1130
+2016-10-08 03:00:00,programming,graded programming,5596
+2016-10-08 03:00:00,notebook,notebook,256
+2016-10-08 03:00:00,supplement,supplement,76
+2016-10-09 03:00:00,quiz,exam,384
+2016-10-09 03:00:00,notebook,notebook,468
+2016-10-09 03:00:00,supplement,supplement,164
+2016-10-09 03:00:00,lecture,lecture,1799
+2016-10-09 03:00:00,programming,graded programming,6712
+2016-10-09 03:00:00,,others,4
+2016-10-10 03:00:00,supplement,supplement,152
+2016-10-10 03:00:00,lecture,lecture,2311
+2016-10-10 03:00:00,,others,14
+2016-10-10 03:00:00,notebook,notebook,664
+2016-10-10 03:00:00,quiz,exam,448
+2016-10-10 03:00:00,programming,graded programming,9140
+2016-10-11 03:00:00,lecture,lecture,576
+2016-10-11 03:00:00,programming,graded programming,2512
+2016-10-11 03:00:00,notebook,notebook,188
+2016-10-11 03:00:00,,others,6
+2016-10-11 03:00:00,supplement,supplement,40
+2016-10-11 03:00:00,quiz,exam,120
+2016-10-12 03:00:00,quiz,exam,12
+2016-10-12 03:00:00,lecture,lecture,196
+2016-10-12 03:00:00,supplement,supplement,4
+2016-10-12 03:00:00,notebook,notebook,164
+2016-10-12 03:00:00,programming,graded programming,4944
+2016-10-13 03:00:00,lecture,lecture,314
+2016-10-13 03:00:00,notebook,notebook,204
+2016-10-13 03:00:00,supplement,supplement,40
+2016-10-13 03:00:00,quiz,exam,40
+2016-10-13 03:00:00,programming,graded programming,12064
+2016-10-14 03:00:00,notebook,notebook,200
+2016-10-14 03:00:00,lecture,lecture,138
+2016-10-14 03:00:00,supplement,supplement,16
+2016-10-14 03:00:00,quiz,exam,12
+2016-10-14 03:00:00,programming,graded programming,23424
+2016-10-15 03:00:00,supplement,supplement,8
+2016-10-15 03:00:00,notebook,notebook,60
+2016-10-15 03:00:00,lecture,lecture,192
+2016-10-15 03:00:00,programming,graded programming,6724
+2016-10-15 03:00:00,quiz,exam,20
+2016-10-16 03:00:00,quiz,exam,4
+2016-10-16 03:00:00,notebook,notebook,140
+2016-10-16 03:00:00,supplement,supplement,12
+2016-10-16 03:00:00,lecture,lecture,310
+2016-10-16 03:00:00,programming,graded programming,2216
+2016-10-17 03:00:00,notebook,notebook,108
+2016-10-17 03:00:00,programming,graded programming,6092
+2016-10-17 03:00:00,lecture,lecture,179
+2016-10-17 03:00:00,supplement,supplement,4
+2016-10-18 03:00:00,quiz,exam,24
+2016-10-18 03:00:00,lecture,lecture,222
+2016-10-18 03:00:00,programming,graded programming,5556
+2016-10-18 03:00:00,notebook,notebook,88
+2016-10-18 03:00:00,,others,4
+2016-10-19 03:00:00,programming,graded programming,14320
+2016-10-19 03:00:00,lecture,lecture,140
+2016-10-19 03:00:00,notebook,notebook,96
+2016-10-20 03:00:00,notebook,notebook,68
+2016-10-20 03:00:00,lecture,lecture,157
+2016-10-20 03:00:00,programming,graded programming,3100
+2016-10-21 03:00:00,lecture,lecture,123
+2016-10-21 03:00:00,notebook,notebook,36
+2016-10-21 03:00:00,programming,graded programming,864
+2016-10-22 03:00:00,programming,graded programming,1432
+2016-10-22 03:00:00,supplement,supplement,4
+2016-10-22 03:00:00,notebook,notebook,100
+2016-10-22 03:00:00,quiz,exam,4
+2016-10-22 03:00:00,lecture,lecture,124
+2016-10-23 03:00:00,notebook,notebook,92
+2016-10-23 03:00:00,lecture,lecture,230
+2016-10-23 03:00:00,quiz,exam,44
+2016-10-23 03:00:00,programming,graded programming,924
+2016-10-24 03:00:00,,others,6
+2016-10-24 03:00:00,quiz,exam,508
+2016-10-24 03:00:00,supplement,supplement,4052
+2016-10-24 03:00:00,lecture,lecture,10829
+2016-10-24 03:00:00,programming,graded programming,10928
+2016-10-24 03:00:00,notebook,notebook,1928
+2016-10-25 03:00:00,lecture,lecture,95206
+2016-10-25 03:00:00,programming,graded programming,58656
+2016-10-25 03:00:00,notebook,notebook,17092
+2016-10-25 03:00:00,,others,32
+2016-10-25 03:00:00,supplement,supplement,24882
+2016-10-25 03:00:00,quiz,exam,8184
+2016-10-26 03:00:00,quiz,exam,12300
+2016-10-26 03:00:00,lecture,lecture,116536
+2016-10-26 03:00:00,programming,graded programming,105112
+2016-10-26 03:00:00,supplement,supplement,24003
+2016-10-26 03:00:00,notebook,notebook,22540
+2016-10-27 03:00:00,supplement,supplement,14927
+2016-10-27 03:00:00,notebook,notebook,20884
+2016-10-27 03:00:00,quiz,exam,12984
+2016-10-27 03:00:00,lecture,lecture,93981
+2016-10-27 03:00:00,,others,27
+2016-10-27 03:00:00,programming,graded programming,232784
+2016-10-28 03:00:00,supplement,supplement,11614
+2016-10-28 03:00:00,lecture,lecture,80957
+2016-10-28 03:00:00,quiz,exam,11624
+2016-10-28 03:00:00,notebook,notebook,18920
+2016-10-28 03:00:00,programming,graded programming,252864
+2016-10-28 03:00:00,,others,24
+2016-10-29 03:00:00,notebook,notebook,24048
+2016-10-29 03:00:00,supplement,supplement,8703
+2016-10-29 03:00:00,lecture,lecture,69636
+2016-10-29 03:00:00,programming,graded programming,315936
+2016-10-29 03:00:00,,others,11
+2016-10-29 03:00:00,quiz,exam,12148
+2016-10-30 03:00:00,lecture,lecture,75996
+2016-10-30 03:00:00,supplement,supplement,7906
+2016-10-30 03:00:00,,others,24
+2016-10-30 03:00:00,notebook,notebook,18988
+2016-10-30 03:00:00,quiz,exam,16636
+2016-10-30 03:00:00,programming,graded programming,465764
+2016-10-31 03:00:00,supplement,supplement,6576
+2016-10-31 03:00:00,lecture,lecture,75117
+2016-10-31 03:00:00,,others,28
+2016-10-31 03:00:00,programming,graded programming,590260
+2016-10-31 03:00:00,notebook,notebook,22104
+2016-10-31 03:00:00,quiz,exam,14204
+2016-11-01 03:00:00,lecture,lecture,46934
+2016-11-01 03:00:00,supplement,supplement,4367
+2016-11-01 03:00:00,notebook,notebook,20876
+2016-11-01 03:00:00,,others,34
+2016-11-01 03:00:00,quiz,exam,6020
+2016-11-01 03:00:00,programming,graded programming,552072
+2016-11-02 03:00:00,supplement,supplement,4615
+2016-11-02 03:00:00,notebook,notebook,22184
+2016-11-02 03:00:00,programming,graded programming,753824
+2016-11-02 03:00:00,lecture,lecture,53081
+2016-11-02 03:00:00,,others,22
+2016-11-02 03:00:00,quiz,exam,5904
+2016-11-03 03:00:00,programming,graded programming,850872
+2016-11-03 03:00:00,lecture,lecture,47449
+2016-11-03 03:00:00,supplement,supplement,3335
+2016-11-03 03:00:00,notebook,notebook,25032
+2016-11-03 03:00:00,quiz,exam,4044
+2016-11-03 03:00:00,,others,65
+2016-11-04 03:00:00,quiz,exam,2788
+2016-11-04 03:00:00,notebook,notebook,23128
+2016-11-04 03:00:00,programming,graded programming,842236
+2016-11-04 03:00:00,lecture,lecture,40338
+2016-11-04 03:00:00,supplement,supplement,2448
+2016-11-04 03:00:00,,others,29
+2016-11-05 03:00:00,supplement,supplement,2389
+2016-11-05 03:00:00,lecture,lecture,40073
+2016-11-05 03:00:00,quiz,exam,2688
+2016-11-05 03:00:00,notebook,notebook,26852
+2016-11-05 03:00:00,programming,graded programming,837704
+2016-11-05 03:00:00,,others,53
+2016-11-06 02:00:00,supplement,supplement,2441
+2016-11-06 02:00:00,notebook,notebook,36020
+2016-11-06 02:00:00,,others,75
+2016-11-06 02:00:00,quiz,exam,2308
+2016-11-06 02:00:00,programming,graded programming,1243768
+2016-11-06 02:00:00,lecture,lecture,46709
+2016-11-07 03:00:00,notebook,notebook,36388
+2016-11-07 03:00:00,lecture,lecture,40480
+2016-11-07 03:00:00,supplement,supplement,2509
+2016-11-07 03:00:00,quiz,exam,2368
+2016-11-07 03:00:00,,others,87
+2016-11-07 03:00:00,programming,graded programming,1384696
+2016-11-08 03:00:00,supplement,supplement,3226
+2016-11-08 03:00:00,lecture,lecture,43076
+2016-11-08 03:00:00,quiz,exam,2888
+2016-11-08 03:00:00,notebook,notebook,31160
+2016-11-08 03:00:00,,others,96
+2016-11-08 03:00:00,programming,graded programming,1184168
+2016-11-09 03:00:00,quiz,exam,1600
+2016-11-09 03:00:00,lecture,lecture,24608
+2016-11-09 03:00:00,notebook,notebook,19312
+2016-11-09 03:00:00,supplement,supplement,1430
+2016-11-09 03:00:00,,others,87
+2016-11-09 03:00:00,programming,graded programming,956556
+2016-11-10 03:00:00,programming,graded programming,135728
+2016-11-10 03:00:00,notebook,notebook,17508
+2016-11-10 03:00:00,,others,107
+2016-11-10 03:00:00,lecture,lecture,25368
+2016-11-10 03:00:00,supplement,supplement,1607
+2016-11-10 03:00:00,quiz,exam,1580
+2016-11-11 03:00:00,supplement,supplement,1153
+2016-11-11 03:00:00,quiz,exam,1728
+2016-11-11 03:00:00,,others,143
+2016-11-11 03:00:00,lecture,lecture,22798
+2016-11-11 03:00:00,programming,graded programming,10988
+2016-11-11 03:00:00,notebook,notebook,15740
+2016-11-12 03:00:00,lecture,lecture,22961
+2016-11-12 03:00:00,supplement,supplement,1083
+2016-11-12 03:00:00,notebook,notebook,17316
+2016-11-12 03:00:00,quiz,exam,1168
+2016-11-12 03:00:00,,others,108
+2016-11-12 03:00:00,programming,graded programming,13728
+2016-11-13 03:00:00,notebook,notebook,21556
+2016-11-13 03:00:00,lecture,lecture,25568
+2016-11-13 03:00:00,programming,graded programming,21408
+2016-11-13 03:00:00,,others,132
+2016-11-13 03:00:00,supplement,supplement,1289
+2016-11-13 03:00:00,quiz,exam,1568
+2016-11-14 03:00:00,notebook,notebook,18356
+2016-11-14 03:00:00,,others,136
+2016-11-14 03:00:00,lecture,lecture,24127
+2016-11-14 03:00:00,programming,graded programming,18304
+2016-11-14 03:00:00,supplement,supplement,1156
+2016-11-14 03:00:00,quiz,exam,1596
+2016-11-15 03:00:00,lecture,lecture,21360
+2016-11-15 03:00:00,supplement,supplement,1053
+2016-11-15 03:00:00,notebook,notebook,16592
+2016-11-15 03:00:00,quiz,exam,952
+2016-11-15 03:00:00,,others,137
+2016-11-15 03:00:00,programming,graded programming,15496
+2016-11-16 03:00:00,supplement,supplement,938
+2016-11-16 03:00:00,notebook,notebook,14264
+2016-11-16 03:00:00,,others,82
+2016-11-16 03:00:00,quiz,exam,1212
+2016-11-16 03:00:00,lecture,lecture,19545
+2016-11-16 03:00:00,programming,graded programming,8964
+2016-11-17 03:00:00,quiz,exam,788
+2016-11-17 03:00:00,supplement,supplement,870
+2016-11-17 03:00:00,,others,150
+2016-11-17 03:00:00,notebook,notebook,13716
+2016-11-17 03:00:00,programming,graded programming,9920
+2016-11-17 03:00:00,lecture,lecture,15999
+2016-11-18 03:00:00,lecture,lecture,14622
+2016-11-18 03:00:00,quiz,exam,644
+2016-11-18 03:00:00,notebook,notebook,13780
+2016-11-18 03:00:00,supplement,supplement,708
+2016-11-18 03:00:00,programming,graded programming,9700
+2016-11-18 03:00:00,,others,135
+2016-11-19 03:00:00,notebook,notebook,12696
+2016-11-19 03:00:00,,others,82
+2016-11-19 03:00:00,programming,graded programming,11376
+2016-11-19 03:00:00,supplement,supplement,755
+2016-11-19 03:00:00,lecture,lecture,11561
+2016-11-19 03:00:00,quiz,exam,324
+2016-11-20 03:00:00,notebook,notebook,13944
+2016-11-20 03:00:00,lecture,lecture,14176
+2016-11-20 03:00:00,supplement,supplement,749
+2016-11-20 03:00:00,quiz,exam,836
+2016-11-20 03:00:00,programming,graded programming,17236
+2016-11-20 03:00:00,,others,131
+2016-11-21 03:00:00,supplement,supplement,1041
+2016-11-21 03:00:00,notebook,notebook,12460
+2016-11-21 03:00:00,,others,103
+2016-11-21 03:00:00,quiz,exam,592
+2016-11-21 03:00:00,lecture,lecture,15246
+2016-11-21 03:00:00,programming,graded programming,11968
+2016-11-22 03:00:00,notebook,notebook,9796
+2016-11-22 03:00:00,lecture,lecture,12407
+2016-11-22 03:00:00,supplement,supplement,864
+2016-11-22 03:00:00,quiz,exam,1004
+2016-11-22 03:00:00,programming,graded programming,7528
+2016-11-22 03:00:00,,others,59
+2016-11-23 03:00:00,quiz,exam,656
+2016-11-23 03:00:00,supplement,supplement,644
+2016-11-23 03:00:00,lecture,lecture,9916
+2016-11-23 03:00:00,programming,graded programming,7336
+2016-11-23 03:00:00,notebook,notebook,8504
+2016-11-23 03:00:00,,others,42
+2016-11-24 03:00:00,,others,35
+2016-11-24 03:00:00,lecture,lecture,9008
+2016-11-24 03:00:00,quiz,exam,636
+2016-11-24 03:00:00,supplement,supplement,982
+2016-11-24 03:00:00,programming,graded programming,4860
+2016-11-24 03:00:00,notebook,notebook,6952
+2016-11-25 03:00:00,,others,14
+2016-11-25 03:00:00,supplement,supplement,461
+2016-11-25 03:00:00,lecture,lecture,8022
+2016-11-25 03:00:00,programming,graded programming,4256
+2016-11-25 03:00:00,notebook,notebook,6428
+2016-11-25 03:00:00,quiz,exam,336
+2016-11-26 03:00:00,supplement,supplement,519
+2016-11-26 03:00:00,quiz,exam,588
+2016-11-26 03:00:00,notebook,notebook,7132
+2016-11-26 03:00:00,lecture,lecture,8253
+2016-11-26 03:00:00,programming,graded programming,5760
+2016-11-26 03:00:00,,others,31
+2016-11-27 03:00:00,notebook,notebook,7196
+2016-11-27 03:00:00,lecture,lecture,9253
+2016-11-27 03:00:00,quiz,exam,416
+2016-11-27 03:00:00,,others,35
+2016-11-27 03:00:00,supplement,supplement,566
+2016-11-27 03:00:00,programming,graded programming,5632
+2016-11-28 03:00:00,supplement,supplement,488
+2016-11-28 03:00:00,,others,26
+2016-11-28 03:00:00,notebook,notebook,4188
+2016-11-28 03:00:00,lecture,lecture,7603
+2016-11-28 03:00:00,quiz,exam,468
+2016-11-28 03:00:00,programming,graded programming,2916
+2016-11-29 03:00:00,quiz,exam,252
+2016-11-29 03:00:00,notebook,notebook,2980
+2016-11-29 03:00:00,,others,18
+2016-11-29 03:00:00,lecture,lecture,7469
+2016-11-29 03:00:00,supplement,supplement,396
+2016-11-29 03:00:00,programming,graded programming,1824
+2016-11-30 03:00:00,,others,13
+2016-11-30 03:00:00,programming,graded programming,1548
+2016-11-30 03:00:00,supplement,supplement,392
+2016-11-30 03:00:00,lecture,lecture,6253
+2016-11-30 03:00:00,notebook,notebook,2832
+2016-11-30 03:00:00,quiz,exam,360
+2016-12-01 03:00:00,notebook,notebook,2648
+2016-12-01 03:00:00,quiz,exam,284
+2016-12-01 03:00:00,lecture,lecture,5167
+2016-12-01 03:00:00,,others,10
+2016-12-01 03:00:00,supplement,supplement,352
+2016-12-01 03:00:00,programming,graded programming,1752
+2016-12-02 03:00:00,lecture,lecture,4718
+2016-12-02 03:00:00,notebook,notebook,2500
+2016-12-02 03:00:00,programming,graded programming,1512
+2016-12-02 03:00:00,supplement,supplement,425
+2016-12-02 03:00:00,quiz,exam,224
+2016-12-02 03:00:00,,others,11
+2016-12-03 03:00:00,supplement,supplement,390
+2016-12-03 03:00:00,programming,graded programming,1316
+2016-12-03 03:00:00,quiz,exam,104
+2016-12-03 03:00:00,,others,10
+2016-12-03 03:00:00,notebook,notebook,2212
+2016-12-03 03:00:00,lecture,lecture,4275
+2016-12-04 03:00:00,notebook,notebook,2716
+2016-12-04 03:00:00,quiz,exam,228
+2016-12-04 03:00:00,supplement,supplement,446
+2016-12-04 03:00:00,lecture,lecture,5543
+2016-12-04 03:00:00,programming,graded programming,1880
+2016-12-04 03:00:00,,others,12
+2016-12-05 03:00:00,notebook,notebook,3244
+2016-12-05 03:00:00,lecture,lecture,6874
+2016-12-05 03:00:00,supplement,supplement,619
+2016-12-05 03:00:00,quiz,exam,368
+2016-12-05 03:00:00,programming,graded programming,1940
+2016-12-05 03:00:00,,others,9
+2016-12-06 03:00:00,,others,27
+2016-12-06 03:00:00,supplement,supplement,553
+2016-12-06 03:00:00,programming,graded programming,1448
+2016-12-06 03:00:00,quiz,exam,348
+2016-12-06 03:00:00,notebook,notebook,2704
+2016-12-06 03:00:00,lecture,lecture,7302
+2016-12-07 03:00:00,notebook,notebook,2780
+2016-12-07 03:00:00,lecture,lecture,6760
+2016-12-07 03:00:00,quiz,exam,324
+2016-12-07 03:00:00,,others,41
+2016-12-07 03:00:00,supplement,supplement,460
+2016-12-07 03:00:00,programming,graded programming,1424
+2016-12-08 03:00:00,,others,23
+2016-12-08 03:00:00,lecture,lecture,7073
+2016-12-08 03:00:00,programming,graded programming,1748
+2016-12-08 03:00:00,notebook,notebook,3400
+2016-12-08 03:00:00,supplement,supplement,556
+2016-12-08 03:00:00,quiz,exam,576
+2016-12-09 03:00:00,supplement,supplement,536
+2016-12-09 03:00:00,lecture,lecture,5991
+2016-12-09 03:00:00,programming,graded programming,1412
+2016-12-09 03:00:00,notebook,notebook,2592
+2016-12-09 03:00:00,,others,7
+2016-12-09 03:00:00,quiz,exam,488
+2016-12-10 03:00:00,lecture,lecture,5191
+2016-12-10 03:00:00,notebook,notebook,2256
+2016-12-10 03:00:00,quiz,exam,344
+2016-12-10 03:00:00,supplement,supplement,348
+2016-12-10 03:00:00,programming,graded programming,1376
+2016-12-10 03:00:00,,others,3
+2016-12-11 03:00:00,lecture,lecture,4852
+2016-12-11 03:00:00,supplement,supplement,327
+2016-12-11 03:00:00,quiz,exam,440
+2016-12-11 03:00:00,notebook,notebook,3036
+2016-12-11 03:00:00,programming,graded programming,1936
+2016-12-11 03:00:00,,others,6
+2016-12-12 03:00:00,notebook,notebook,2664
+2016-12-12 03:00:00,supplement,supplement,387
+2016-12-12 03:00:00,lecture,lecture,6261
+2016-12-12 03:00:00,programming,graded programming,1324
+2016-12-12 03:00:00,quiz,exam,484
+2016-12-12 03:00:00,,others,17
+2016-12-13 03:00:00,notebook,notebook,3560
+2016-12-13 03:00:00,lecture,lecture,6304
+2016-12-13 03:00:00,quiz,exam,252
+2016-12-13 03:00:00,supplement,supplement,487
+2016-12-13 03:00:00,programming,graded programming,1872
+2016-12-13 03:00:00,,others,20
+2016-12-14 03:00:00,notebook,notebook,2788
+2016-12-14 03:00:00,programming,graded programming,1996
+2016-12-14 03:00:00,quiz,exam,244
+2016-12-14 03:00:00,,others,11
+2016-12-14 03:00:00,lecture,lecture,5392
+2016-12-14 03:00:00,supplement,supplement,310
+2016-12-15 03:00:00,lecture,lecture,5118
+2016-12-15 03:00:00,supplement,supplement,381
+2016-12-15 03:00:00,notebook,notebook,2640
+2016-12-15 03:00:00,quiz,exam,188
+2016-12-15 03:00:00,programming,graded programming,1908
+2016-12-15 03:00:00,,others,21
+2016-12-16 03:00:00,notebook,notebook,2948
+2016-12-16 03:00:00,lecture,lecture,4715
+2016-12-16 03:00:00,supplement,supplement,289
+2016-12-16 03:00:00,programming,graded programming,1272
+2016-12-16 03:00:00,quiz,exam,328
+2016-12-16 03:00:00,,others,6
+2016-12-17 03:00:00,supplement,supplement,281
+2016-12-17 03:00:00,lecture,lecture,4290
+2016-12-17 03:00:00,notebook,notebook,2428
+2016-12-17 03:00:00,programming,graded programming,1284
+2016-12-17 03:00:00,quiz,exam,244
+2016-12-17 03:00:00,,others,9
+2016-12-18 03:00:00,programming,graded programming,2392
+2016-12-18 03:00:00,supplement,supplement,288
+2016-12-18 03:00:00,,others,14
+2016-12-18 03:00:00,quiz,exam,372
+2016-12-18 03:00:00,lecture,lecture,4951
+2016-12-18 03:00:00,notebook,notebook,2880
+2016-12-19 03:00:00,programming,graded programming,2288
+2016-12-19 03:00:00,supplement,supplement,376
+2016-12-19 03:00:00,,others,12
+2016-12-19 03:00:00,quiz,exam,340
+2016-12-19 03:00:00,notebook,notebook,3284
+2016-12-19 03:00:00,lecture,lecture,5211
+2016-12-20 03:00:00,lecture,lecture,5257
+2016-12-20 03:00:00,supplement,supplement,425
+2016-12-20 03:00:00,notebook,notebook,3064
+2016-12-20 03:00:00,quiz,exam,324
+2016-12-20 03:00:00,programming,graded programming,1712
+2016-12-21 03:00:00,quiz,exam,300
+2016-12-21 03:00:00,supplement,supplement,344
+2016-12-21 03:00:00,lecture,lecture,4960
+2016-12-21 03:00:00,programming,graded programming,1500
+2016-12-21 03:00:00,notebook,notebook,3028
+2016-12-21 03:00:00,,others,14
+2016-12-22 03:00:00,lecture,lecture,5654
+2016-12-22 03:00:00,supplement,supplement,408
+2016-12-22 03:00:00,notebook,notebook,3076
+2016-12-22 03:00:00,programming,graded programming,1888
+2016-12-22 03:00:00,quiz,exam,276
+2016-12-22 03:00:00,,others,7
+2016-12-23 03:00:00,programming,graded programming,1232
+2016-12-23 03:00:00,supplement,supplement,315
+2016-12-23 03:00:00,,others,14
+2016-12-23 03:00:00,quiz,exam,180
+2016-12-23 03:00:00,lecture,lecture,4956
+2016-12-23 03:00:00,notebook,notebook,2400
+2016-12-24 03:00:00,programming,graded programming,1092
+2016-12-24 03:00:00,supplement,supplement,273
+2016-12-24 03:00:00,,others,8
+2016-12-24 03:00:00,quiz,exam,224
+2016-12-24 03:00:00,lecture,lecture,3544
+2016-12-24 03:00:00,notebook,notebook,1592
+2016-12-25 03:00:00,notebook,notebook,1684
+2016-12-25 03:00:00,supplement,supplement,192
+2016-12-25 03:00:00,quiz,exam,252
+2016-12-25 03:00:00,,others,13
+2016-12-25 03:00:00,lecture,lecture,3481
+2016-12-25 03:00:00,programming,graded programming,860
+2016-12-26 03:00:00,notebook,notebook,2140
+2016-12-26 03:00:00,quiz,exam,348
+2016-12-26 03:00:00,lecture,lecture,3690
+2016-12-26 03:00:00,supplement,supplement,334
+2016-12-26 03:00:00,programming,graded programming,1228
+2016-12-26 03:00:00,,others,7
+2016-12-27 03:00:00,supplement,supplement,404
+2016-12-27 03:00:00,notebook,notebook,2668
+2016-12-27 03:00:00,programming,graded programming,1252
+2016-12-27 03:00:00,lecture,lecture,5389
+2016-12-27 03:00:00,,others,6
+2016-12-27 03:00:00,quiz,exam,264
+2016-12-28 03:00:00,lecture,lecture,4168
+2016-12-28 03:00:00,supplement,supplement,269
+2016-12-28 03:00:00,notebook,notebook,2316
+2016-12-28 03:00:00,quiz,exam,304
+2016-12-28 03:00:00,,others,27
+2016-12-28 03:00:00,programming,graded programming,956
+2016-12-29 03:00:00,notebook,notebook,2632
+2016-12-29 03:00:00,supplement,supplement,293
+2016-12-29 03:00:00,lecture,lecture,4187
+2016-12-29 03:00:00,quiz,exam,144
+2016-12-29 03:00:00,,others,17
+2016-12-29 03:00:00,programming,graded programming,1192
+2016-12-30 03:00:00,lecture,lecture,4397
+2016-12-30 03:00:00,notebook,notebook,2368
+2016-12-30 03:00:00,programming,graded programming,1480
+2016-12-30 03:00:00,supplement,supplement,350
+2016-12-30 03:00:00,,others,7
+2016-12-30 03:00:00,quiz,exam,128
+2016-12-31 03:00:00,supplement,supplement,207
+2016-12-31 03:00:00,notebook,notebook,1900
+2016-12-31 03:00:00,quiz,exam,156
+2016-12-31 03:00:00,lecture,lecture,3377
+2016-12-31 03:00:00,programming,graded programming,808
+2016-12-31 03:00:00,,others,15
+2017-01-01 03:00:00,notebook,notebook,1916
+2017-01-01 03:00:00,,others,10
+2017-01-01 03:00:00,supplement,supplement,166
+2017-01-01 03:00:00,lecture,lecture,2678
+2017-01-01 03:00:00,programming,graded programming,724
+2017-01-01 03:00:00,quiz,exam,96
+2017-01-02 03:00:00,lecture,lecture,5465
+2017-01-02 03:00:00,supplement,supplement,559
+2017-01-02 03:00:00,notebook,notebook,2572
+2017-01-02 03:00:00,quiz,exam,292
+2017-01-02 03:00:00,programming,graded programming,1460
+2017-01-02 03:00:00,,others,10
+2017-01-03 03:00:00,supplement,supplement,530
+2017-01-03 03:00:00,lecture,lecture,6103
+2017-01-03 03:00:00,notebook,notebook,2860
+2017-01-03 03:00:00,quiz,exam,256
+2017-01-03 03:00:00,programming,graded programming,1520
+2017-01-03 03:00:00,,others,12
+2017-01-04 03:00:00,lecture,lecture,5518
+2017-01-04 03:00:00,notebook,notebook,3148
+2017-01-04 03:00:00,quiz,exam,352
+2017-01-04 03:00:00,supplement,supplement,491
+2017-01-04 03:00:00,programming,graded programming,1476
+2017-01-04 03:00:00,,others,18
+2017-01-05 03:00:00,lecture,lecture,4742
+2017-01-05 03:00:00,quiz,exam,316
+2017-01-05 03:00:00,supplement,supplement,337
+2017-01-05 03:00:00,programming,graded programming,968
+2017-01-05 03:00:00,notebook,notebook,2780
+2017-01-05 03:00:00,,others,11
+2017-01-06 03:00:00,notebook,notebook,2532
+2017-01-06 03:00:00,programming,graded programming,976
+2017-01-06 03:00:00,lecture,lecture,3611
+2017-01-06 03:00:00,,others,12
+2017-01-06 03:00:00,supplement,supplement,268
+2017-01-06 03:00:00,quiz,exam,292
+2017-01-07 03:00:00,lecture,lecture,3758
+2017-01-07 03:00:00,notebook,notebook,2788
+2017-01-07 03:00:00,supplement,supplement,239
+2017-01-07 03:00:00,quiz,exam,320
+2017-01-07 03:00:00,,others,32
+2017-01-07 03:00:00,programming,graded programming,1280
+2017-01-08 03:00:00,notebook,notebook,2792
+2017-01-08 03:00:00,lecture,lecture,3548
+2017-01-08 03:00:00,quiz,exam,268
+2017-01-08 03:00:00,supplement,supplement,215
+2017-01-08 03:00:00,programming,graded programming,1548
+2017-01-08 03:00:00,,others,12
+2017-01-09 03:00:00,programming,graded programming,1244
+2017-01-09 03:00:00,supplement,supplement,255
+2017-01-09 03:00:00,notebook,notebook,2692
+2017-01-09 03:00:00,quiz,exam,256
+2017-01-09 03:00:00,lecture,lecture,3828
+2017-01-09 03:00:00,,others,7
+2017-01-10 03:00:00,,others,13
+2017-01-10 03:00:00,supplement,supplement,373
+2017-01-10 03:00:00,lecture,lecture,4143
+2017-01-10 03:00:00,quiz,exam,364
+2017-01-10 03:00:00,notebook,notebook,2480
+2017-01-10 03:00:00,programming,graded programming,1736
+2017-01-11 03:00:00,quiz,exam,288
+2017-01-11 03:00:00,lecture,lecture,3214
+2017-01-11 03:00:00,,others,6
+2017-01-11 03:00:00,supplement,supplement,204
+2017-01-11 03:00:00,notebook,notebook,2564
+2017-01-11 03:00:00,programming,graded programming,1000
+2017-01-12 03:00:00,supplement,supplement,174
+2017-01-12 03:00:00,notebook,notebook,2544
+2017-01-12 03:00:00,programming,graded programming,1120
+2017-01-12 03:00:00,lecture,lecture,3729
+2017-01-12 03:00:00,quiz,exam,172
+2017-01-12 03:00:00,,others,12
+2017-01-13 03:00:00,quiz,exam,124
+2017-01-13 03:00:00,lecture,lecture,3051
+2017-01-13 03:00:00,supplement,supplement,290
+2017-01-13 03:00:00,notebook,notebook,2264
+2017-01-13 03:00:00,programming,graded programming,860
+2017-01-13 03:00:00,,others,3
+2017-01-14 03:00:00,quiz,exam,132
+2017-01-14 03:00:00,lecture,lecture,2504
+2017-01-14 03:00:00,supplement,supplement,170
+2017-01-14 03:00:00,notebook,notebook,2372
+2017-01-14 03:00:00,programming,graded programming,1320
+2017-01-14 03:00:00,,others,7
+2017-01-15 03:00:00,lecture,lecture,3375
+2017-01-15 03:00:00,programming,graded programming,1160
+2017-01-15 03:00:00,notebook,notebook,2772
+2017-01-15 03:00:00,,others,7
+2017-01-15 03:00:00,supplement,supplement,303
+2017-01-15 03:00:00,quiz,exam,256
+2017-01-16 03:00:00,lecture,lecture,4444
+2017-01-16 03:00:00,quiz,exam,244
+2017-01-16 03:00:00,supplement,supplement,400
+2017-01-16 03:00:00,notebook,notebook,3272
+2017-01-16 03:00:00,programming,graded programming,1092
+2017-01-16 03:00:00,,others,10
+2017-01-17 03:00:00,quiz,exam,228
+2017-01-17 03:00:00,programming,graded programming,800
+2017-01-17 03:00:00,notebook,notebook,2504
+2017-01-17 03:00:00,,others,7
+2017-01-17 03:00:00,lecture,lecture,3643
+2017-01-17 03:00:00,supplement,supplement,359
+2017-01-18 03:00:00,lecture,lecture,4309
+2017-01-18 03:00:00,supplement,supplement,288
+2017-01-18 03:00:00,notebook,notebook,2716
+2017-01-18 03:00:00,quiz,exam,328
+2017-01-18 03:00:00,programming,graded programming,648
+2017-01-18 03:00:00,,others,16
+2017-01-19 03:00:00,supplement,supplement,328
+2017-01-19 03:00:00,lecture,lecture,3995
+2017-01-19 03:00:00,quiz,exam,240
+2017-01-19 03:00:00,notebook,notebook,2756
+2017-01-19 03:00:00,programming,graded programming,664
+2017-01-19 03:00:00,,others,12
+2017-01-20 03:00:00,quiz,exam,308
+2017-01-20 03:00:00,lecture,lecture,3363
+2017-01-20 03:00:00,supplement,supplement,246
+2017-01-20 03:00:00,notebook,notebook,2268
+2017-01-20 03:00:00,programming,graded programming,820
+2017-01-21 03:00:00,quiz,exam,104
+2017-01-21 03:00:00,notebook,notebook,1940
+2017-01-21 03:00:00,lecture,lecture,2631
+2017-01-21 03:00:00,supplement,supplement,223
+2017-01-21 03:00:00,programming,graded programming,768
+2017-01-21 03:00:00,,others,7
+2017-01-22 03:00:00,lecture,lecture,3755
+2017-01-22 03:00:00,quiz,exam,316
+2017-01-22 03:00:00,supplement,supplement,246
+2017-01-22 03:00:00,programming,graded programming,1532
+2017-01-22 03:00:00,notebook,notebook,3152
+2017-01-22 03:00:00,,others,12
+2017-01-23 03:00:00,notebook,notebook,2220
+2017-01-23 03:00:00,supplement,supplement,205
+2017-01-23 03:00:00,lecture,lecture,3002
+2017-01-23 03:00:00,programming,graded programming,900
+2017-01-23 03:00:00,quiz,exam,268
+2017-01-23 03:00:00,,others,10
+2017-01-24 03:00:00,supplement,supplement,132
+2017-01-24 03:00:00,,others,17
+2017-01-24 03:00:00,quiz,exam,192
+2017-01-24 03:00:00,lecture,lecture,3001
+2017-01-24 03:00:00,programming,graded programming,464
+2017-01-24 03:00:00,notebook,notebook,1828
+2017-01-25 03:00:00,lecture,lecture,3025
+2017-01-25 03:00:00,quiz,exam,96
+2017-01-25 03:00:00,notebook,notebook,2068
+2017-01-25 03:00:00,supplement,supplement,202
+2017-01-25 03:00:00,programming,graded programming,892
+2017-01-25 03:00:00,,others,10
+2017-01-26 03:00:00,supplement,supplement,183
+2017-01-26 03:00:00,lecture,lecture,2458
+2017-01-26 03:00:00,quiz,exam,232
+2017-01-26 03:00:00,notebook,notebook,2016
+2017-01-26 03:00:00,programming,graded programming,600
+2017-01-26 03:00:00,,others,7
+2017-01-27 03:00:00,notebook,notebook,1796
+2017-01-27 03:00:00,lecture,lecture,2632
+2017-01-27 03:00:00,,others,21
+2017-01-27 03:00:00,supplement,supplement,188
+2017-01-27 03:00:00,quiz,exam,180
+2017-01-27 03:00:00,programming,graded programming,980
+2017-01-28 03:00:00,notebook,notebook,1524
+2017-01-28 03:00:00,,others,3
+2017-01-28 03:00:00,lecture,lecture,2463
+2017-01-28 03:00:00,quiz,exam,136
+2017-01-28 03:00:00,supplement,supplement,214
+2017-01-28 03:00:00,programming,graded programming,572
+2017-01-29 03:00:00,lecture,lecture,2618
+2017-01-29 03:00:00,quiz,exam,196
+2017-01-29 03:00:00,notebook,notebook,2404
+2017-01-29 03:00:00,supplement,supplement,238
+2017-01-29 03:00:00,,others,9
+2017-01-29 03:00:00,programming,graded programming,1164
+2017-01-30 03:00:00,lecture,lecture,3396
+2017-01-30 03:00:00,notebook,notebook,2608
+2017-01-30 03:00:00,supplement,supplement,267
+2017-01-30 03:00:00,,others,6
+2017-01-30 03:00:00,quiz,exam,228
+2017-01-30 03:00:00,programming,graded programming,968
+2017-01-31 03:00:00,supplement,supplement,372
+2017-01-31 03:00:00,notebook,notebook,2184
+2017-01-31 03:00:00,quiz,exam,300
+2017-01-31 03:00:00,lecture,lecture,4058
+2017-01-31 03:00:00,programming,graded programming,664
+2017-01-31 03:00:00,,others,10
+2017-02-01 03:00:00,supplement,supplement,300
+2017-02-01 03:00:00,quiz,exam,348
+2017-02-01 03:00:00,programming,graded programming,772
+2017-02-01 03:00:00,lecture,lecture,3117
+2017-02-01 03:00:00,,others,3
+2017-02-01 03:00:00,notebook,notebook,1864
+2017-02-02 03:00:00,quiz,exam,160
+2017-02-02 03:00:00,lecture,lecture,2228
+2017-02-02 03:00:00,programming,graded programming,556
+2017-02-02 03:00:00,supplement,supplement,241
+2017-02-02 03:00:00,,others,14
+2017-02-02 03:00:00,notebook,notebook,1312
+2017-02-03 03:00:00,notebook,notebook,1100
+2017-02-03 03:00:00,quiz,exam,280
+2017-02-03 03:00:00,supplement,supplement,245
+2017-02-03 03:00:00,,others,7
+2017-02-03 03:00:00,programming,graded programming,352
+2017-02-03 03:00:00,lecture,lecture,2882
+2017-02-04 03:00:00,lecture,lecture,2606
+2017-02-04 03:00:00,supplement,supplement,226
+2017-02-04 03:00:00,quiz,exam,200
+2017-02-04 03:00:00,,others,14
+2017-02-04 03:00:00,programming,graded programming,704
+2017-02-04 03:00:00,notebook,notebook,1404
+2017-02-05 03:00:00,lecture,lecture,2100
+2017-02-05 03:00:00,supplement,supplement,271
+2017-02-05 03:00:00,programming,graded programming,724
+2017-02-05 03:00:00,notebook,notebook,1620
+2017-02-05 03:00:00,,others,3
+2017-02-05 03:00:00,quiz,exam,164
+2017-02-06 03:00:00,supplement,supplement,220
+2017-02-06 03:00:00,lecture,lecture,3140
+2017-02-06 03:00:00,quiz,exam,172
+2017-02-06 03:00:00,notebook,notebook,1456
+2017-02-06 03:00:00,,others,10
+2017-02-06 03:00:00,programming,graded programming,540
+2017-02-07 03:00:00,lecture,lecture,2917
+2017-02-07 03:00:00,notebook,notebook,1320
+2017-02-07 03:00:00,programming,graded programming,544
+2017-02-07 03:00:00,supplement,supplement,173
+2017-02-07 03:00:00,,others,13
+2017-02-07 03:00:00,quiz,exam,180
+2017-02-08 03:00:00,supplement,supplement,129
+2017-02-08 03:00:00,lecture,lecture,2255
+2017-02-08 03:00:00,quiz,exam,124
+2017-02-08 03:00:00,programming,graded programming,676
+2017-02-08 03:00:00,notebook,notebook,1184
+2017-02-09 03:00:00,programming,graded programming,248
+2017-02-09 03:00:00,supplement,supplement,191
+2017-02-09 03:00:00,,others,7
+2017-02-09 03:00:00,lecture,lecture,2472
+2017-02-09 03:00:00,notebook,notebook,1044
+2017-02-09 03:00:00,quiz,exam,140
+2017-02-10 03:00:00,notebook,notebook,900
+2017-02-10 03:00:00,lecture,lecture,2365
+2017-02-10 03:00:00,supplement,supplement,197
+2017-02-10 03:00:00,quiz,exam,124
+2017-02-10 03:00:00,programming,graded programming,512
+2017-02-10 03:00:00,,others,6
+2017-02-11 03:00:00,programming,graded programming,372
+2017-02-11 03:00:00,quiz,exam,84
+2017-02-11 03:00:00,lecture,lecture,2068
+2017-02-11 03:00:00,,others,6
+2017-02-11 03:00:00,supplement,supplement,114
+2017-02-11 03:00:00,notebook,notebook,1404
+2017-02-12 03:00:00,notebook,notebook,1020
+2017-02-12 03:00:00,quiz,exam,64
+2017-02-12 03:00:00,supplement,supplement,92
+2017-02-12 03:00:00,programming,graded programming,668
+2017-02-12 03:00:00,lecture,lecture,1710
+2017-02-12 03:00:00,,others,6
+2017-02-13 03:00:00,notebook,notebook,1052
+2017-02-13 03:00:00,lecture,lecture,2324
+2017-02-13 03:00:00,supplement,supplement,216
+2017-02-13 03:00:00,quiz,exam,164
+2017-02-13 03:00:00,programming,graded programming,408
+2017-02-13 03:00:00,,others,3
+2017-02-14 03:00:00,lecture,lecture,3313
+2017-02-14 03:00:00,supplement,supplement,410
+2017-02-14 03:00:00,programming,graded programming,268
+2017-02-14 03:00:00,quiz,exam,164
+2017-02-14 03:00:00,,others,4
+2017-02-14 03:00:00,notebook,notebook,1160
+2017-02-15 03:00:00,supplement,supplement,248
+2017-02-15 03:00:00,,others,6
+2017-02-15 03:00:00,quiz,exam,168
+2017-02-15 03:00:00,notebook,notebook,1288
+2017-02-15 03:00:00,programming,graded programming,476
+2017-02-15 03:00:00,lecture,lecture,2757
+2017-02-16 03:00:00,notebook,notebook,1336
+2017-02-16 03:00:00,lecture,lecture,2947
+2017-02-16 03:00:00,supplement,supplement,325
+2017-02-16 03:00:00,quiz,exam,108
+2017-02-16 03:00:00,programming,graded programming,660
+2017-02-16 03:00:00,,others,3
+2017-02-17 03:00:00,quiz,exam,328
+2017-02-17 03:00:00,lecture,lecture,2290
+2017-02-17 03:00:00,,others,25
+2017-02-17 03:00:00,supplement,supplement,176
+2017-02-17 03:00:00,programming,graded programming,532
+2017-02-17 03:00:00,notebook,notebook,1148
+2017-02-18 03:00:00,supplement,supplement,153
+2017-02-18 03:00:00,notebook,notebook,1264
+2017-02-18 03:00:00,lecture,lecture,2271
+2017-02-18 03:00:00,quiz,exam,372
+2017-02-18 03:00:00,,others,7
+2017-02-18 03:00:00,programming,graded programming,496
+2017-02-19 03:00:00,lecture,lecture,2421
+2017-02-19 03:00:00,notebook,notebook,1468
+2017-02-19 03:00:00,supplement,supplement,176
+2017-02-19 03:00:00,programming,graded programming,1160
+2017-02-19 03:00:00,quiz,exam,904
+2017-02-19 03:00:00,,others,3
+2017-02-20 03:00:00,supplement,supplement,184
+2017-02-20 03:00:00,notebook,notebook,1084
+2017-02-20 03:00:00,quiz,exam,984
+2017-02-20 03:00:00,lecture,lecture,2378
+2017-02-20 03:00:00,programming,graded programming,624
+2017-02-20 03:00:00,,others,7
+2017-02-21 03:00:00,programming,graded programming,608
+2017-02-21 03:00:00,supplement,supplement,166
+2017-02-21 03:00:00,,others,6
+2017-02-21 03:00:00,quiz,exam,508
+2017-02-21 03:00:00,lecture,lecture,2965
+2017-02-21 03:00:00,notebook,notebook,1136
+2017-02-22 03:00:00,supplement,supplement,254
+2017-02-22 03:00:00,lecture,lecture,2365
+2017-02-22 03:00:00,notebook,notebook,1376
+2017-02-22 03:00:00,programming,graded programming,660
+2017-02-22 03:00:00,quiz,exam,484
+2017-02-22 03:00:00,,others,25
+2017-02-23 03:00:00,lecture,lecture,2066
+2017-02-23 03:00:00,notebook,notebook,1164
+2017-02-23 03:00:00,,others,4
+2017-02-23 03:00:00,supplement,supplement,115
+2017-02-23 03:00:00,quiz,exam,492
+2017-02-23 03:00:00,programming,graded programming,460
+2017-02-24 03:00:00,,others,3
+2017-02-24 03:00:00,lecture,lecture,2209
+2017-02-24 03:00:00,supplement,supplement,187
+2017-02-24 03:00:00,quiz,exam,108
+2017-02-24 03:00:00,notebook,notebook,1012
+2017-02-24 03:00:00,programming,graded programming,824
+2017-02-25 03:00:00,quiz,exam,256
+2017-02-25 03:00:00,programming,graded programming,404
+2017-02-25 03:00:00,lecture,lecture,1625
+2017-02-25 03:00:00,,others,13
+2017-02-25 03:00:00,notebook,notebook,988
+2017-02-25 03:00:00,supplement,supplement,127
+2017-02-26 03:00:00,lecture,lecture,2340
+2017-02-26 03:00:00,notebook,notebook,1120
+2017-02-26 03:00:00,supplement,supplement,139
+2017-02-26 03:00:00,quiz,exam,500
+2017-02-26 03:00:00,,others,14
+2017-02-26 03:00:00,programming,graded programming,616
+2017-02-27 03:00:00,notebook,notebook,1192
+2017-02-27 03:00:00,supplement,supplement,163
+2017-02-27 03:00:00,programming,graded programming,476
+2017-02-27 03:00:00,quiz,exam,604
+2017-02-27 03:00:00,,others,11
+2017-02-27 03:00:00,lecture,lecture,2453
+2017-02-28 03:00:00,lecture,lecture,2238
+2017-02-28 03:00:00,quiz,exam,764
+2017-02-28 03:00:00,notebook,notebook,1036
+2017-02-28 03:00:00,supplement,supplement,132
+2017-02-28 03:00:00,,others,4
+2017-02-28 03:00:00,programming,graded programming,288
+2017-03-01 03:00:00,notebook,notebook,1052
+2017-03-01 03:00:00,lecture,lecture,2004
+2017-03-01 03:00:00,supplement,supplement,176
+2017-03-01 03:00:00,quiz,exam,444
+2017-03-01 03:00:00,programming,graded programming,540
+2017-03-02 03:00:00,notebook,notebook,1196
+2017-03-02 03:00:00,quiz,exam,1104
+2017-03-02 03:00:00,lecture,lecture,3253
+2017-03-02 03:00:00,supplement,supplement,422
+2017-03-02 03:00:00,programming,graded programming,560
+2017-03-03 03:00:00,supplement,supplement,338
+2017-03-03 03:00:00,notebook,notebook,1352
+2017-03-03 03:00:00,programming,graded programming,504
+2017-03-03 03:00:00,quiz,exam,1244
+2017-03-03 03:00:00,lecture,lecture,3331
+2017-03-04 03:00:00,quiz,exam,196
+2017-03-04 03:00:00,notebook,notebook,1352
+2017-03-04 03:00:00,programming,graded programming,520
+2017-03-04 03:00:00,lecture,lecture,3452
+2017-03-04 03:00:00,supplement,supplement,233
+2017-03-05 03:00:00,supplement,supplement,266
+2017-03-05 03:00:00,notebook,notebook,1372
+2017-03-05 03:00:00,programming,graded programming,760
+2017-03-05 03:00:00,quiz,exam,524
+2017-03-05 03:00:00,lecture,lecture,3118
+2017-03-05 03:00:00,,others,6
+2017-03-06 03:00:00,lecture,lecture,4093
+2017-03-06 03:00:00,notebook,notebook,1332
+2017-03-06 03:00:00,supplement,supplement,330
+2017-03-06 03:00:00,quiz,exam,448
+2017-03-06 03:00:00,programming,graded programming,388
+2017-03-06 03:00:00,,others,3
+2017-03-07 03:00:00,quiz,exam,520
+2017-03-07 03:00:00,supplement,supplement,281
+2017-03-07 03:00:00,programming,graded programming,648
+2017-03-07 03:00:00,,others,8
+2017-03-07 03:00:00,lecture,lecture,3543
+2017-03-07 03:00:00,notebook,notebook,1104
+2017-03-08 03:00:00,notebook,notebook,1104
+2017-03-08 03:00:00,lecture,lecture,3311
+2017-03-08 03:00:00,programming,graded programming,340
+2017-03-08 03:00:00,supplement,supplement,269
+2017-03-08 03:00:00,,others,6
+2017-03-08 03:00:00,quiz,exam,1064
+2017-03-09 03:00:00,lecture,lecture,3110
+2017-03-09 03:00:00,supplement,supplement,281
+2017-03-09 03:00:00,notebook,notebook,1076
+2017-03-09 03:00:00,programming,graded programming,648
+2017-03-09 03:00:00,quiz,exam,724
+2017-03-10 03:00:00,lecture,lecture,2104
+2017-03-10 03:00:00,notebook,notebook,924
+2017-03-10 03:00:00,quiz,exam,396
+2017-03-10 03:00:00,supplement,supplement,135
+2017-03-10 03:00:00,programming,graded programming,320
+2017-03-10 03:00:00,,others,14
+2017-03-11 03:00:00,lecture,lecture,1904
+2017-03-11 03:00:00,supplement,supplement,120
+2017-03-11 03:00:00,programming,graded programming,424
+2017-03-11 03:00:00,quiz,exam,696
+2017-03-11 03:00:00,notebook,notebook,748
+2017-03-12 04:00:00,lecture,lecture,2696
+2017-03-12 04:00:00,supplement,supplement,204
+2017-03-12 04:00:00,notebook,notebook,1140
+2017-03-12 04:00:00,programming,graded programming,912
+2017-03-12 04:00:00,,others,3
+2017-03-12 04:00:00,quiz,exam,336
+2017-03-13 03:00:00,supplement,supplement,184
+2017-03-13 03:00:00,lecture,lecture,2220
+2017-03-13 03:00:00,notebook,notebook,1160
+2017-03-13 03:00:00,quiz,exam,248
+2017-03-13 03:00:00,programming,graded programming,688
+2017-03-13 03:00:00,,others,10
+2017-03-14 03:00:00,quiz,exam,496
+2017-03-14 03:00:00,supplement,supplement,245
+2017-03-14 03:00:00,lecture,lecture,2849
+2017-03-14 03:00:00,programming,graded programming,528
+2017-03-14 03:00:00,notebook,notebook,1412
+2017-03-14 03:00:00,,others,7
+2017-03-15 03:00:00,supplement,supplement,162
+2017-03-15 03:00:00,lecture,lecture,2382
+2017-03-15 03:00:00,programming,graded programming,572
+2017-03-15 03:00:00,notebook,notebook,1148
+2017-03-15 03:00:00,quiz,exam,1128
+2017-03-15 03:00:00,,others,3
+2017-03-16 03:00:00,notebook,notebook,1352
+2017-03-16 03:00:00,lecture,lecture,2053
+2017-03-16 03:00:00,supplement,supplement,188
+2017-03-16 03:00:00,programming,graded programming,904
+2017-03-16 03:00:00,quiz,exam,344
+2017-03-16 03:00:00,,others,8
+2017-03-17 03:00:00,supplement,supplement,125
+2017-03-17 03:00:00,notebook,notebook,1188
+2017-03-17 03:00:00,programming,graded programming,684
+2017-03-17 03:00:00,lecture,lecture,2696
+2017-03-17 03:00:00,quiz,exam,1156
+2017-03-17 03:00:00,,others,6
+2017-03-18 03:00:00,lecture,lecture,1770
+2017-03-18 03:00:00,supplement,supplement,111
+2017-03-18 03:00:00,programming,graded programming,368
+2017-03-18 03:00:00,quiz,exam,340
+2017-03-18 03:00:00,notebook,notebook,852
+2017-03-19 03:00:00,programming,graded programming,564
+2017-03-19 03:00:00,supplement,supplement,98
+2017-03-19 03:00:00,notebook,notebook,856
+2017-03-19 03:00:00,quiz,exam,164
+2017-03-19 03:00:00,lecture,lecture,1419
+2017-03-20 03:00:00,quiz,exam,656
+2017-03-20 03:00:00,lecture,lecture,1850
+2017-03-20 03:00:00,programming,graded programming,816
+2017-03-20 03:00:00,notebook,notebook,1244
+2017-03-20 03:00:00,supplement,supplement,154
+2017-03-20 03:00:00,,others,3
+2017-03-21 03:00:00,lecture,lecture,1922
+2017-03-21 03:00:00,supplement,supplement,185
+2017-03-21 03:00:00,notebook,notebook,1120
+2017-03-21 03:00:00,quiz,exam,532
+2017-03-21 03:00:00,,others,4
+2017-03-21 03:00:00,programming,graded programming,920
+2017-03-22 03:00:00,quiz,exam,384
+2017-03-22 03:00:00,notebook,notebook,1048
+2017-03-22 03:00:00,programming,graded programming,644
+2017-03-22 03:00:00,lecture,lecture,1936
+2017-03-22 03:00:00,,others,7
+2017-03-22 03:00:00,supplement,supplement,154
+2017-03-23 03:00:00,supplement,supplement,115
+2017-03-23 03:00:00,lecture,lecture,1870
+2017-03-23 03:00:00,quiz,exam,576
+2017-03-23 03:00:00,notebook,notebook,1040
+2017-03-23 03:00:00,programming,graded programming,544
+2017-03-24 03:00:00,notebook,notebook,696
+2017-03-24 03:00:00,supplement,supplement,60
+2017-03-24 03:00:00,quiz,exam,116
+2017-03-24 03:00:00,lecture,lecture,1000
+2017-03-24 03:00:00,programming,graded programming,368
+2017-03-25 03:00:00,lecture,lecture,1300
+2017-03-25 03:00:00,quiz,exam,164
+2017-03-25 03:00:00,supplement,supplement,78
+2017-03-25 03:00:00,notebook,notebook,528
+2017-03-25 03:00:00,programming,graded programming,364
+2017-03-26 03:00:00,supplement,supplement,75
+2017-03-26 03:00:00,lecture,lecture,1446
+2017-03-26 03:00:00,quiz,exam,320
+2017-03-26 03:00:00,notebook,notebook,536
+2017-03-26 03:00:00,programming,graded programming,160
+2017-03-27 03:00:00,supplement,supplement,106
+2017-03-27 03:00:00,lecture,lecture,2210
+2017-03-27 03:00:00,quiz,exam,560
+2017-03-27 03:00:00,notebook,notebook,956
+2017-03-27 03:00:00,programming,graded programming,300
+2017-03-28 03:00:00,lecture,lecture,2314
+2017-03-28 03:00:00,supplement,supplement,191
+2017-03-28 03:00:00,quiz,exam,768
+2017-03-28 03:00:00,programming,graded programming,268
+2017-03-28 03:00:00,notebook,notebook,772
+2017-03-29 03:00:00,lecture,lecture,1922
+2017-03-29 03:00:00,quiz,exam,368
+2017-03-29 03:00:00,supplement,supplement,87
+2017-03-29 03:00:00,notebook,notebook,816
+2017-03-29 03:00:00,programming,graded programming,332
+2017-03-30 03:00:00,lecture,lecture,2192
+2017-03-30 03:00:00,supplement,supplement,222
+2017-03-30 03:00:00,programming,graded programming,440
+2017-03-30 03:00:00,quiz,exam,384
+2017-03-30 03:00:00,notebook,notebook,1032
+2017-03-30 03:00:00,,others,7
+2017-03-31 03:00:00,lecture,lecture,1887
+2017-03-31 03:00:00,notebook,notebook,820
+2017-03-31 03:00:00,programming,graded programming,468
+2017-03-31 03:00:00,supplement,supplement,123
+2017-03-31 03:00:00,,others,7
+2017-03-31 03:00:00,quiz,exam,700
+2017-04-01 03:00:00,quiz,exam,308
+2017-04-01 03:00:00,lecture,lecture,1696
+2017-04-01 03:00:00,notebook,notebook,480
+2017-04-01 03:00:00,supplement,supplement,96
+2017-04-01 03:00:00,programming,graded programming,188
+2017-04-02 03:00:00,lecture,lecture,1521
+2017-04-02 03:00:00,notebook,notebook,712
+2017-04-02 03:00:00,supplement,supplement,81
+2017-04-02 03:00:00,quiz,exam,300
+2017-04-02 03:00:00,programming,graded programming,512
+2017-04-02 03:00:00,,others,6
+2017-04-03 03:00:00,supplement,supplement,130
+2017-04-03 03:00:00,lecture,lecture,1828
+2017-04-03 03:00:00,notebook,notebook,732
+2017-04-03 03:00:00,quiz,exam,916
+2017-04-03 03:00:00,programming,graded programming,216
+2017-04-03 03:00:00,,others,3
+2017-04-04 03:00:00,supplement,supplement,103
+2017-04-04 03:00:00,lecture,lecture,1852
+2017-04-04 03:00:00,programming,graded programming,316
+2017-04-04 03:00:00,notebook,notebook,548
+2017-04-04 03:00:00,,others,3
+2017-04-04 03:00:00,quiz,exam,556
+2017-04-05 03:00:00,notebook,notebook,520
+2017-04-05 03:00:00,lecture,lecture,1738
+2017-04-05 03:00:00,supplement,supplement,168
+2017-04-05 03:00:00,quiz,exam,552
+2017-04-05 03:00:00,programming,graded programming,304
+2017-04-06 03:00:00,lecture,lecture,1439
+2017-04-06 03:00:00,supplement,supplement,114
+2017-04-06 03:00:00,notebook,notebook,616
+2017-04-06 03:00:00,quiz,exam,492
+2017-04-06 03:00:00,programming,graded programming,452
+2017-04-07 03:00:00,lecture,lecture,1811
+2017-04-07 03:00:00,supplement,supplement,128
+2017-04-07 03:00:00,notebook,notebook,644
+2017-04-07 03:00:00,quiz,exam,432
+2017-04-07 03:00:00,programming,graded programming,256
+2017-04-08 03:00:00,quiz,exam,868
+2017-04-08 03:00:00,notebook,notebook,456
+2017-04-08 03:00:00,supplement,supplement,111
+2017-04-08 03:00:00,lecture,lecture,1158
+2017-04-08 03:00:00,programming,graded programming,192
+2017-04-08 03:00:00,,others,7
+2017-04-09 03:00:00,supplement,supplement,114
+2017-04-09 03:00:00,quiz,exam,860
+2017-04-09 03:00:00,programming,graded programming,148
+2017-04-09 03:00:00,,others,3
+2017-04-09 03:00:00,lecture,lecture,1331
+2017-04-09 03:00:00,notebook,notebook,628
+2017-04-10 03:00:00,supplement,supplement,132
+2017-04-10 03:00:00,lecture,lecture,1503
+2017-04-10 03:00:00,quiz,exam,624
+2017-04-10 03:00:00,notebook,notebook,620
+2017-04-10 03:00:00,programming,graded programming,188
+2017-04-11 03:00:00,lecture,lecture,2158
+2017-04-11 03:00:00,supplement,supplement,204
+2017-04-11 03:00:00,notebook,notebook,812
+2017-04-11 03:00:00,quiz,exam,1704
+2017-04-11 03:00:00,programming,graded programming,392
+2017-04-12 03:00:00,supplement,supplement,135
+2017-04-12 03:00:00,lecture,lecture,1718
+2017-04-12 03:00:00,quiz,exam,1736
+2017-04-12 03:00:00,notebook,notebook,640
+2017-04-12 03:00:00,programming,graded programming,376
+2017-04-12 03:00:00,,others,14
+2017-04-13 03:00:00,supplement,supplement,157
+2017-04-13 03:00:00,lecture,lecture,1818
+2017-04-13 03:00:00,quiz,exam,464
+2017-04-13 03:00:00,programming,graded programming,324
+2017-04-13 03:00:00,notebook,notebook,752
+2017-04-13 03:00:00,,others,3
+2017-04-14 03:00:00,notebook,notebook,664
+2017-04-14 03:00:00,programming,graded programming,320
+2017-04-14 03:00:00,quiz,exam,972
+2017-04-14 03:00:00,,others,4
+2017-04-14 03:00:00,lecture,lecture,1812
+2017-04-14 03:00:00,supplement,supplement,137
+2017-04-15 03:00:00,supplement,supplement,109
+2017-04-15 03:00:00,lecture,lecture,1254
+2017-04-15 03:00:00,quiz,exam,620
+2017-04-15 03:00:00,notebook,notebook,540
+2017-04-15 03:00:00,programming,graded programming,324
+2017-04-15 03:00:00,,others,9
+2017-04-16 03:00:00,lecture,lecture,1799
+2017-04-16 03:00:00,programming,graded programming,352
+2017-04-16 03:00:00,supplement,supplement,123
+2017-04-16 03:00:00,notebook,notebook,608
+2017-04-16 03:00:00,quiz,exam,1164
+2017-04-17 03:00:00,supplement,supplement,180
+2017-04-17 03:00:00,notebook,notebook,700
+2017-04-17 03:00:00,programming,graded programming,252
+2017-04-17 03:00:00,quiz,exam,760
+2017-04-17 03:00:00,,others,4
+2017-04-17 03:00:00,lecture,lecture,2067
+2017-04-18 03:00:00,quiz,exam,888
+2017-04-18 03:00:00,lecture,lecture,1805
+2017-04-18 03:00:00,programming,graded programming,268
+2017-04-18 03:00:00,notebook,notebook,716
+2017-04-18 03:00:00,supplement,supplement,146
+2017-04-19 03:00:00,notebook,notebook,584
+2017-04-19 03:00:00,programming,graded programming,200
+2017-04-19 03:00:00,supplement,supplement,110
+2017-04-19 03:00:00,,others,7
+2017-04-19 03:00:00,quiz,exam,1300
+2017-04-19 03:00:00,lecture,lecture,1783
+2017-04-20 03:00:00,lecture,lecture,1659
+2017-04-20 03:00:00,notebook,notebook,704
+2017-04-20 03:00:00,programming,graded programming,560
+2017-04-20 03:00:00,supplement,supplement,94
+2017-04-20 03:00:00,,others,10
+2017-04-20 03:00:00,quiz,exam,1752
+2017-04-21 03:00:00,supplement,supplement,108
+2017-04-21 03:00:00,quiz,exam,608
+2017-04-21 03:00:00,,others,7
+2017-04-21 03:00:00,lecture,lecture,1320
+2017-04-21 03:00:00,programming,graded programming,380
+2017-04-21 03:00:00,notebook,notebook,700
+2017-04-22 03:00:00,lecture,lecture,1707
+2017-04-22 03:00:00,quiz,exam,592
+2017-04-22 03:00:00,notebook,notebook,552
+2017-04-22 03:00:00,programming,graded programming,308
+2017-04-22 03:00:00,supplement,supplement,106
+2017-04-22 03:00:00,,others,7
+2017-04-23 03:00:00,programming,graded programming,460
+2017-04-23 03:00:00,quiz,exam,144
+2017-04-23 03:00:00,,others,3
+2017-04-23 03:00:00,lecture,lecture,967
+2017-04-23 03:00:00,supplement,supplement,87
+2017-04-23 03:00:00,notebook,notebook,884
+2017-04-24 03:00:00,lecture,lecture,1891
+2017-04-24 03:00:00,supplement,supplement,198
+2017-04-24 03:00:00,notebook,notebook,792
+2017-04-24 03:00:00,,others,11
+2017-04-24 03:00:00,quiz,exam,472
+2017-04-24 03:00:00,programming,graded programming,388
+2017-04-25 03:00:00,notebook,notebook,576
+2017-04-25 03:00:00,supplement,supplement,93
+2017-04-25 03:00:00,programming,graded programming,448
+2017-04-25 03:00:00,quiz,exam,452
+2017-04-25 03:00:00,lecture,lecture,1401
+2017-04-25 03:00:00,,others,6
+2017-04-26 03:00:00,supplement,supplement,99
+2017-04-26 03:00:00,lecture,lecture,1434
+2017-04-26 03:00:00,programming,graded programming,176
+2017-04-26 03:00:00,quiz,exam,200
+2017-04-26 03:00:00,notebook,notebook,560
+2017-04-27 03:00:00,supplement,supplement,95
+2017-04-27 03:00:00,quiz,exam,636
+2017-04-27 03:00:00,programming,graded programming,388
+2017-04-27 03:00:00,lecture,lecture,1631
+2017-04-27 03:00:00,notebook,notebook,668
+2017-04-28 03:00:00,lecture,lecture,1399
+2017-04-28 03:00:00,supplement,supplement,47
+2017-04-28 03:00:00,programming,graded programming,228
+2017-04-28 03:00:00,,others,4
+2017-04-28 03:00:00,notebook,notebook,740
+2017-04-28 03:00:00,quiz,exam,408
+2017-04-29 03:00:00,notebook,notebook,652
+2017-04-29 03:00:00,programming,graded programming,224
+2017-04-29 03:00:00,supplement,supplement,107
+2017-04-29 03:00:00,,others,3
+2017-04-29 03:00:00,quiz,exam,356
+2017-04-29 03:00:00,lecture,lecture,949
+2017-04-30 03:00:00,lecture,lecture,1202
+2017-04-30 03:00:00,supplement,supplement,148
+2017-04-30 03:00:00,programming,graded programming,252
+2017-04-30 03:00:00,quiz,exam,296
+2017-04-30 03:00:00,,others,3
+2017-04-30 03:00:00,notebook,notebook,628
+2017-05-01 03:00:00,lecture,lecture,1235
+2017-05-01 03:00:00,supplement,supplement,106
+2017-05-01 03:00:00,notebook,notebook,732
+2017-05-01 03:00:00,quiz,exam,300
+2017-05-01 03:00:00,programming,graded programming,348
+2017-05-01 03:00:00,,others,3
+2017-05-02 03:00:00,lecture,lecture,1527
+2017-05-02 03:00:00,quiz,exam,544
+2017-05-02 03:00:00,programming,graded programming,304
+2017-05-02 03:00:00,notebook,notebook,580
+2017-05-02 03:00:00,supplement,supplement,69
+2017-05-03 03:00:00,quiz,exam,544
+2017-05-03 03:00:00,notebook,notebook,676
+2017-05-03 03:00:00,programming,graded programming,192
+2017-05-03 03:00:00,lecture,lecture,1503
+2017-05-03 03:00:00,,others,4
+2017-05-03 03:00:00,supplement,supplement,111
+2017-05-04 03:00:00,quiz,exam,640
+2017-05-04 03:00:00,notebook,notebook,568
+2017-05-04 03:00:00,programming,graded programming,268
+2017-05-04 03:00:00,lecture,lecture,1358
+2017-05-04 03:00:00,,others,9
+2017-05-04 03:00:00,supplement,supplement,100
+2017-05-05 03:00:00,notebook,notebook,620
+2017-05-05 03:00:00,lecture,lecture,1617
+2017-05-05 03:00:00,supplement,supplement,65
+2017-05-05 03:00:00,quiz,exam,436
+2017-05-05 03:00:00,programming,graded programming,172
+2017-05-05 03:00:00,,others,3
+2017-05-06 03:00:00,programming,graded programming,172
+2017-05-06 03:00:00,notebook,notebook,476
+2017-05-06 03:00:00,supplement,supplement,84
+2017-05-06 03:00:00,lecture,lecture,1251
+2017-05-06 03:00:00,quiz,exam,944
+2017-05-07 03:00:00,supplement,supplement,101
+2017-05-07 03:00:00,notebook,notebook,580
+2017-05-07 03:00:00,programming,graded programming,296
+2017-05-07 03:00:00,lecture,lecture,1361
+2017-05-07 03:00:00,quiz,exam,204
+2017-05-08 03:00:00,supplement,supplement,91
+2017-05-08 03:00:00,notebook,notebook,736
+2017-05-08 03:00:00,programming,graded programming,308
+2017-05-08 03:00:00,lecture,lecture,1021
+2017-05-08 03:00:00,,others,3
+2017-05-08 03:00:00,quiz,exam,424
+2017-05-09 03:00:00,notebook,notebook,520
+2017-05-09 03:00:00,quiz,exam,124
+2017-05-09 03:00:00,lecture,lecture,1083
+2017-05-09 03:00:00,supplement,supplement,78
+2017-05-09 03:00:00,programming,graded programming,236
+2017-05-10 03:00:00,,others,3
+2017-05-10 03:00:00,lecture,lecture,1445
+2017-05-10 03:00:00,notebook,notebook,768
+2017-05-10 03:00:00,supplement,supplement,84
+2017-05-10 03:00:00,quiz,exam,88
+2017-05-10 03:00:00,programming,graded programming,340
+2017-05-11 03:00:00,supplement,supplement,81
+2017-05-11 03:00:00,lecture,lecture,1101
+2017-05-11 03:00:00,quiz,exam,96
+2017-05-11 03:00:00,notebook,notebook,620
+2017-05-11 03:00:00,programming,graded programming,364
+2017-05-12 03:00:00,programming,graded programming,196
+2017-05-12 03:00:00,quiz,exam,160
+2017-05-12 03:00:00,lecture,lecture,941
+2017-05-12 03:00:00,supplement,supplement,79
+2017-05-12 03:00:00,notebook,notebook,432
+2017-05-13 03:00:00,lecture,lecture,1328
+2017-05-13 03:00:00,supplement,supplement,98
+2017-05-13 03:00:00,notebook,notebook,680
+2017-05-13 03:00:00,programming,graded programming,324
+2017-05-13 03:00:00,quiz,exam,668
+2017-05-14 03:00:00,supplement,supplement,63
+2017-05-14 03:00:00,lecture,lecture,1405
+2017-05-14 03:00:00,programming,graded programming,276
+2017-05-14 03:00:00,notebook,notebook,744
+2017-05-14 03:00:00,quiz,exam,472
+2017-05-14 03:00:00,,others,3
+2017-05-15 03:00:00,lecture,lecture,1612
+2017-05-15 03:00:00,quiz,exam,548
+2017-05-15 03:00:00,,others,7
+2017-05-15 03:00:00,supplement,supplement,125
+2017-05-15 03:00:00,notebook,notebook,652
+2017-05-15 03:00:00,programming,graded programming,316
+2017-05-16 03:00:00,supplement,supplement,82
+2017-05-16 03:00:00,notebook,notebook,712
+2017-05-16 03:00:00,quiz,exam,192
+2017-05-16 03:00:00,lecture,lecture,1159
+2017-05-16 03:00:00,programming,graded programming,316
+2017-05-17 03:00:00,lecture,lecture,882
+2017-05-17 03:00:00,programming,graded programming,268
+2017-05-17 03:00:00,supplement,supplement,96
+2017-05-17 03:00:00,,others,4
+2017-05-17 03:00:00,quiz,exam,284
+2017-05-17 03:00:00,notebook,notebook,608
+2017-05-18 03:00:00,notebook,notebook,392
+2017-05-18 03:00:00,supplement,supplement,86
+2017-05-18 03:00:00,lecture,lecture,970
+2017-05-18 03:00:00,programming,graded programming,124
+2017-05-18 03:00:00,quiz,exam,148
+2017-05-19 03:00:00,lecture,lecture,999
+2017-05-19 03:00:00,notebook,notebook,452
+2017-05-19 03:00:00,quiz,exam,44
+2017-05-19 03:00:00,supplement,supplement,69
+2017-05-19 03:00:00,programming,graded programming,224
+2017-05-19 03:00:00,,others,3
+2017-05-20 03:00:00,supplement,supplement,42
+2017-05-20 03:00:00,notebook,notebook,268
+2017-05-20 03:00:00,quiz,exam,336
+2017-05-20 03:00:00,lecture,lecture,808
+2017-05-20 03:00:00,programming,graded programming,144
+2017-05-20 03:00:00,,others,4
+2017-05-21 03:00:00,lecture,lecture,954
+2017-05-21 03:00:00,notebook,notebook,368
+2017-05-21 03:00:00,programming,graded programming,208
+2017-05-21 03:00:00,supplement,supplement,84
+2017-05-21 03:00:00,quiz,exam,196
+2017-05-22 03:00:00,lecture,lecture,1314
+2017-05-22 03:00:00,supplement,supplement,109
+2017-05-22 03:00:00,quiz,exam,156
+2017-05-22 03:00:00,notebook,notebook,616
+2017-05-22 03:00:00,programming,graded programming,280
+2017-05-23 03:00:00,supplement,supplement,62
+2017-05-23 03:00:00,lecture,lecture,1095
+2017-05-23 03:00:00,quiz,exam,172
+2017-05-23 03:00:00,notebook,notebook,300
+2017-05-23 03:00:00,programming,graded programming,84
+2017-05-24 03:00:00,notebook,notebook,440
+2017-05-24 03:00:00,supplement,supplement,78
+2017-05-24 03:00:00,lecture,lecture,999
+2017-05-24 03:00:00,quiz,exam,220
+2017-05-24 03:00:00,programming,graded programming,180
+2017-05-25 03:00:00,notebook,notebook,564
+2017-05-25 03:00:00,lecture,lecture,1175
+2017-05-25 03:00:00,supplement,supplement,127
+2017-05-25 03:00:00,quiz,exam,364
+2017-05-25 03:00:00,programming,graded programming,104
+2017-05-26 03:00:00,supplement,supplement,71
+2017-05-26 03:00:00,notebook,notebook,360
+2017-05-26 03:00:00,quiz,exam,208
+2017-05-26 03:00:00,lecture,lecture,994
+2017-05-26 03:00:00,programming,graded programming,196
+2017-05-27 03:00:00,notebook,notebook,304
+2017-05-27 03:00:00,lecture,lecture,833
+2017-05-27 03:00:00,programming,graded programming,144
+2017-05-27 03:00:00,supplement,supplement,65
+2017-05-27 03:00:00,quiz,exam,348
+2017-05-28 03:00:00,quiz,exam,264
+2017-05-28 03:00:00,,others,3
+2017-05-28 03:00:00,programming,graded programming,116
+2017-05-28 03:00:00,notebook,notebook,320
+2017-05-28 03:00:00,lecture,lecture,1382
+2017-05-28 03:00:00,supplement,supplement,104
+2017-05-29 03:00:00,notebook,notebook,716
+2017-05-29 03:00:00,quiz,exam,408
+2017-05-29 03:00:00,lecture,lecture,1430
+2017-05-29 03:00:00,programming,graded programming,224
+2017-05-29 03:00:00,supplement,supplement,89
+2017-05-29 03:00:00,,others,3
+2017-05-30 03:00:00,notebook,notebook,528
+2017-05-30 03:00:00,lecture,lecture,1683
+2017-05-30 03:00:00,supplement,supplement,149
+2017-05-30 03:00:00,quiz,exam,592
+2017-05-30 03:00:00,programming,graded programming,44
+2017-05-31 03:00:00,supplement,supplement,202
+2017-05-31 03:00:00,lecture,lecture,1901
+2017-05-31 03:00:00,quiz,exam,692
+2017-05-31 03:00:00,notebook,notebook,492
+2017-05-31 03:00:00,programming,graded programming,208
+2017-06-01 03:00:00,notebook,notebook,668
+2017-06-01 03:00:00,supplement,supplement,183
+2017-06-01 03:00:00,lecture,lecture,2033
+2017-06-01 03:00:00,quiz,exam,176
+2017-06-01 03:00:00,,others,10
+2017-06-01 03:00:00,programming,graded programming,364
+2017-06-02 03:00:00,lecture,lecture,1465
+2017-06-02 03:00:00,programming,graded programming,140
+2017-06-02 03:00:00,notebook,notebook,492
+2017-06-02 03:00:00,,others,3
+2017-06-02 03:00:00,supplement,supplement,98
+2017-06-02 03:00:00,quiz,exam,204
+2017-06-03 03:00:00,programming,graded programming,208
+2017-06-03 03:00:00,,others,3
+2017-06-03 03:00:00,lecture,lecture,1841
+2017-06-03 03:00:00,quiz,exam,208
+2017-06-03 03:00:00,notebook,notebook,568
+2017-06-03 03:00:00,supplement,supplement,160
+2017-06-04 03:00:00,quiz,exam,552
+2017-06-04 03:00:00,lecture,lecture,1627
+2017-06-04 03:00:00,notebook,notebook,568
+2017-06-04 03:00:00,programming,graded programming,144
+2017-06-04 03:00:00,supplement,supplement,169
+2017-06-04 03:00:00,,others,3
+2017-06-05 03:00:00,lecture,lecture,1770
+2017-06-05 03:00:00,programming,graded programming,220
+2017-06-05 03:00:00,notebook,notebook,448
+2017-06-05 03:00:00,,others,4
+2017-06-05 03:00:00,supplement,supplement,104
+2017-06-05 03:00:00,quiz,exam,228
+2017-06-06 03:00:00,notebook,notebook,576
+2017-06-06 03:00:00,lecture,lecture,1636
+2017-06-06 03:00:00,supplement,supplement,204
+2017-06-06 03:00:00,,others,7
+2017-06-06 03:00:00,quiz,exam,404
+2017-06-06 03:00:00,programming,graded programming,236
+2017-06-07 03:00:00,supplement,supplement,63
+2017-06-07 03:00:00,notebook,notebook,584
+2017-06-07 03:00:00,programming,graded programming,184
+2017-06-07 03:00:00,lecture,lecture,1396
+2017-06-07 03:00:00,quiz,exam,608
+2017-06-08 03:00:00,notebook,notebook,448
+2017-06-08 03:00:00,programming,graded programming,132
+2017-06-08 03:00:00,supplement,supplement,63
+2017-06-08 03:00:00,lecture,lecture,996
+2017-06-08 03:00:00,quiz,exam,584
+2017-06-09 03:00:00,notebook,notebook,460
+2017-06-09 03:00:00,supplement,supplement,106
+2017-06-09 03:00:00,lecture,lecture,1002
+2017-06-09 03:00:00,quiz,exam,248
+2017-06-09 03:00:00,programming,graded programming,176
+2017-06-09 03:00:00,,others,3
+2017-06-10 03:00:00,quiz,exam,76
+2017-06-10 03:00:00,supplement,supplement,70
+2017-06-10 03:00:00,notebook,notebook,244
+2017-06-10 03:00:00,lecture,lecture,845
+2017-06-10 03:00:00,programming,graded programming,112
+2017-06-11 03:00:00,notebook,notebook,364
+2017-06-11 03:00:00,supplement,supplement,80
+2017-06-11 03:00:00,lecture,lecture,1242
+2017-06-11 03:00:00,programming,graded programming,92
+2017-06-11 03:00:00,quiz,exam,500
+2017-06-12 03:00:00,lecture,lecture,1671
+2017-06-12 03:00:00,notebook,notebook,752
+2017-06-12 03:00:00,supplement,supplement,177
+2017-06-12 03:00:00,quiz,exam,364
+2017-06-12 03:00:00,programming,graded programming,568
+2017-06-12 03:00:00,,others,4
+2017-06-13 03:00:00,supplement,supplement,88
+2017-06-13 03:00:00,lecture,lecture,1418
+2017-06-13 03:00:00,,others,7
+2017-06-13 03:00:00,programming,graded programming,56
+2017-06-13 03:00:00,notebook,notebook,504
+2017-06-13 03:00:00,quiz,exam,184
+2017-06-14 03:00:00,lecture,lecture,1591
+2017-06-14 03:00:00,notebook,notebook,360
+2017-06-14 03:00:00,quiz,exam,316
+2017-06-14 03:00:00,supplement,supplement,125
+2017-06-14 03:00:00,programming,graded programming,32
+2017-06-15 03:00:00,supplement,supplement,83
+2017-06-15 03:00:00,notebook,notebook,352
+2017-06-15 03:00:00,programming,graded programming,52
+2017-06-15 03:00:00,lecture,lecture,1198
+2017-06-15 03:00:00,quiz,exam,340
+2017-06-16 03:00:00,notebook,notebook,320
+2017-06-16 03:00:00,lecture,lecture,1456
+2017-06-16 03:00:00,supplement,supplement,112
+2017-06-16 03:00:00,quiz,exam,496
+2017-06-16 03:00:00,programming,graded programming,56
+2017-06-17 03:00:00,lecture,lecture,1513
+2017-06-17 03:00:00,programming,graded programming,220
+2017-06-17 03:00:00,notebook,notebook,468
+2017-06-17 03:00:00,supplement,supplement,112
+2017-06-17 03:00:00,quiz,exam,168
+2017-06-17 03:00:00,,others,3
+2017-06-18 03:00:00,programming,graded programming,424
+2017-06-18 03:00:00,lecture,lecture,888
+2017-06-18 03:00:00,notebook,notebook,372
+2017-06-18 03:00:00,quiz,exam,168
+2017-06-18 03:00:00,supplement,supplement,106
+2017-06-19 03:00:00,lecture,lecture,1763
+2017-06-19 03:00:00,notebook,notebook,548
+2017-06-19 03:00:00,supplement,supplement,215
+2017-06-19 03:00:00,quiz,exam,296
+2017-06-19 03:00:00,programming,graded programming,140
+2017-06-20 03:00:00,supplement,supplement,111
+2017-06-20 03:00:00,lecture,lecture,1077
+2017-06-20 03:00:00,quiz,exam,72
+2017-06-20 03:00:00,notebook,notebook,468
+2017-06-20 03:00:00,programming,graded programming,96
+2017-06-20 03:00:00,,others,6
+2017-06-21 03:00:00,lecture,lecture,1743
+2017-06-21 03:00:00,notebook,notebook,764
+2017-06-21 03:00:00,quiz,exam,348
+2017-06-21 03:00:00,supplement,supplement,179
+2017-06-21 03:00:00,programming,graded programming,184
+2017-06-22 03:00:00,supplement,supplement,136
+2017-06-22 03:00:00,notebook,notebook,648
+2017-06-22 03:00:00,quiz,exam,1084
+2017-06-22 03:00:00,lecture,lecture,1818
+2017-06-22 03:00:00,programming,graded programming,300
+2017-06-23 03:00:00,lecture,lecture,1419
+2017-06-23 03:00:00,supplement,supplement,133
+2017-06-23 03:00:00,notebook,notebook,552
+2017-06-23 03:00:00,quiz,exam,736
+2017-06-23 03:00:00,programming,graded programming,160
+2017-06-24 03:00:00,lecture,lecture,964
+2017-06-24 03:00:00,supplement,supplement,87
+2017-06-24 03:00:00,notebook,notebook,324
+2017-06-24 03:00:00,quiz,exam,1108
+2017-06-24 03:00:00,programming,graded programming,100
+2017-06-25 03:00:00,lecture,lecture,1059
+2017-06-25 03:00:00,supplement,supplement,33
+2017-06-25 03:00:00,notebook,notebook,428
+2017-06-25 03:00:00,quiz,exam,852
+2017-06-25 03:00:00,programming,graded programming,128
+2017-06-25 03:00:00,,others,3
+2017-06-26 03:00:00,quiz,exam,1220
+2017-06-26 03:00:00,notebook,notebook,536
+2017-06-26 03:00:00,lecture,lecture,1705
+2017-06-26 03:00:00,supplement,supplement,195
+2017-06-26 03:00:00,programming,graded programming,456
+2017-06-27 03:00:00,supplement,supplement,118
+2017-06-27 03:00:00,lecture,lecture,1779
+2017-06-27 03:00:00,quiz,exam,992
+2017-06-27 03:00:00,notebook,notebook,624
+2017-06-27 03:00:00,programming,graded programming,224
+2017-06-28 03:00:00,supplement,supplement,70
+2017-06-28 03:00:00,notebook,notebook,628
+2017-06-28 03:00:00,quiz,exam,664
+2017-06-28 03:00:00,lecture,lecture,1610
+2017-06-28 03:00:00,programming,graded programming,148
+2017-06-29 03:00:00,,others,4
+2017-06-29 03:00:00,notebook,notebook,500
+2017-06-29 03:00:00,quiz,exam,1128
+2017-06-29 03:00:00,lecture,lecture,1374
+2017-06-29 03:00:00,programming,graded programming,204
+2017-06-29 03:00:00,supplement,supplement,75
+2017-06-30 03:00:00,,others,3
+2017-06-30 03:00:00,quiz,exam,1484
+2017-06-30 03:00:00,notebook,notebook,524
+2017-06-30 03:00:00,programming,graded programming,160
+2017-06-30 03:00:00,lecture,lecture,800
+2017-06-30 03:00:00,supplement,supplement,67
+2017-07-01 03:00:00,lecture,lecture,820
+2017-07-01 03:00:00,quiz,exam,1160
+2017-07-01 03:00:00,supplement,supplement,47
+2017-07-01 03:00:00,notebook,notebook,336
+2017-07-01 03:00:00,programming,graded programming,132
+2017-07-01 03:00:00,,others,3
+2017-07-02 03:00:00,supplement,supplement,79
+2017-07-02 03:00:00,lecture,lecture,1125
+2017-07-02 03:00:00,programming,graded programming,88
+2017-07-02 03:00:00,quiz,exam,364
+2017-07-02 03:00:00,notebook,notebook,452
+2017-07-03 03:00:00,supplement,supplement,158
+2017-07-03 03:00:00,quiz,exam,1580
+2017-07-03 03:00:00,notebook,notebook,596
+2017-07-03 03:00:00,programming,graded programming,44
+2017-07-03 03:00:00,lecture,lecture,1321
+2017-07-04 03:00:00,programming,graded programming,544
+2017-07-04 03:00:00,notebook,notebook,644
+2017-07-04 03:00:00,,others,10
+2017-07-04 03:00:00,supplement,supplement,161
+2017-07-04 03:00:00,lecture,lecture,1649
+2017-07-04 03:00:00,quiz,exam,1096
+2017-07-05 03:00:00,quiz,exam,516
+2017-07-05 03:00:00,lecture,lecture,1735
+2017-07-05 03:00:00,programming,graded programming,204
+2017-07-05 03:00:00,supplement,supplement,104
+2017-07-05 03:00:00,notebook,notebook,664
+2017-07-05 03:00:00,,others,11
+2017-07-06 03:00:00,,others,3
+2017-07-06 03:00:00,supplement,supplement,87
+2017-07-06 03:00:00,notebook,notebook,560
+2017-07-06 03:00:00,quiz,exam,572
+2017-07-06 03:00:00,lecture,lecture,1314
+2017-07-06 03:00:00,programming,graded programming,304
+2017-07-07 03:00:00,lecture,lecture,1484
+2017-07-07 03:00:00,supplement,supplement,160
+2017-07-07 03:00:00,,others,10
+2017-07-07 03:00:00,quiz,exam,156
+2017-07-07 03:00:00,notebook,notebook,720
+2017-07-07 03:00:00,programming,graded programming,388
+2017-07-08 03:00:00,supplement,supplement,79
+2017-07-08 03:00:00,lecture,lecture,1082
+2017-07-08 03:00:00,quiz,exam,620
+2017-07-08 03:00:00,notebook,notebook,452
+2017-07-08 03:00:00,programming,graded programming,72
+2017-07-09 03:00:00,notebook,notebook,356
+2017-07-09 03:00:00,supplement,supplement,55
+2017-07-09 03:00:00,quiz,exam,212
+2017-07-09 03:00:00,programming,graded programming,312
+2017-07-09 03:00:00,lecture,lecture,711
+2017-07-10 03:00:00,quiz,exam,248
+2017-07-10 03:00:00,lecture,lecture,1245
+2017-07-10 03:00:00,programming,graded programming,328
+2017-07-10 03:00:00,notebook,notebook,448
+2017-07-10 03:00:00,supplement,supplement,110
+2017-07-10 03:00:00,,others,7
+2017-07-11 03:00:00,lecture,lecture,1097
+2017-07-11 03:00:00,quiz,exam,484
+2017-07-11 03:00:00,,others,3
+2017-07-11 03:00:00,supplement,supplement,85
+2017-07-11 03:00:00,notebook,notebook,464
+2017-07-11 03:00:00,programming,graded programming,288
+2017-07-12 03:00:00,lecture,lecture,1406
+2017-07-12 03:00:00,supplement,supplement,114
+2017-07-12 03:00:00,notebook,notebook,392
+2017-07-12 03:00:00,quiz,exam,80
+2017-07-12 03:00:00,programming,graded programming,192
+2017-07-13 03:00:00,lecture,lecture,1449
+2017-07-13 03:00:00,programming,graded programming,280
+2017-07-13 03:00:00,supplement,supplement,46
+2017-07-13 03:00:00,notebook,notebook,512
+2017-07-13 03:00:00,,others,3
+2017-07-13 03:00:00,quiz,exam,312
+2017-07-14 03:00:00,notebook,notebook,332
+2017-07-14 03:00:00,lecture,lecture,1233
+2017-07-14 03:00:00,supplement,supplement,37
+2017-07-14 03:00:00,quiz,exam,96
+2017-07-14 03:00:00,programming,graded programming,168
+2017-07-15 03:00:00,notebook,notebook,468
+2017-07-15 03:00:00,supplement,supplement,70
+2017-07-15 03:00:00,lecture,lecture,768
+2017-07-15 03:00:00,quiz,exam,936
+2017-07-15 03:00:00,programming,graded programming,440
+2017-07-16 03:00:00,quiz,exam,1368
+2017-07-16 03:00:00,lecture,lecture,1082
+2017-07-16 03:00:00,programming,graded programming,424
+2017-07-16 03:00:00,supplement,supplement,75
+2017-07-16 03:00:00,notebook,notebook,612
+2017-07-16 03:00:00,,others,7
+2017-07-17 03:00:00,notebook,notebook,576
+2017-07-17 03:00:00,lecture,lecture,1648
+2017-07-17 03:00:00,quiz,exam,1300
+2017-07-17 03:00:00,supplement,supplement,150
+2017-07-17 03:00:00,programming,graded programming,236
+2017-07-18 03:00:00,lecture,lecture,1439
+2017-07-18 03:00:00,notebook,notebook,468
+2017-07-18 03:00:00,supplement,supplement,124
+2017-07-18 03:00:00,quiz,exam,840
+2017-07-18 03:00:00,programming,graded programming,264
+2017-07-19 03:00:00,programming,graded programming,288
+2017-07-19 03:00:00,supplement,supplement,54
+2017-07-19 03:00:00,notebook,notebook,488
+2017-07-19 03:00:00,quiz,exam,224
+2017-07-19 03:00:00,lecture,lecture,1027
+2017-07-20 03:00:00,notebook,notebook,328
+2017-07-20 03:00:00,lecture,lecture,841
+2017-07-20 03:00:00,quiz,exam,548
+2017-07-20 03:00:00,supplement,supplement,44
+2017-07-20 03:00:00,programming,graded programming,224
+2017-07-20 03:00:00,,others,7
+2017-07-21 03:00:00,lecture,lecture,867
+2017-07-21 03:00:00,supplement,supplement,67
+2017-07-21 03:00:00,notebook,notebook,612
+2017-07-21 03:00:00,quiz,exam,280
+2017-07-21 03:00:00,,others,7
+2017-07-21 03:00:00,programming,graded programming,332
+2017-07-22 03:00:00,quiz,exam,256
+2017-07-22 03:00:00,programming,graded programming,168
+2017-07-22 03:00:00,notebook,notebook,304
+2017-07-22 03:00:00,supplement,supplement,61
+2017-07-22 03:00:00,lecture,lecture,741
+2017-07-23 03:00:00,supplement,supplement,58
+2017-07-23 03:00:00,notebook,notebook,268
+2017-07-23 03:00:00,lecture,lecture,604
+2017-07-23 03:00:00,quiz,exam,948
+2017-07-23 03:00:00,programming,graded programming,56
+2017-07-24 03:00:00,supplement,supplement,105
+2017-07-24 03:00:00,quiz,exam,1208
+2017-07-24 03:00:00,notebook,notebook,424
+2017-07-24 03:00:00,lecture,lecture,1359
+2017-07-24 03:00:00,programming,graded programming,152
+2017-07-25 03:00:00,lecture,lecture,878
+2017-07-25 03:00:00,quiz,exam,476
+2017-07-25 03:00:00,notebook,notebook,488
+2017-07-25 03:00:00,supplement,supplement,75
+2017-07-25 03:00:00,programming,graded programming,204
+2017-07-26 03:00:00,lecture,lecture,1171
+2017-07-26 03:00:00,notebook,notebook,512
+2017-07-26 03:00:00,quiz,exam,772
+2017-07-26 03:00:00,supplement,supplement,99
+2017-07-26 03:00:00,programming,graded programming,100
+2017-07-27 03:00:00,supplement,supplement,117
+2017-07-27 03:00:00,lecture,lecture,957
+2017-07-27 03:00:00,,others,13
+2017-07-27 03:00:00,notebook,notebook,508
+2017-07-27 03:00:00,quiz,exam,488
+2017-07-27 03:00:00,programming,graded programming,80
+2017-07-28 03:00:00,supplement,supplement,87
+2017-07-28 03:00:00,lecture,lecture,1396
+2017-07-28 03:00:00,quiz,exam,720
+2017-07-28 03:00:00,notebook,notebook,588
+2017-07-28 03:00:00,programming,graded programming,272
+2017-07-28 03:00:00,,others,3
+2017-07-29 03:00:00,lecture,lecture,1242
+2017-07-29 03:00:00,programming,graded programming,204
+2017-07-29 03:00:00,quiz,exam,840
+2017-07-29 03:00:00,notebook,notebook,368
+2017-07-29 03:00:00,supplement,supplement,59
+2017-07-29 03:00:00,,others,3
+2017-07-30 03:00:00,,others,3
+2017-07-30 03:00:00,notebook,notebook,480
+2017-07-30 03:00:00,programming,graded programming,172
+2017-07-30 03:00:00,lecture,lecture,1045
+2017-07-30 03:00:00,supplement,supplement,105
+2017-07-30 03:00:00,quiz,exam,276
+2017-07-31 03:00:00,lecture,lecture,1234
+2017-07-31 03:00:00,quiz,exam,484
+2017-07-31 03:00:00,notebook,notebook,392
+2017-07-31 03:00:00,supplement,supplement,69
+2017-07-31 03:00:00,programming,graded programming,96
+2017-08-01 03:00:00,notebook,notebook,508
+2017-08-01 03:00:00,lecture,lecture,1287
+2017-08-01 03:00:00,supplement,supplement,104
+2017-08-01 03:00:00,programming,graded programming,240
+2017-08-01 03:00:00,quiz,exam,408
+2017-08-01 03:00:00,,others,9
+2017-08-02 03:00:00,notebook,notebook,492
+2017-08-02 03:00:00,lecture,lecture,1112
+2017-08-02 03:00:00,quiz,exam,364
+2017-08-02 03:00:00,programming,graded programming,108
+2017-08-02 03:00:00,supplement,supplement,83
+2017-08-02 03:00:00,,others,6
+2017-08-03 03:00:00,lecture,lecture,939
+2017-08-03 03:00:00,notebook,notebook,360
+2017-08-03 03:00:00,supplement,supplement,146
+2017-08-03 03:00:00,quiz,exam,716
+2017-08-03 03:00:00,programming,graded programming,88
+2017-08-04 03:00:00,supplement,supplement,104
+2017-08-04 03:00:00,quiz,exam,524
+2017-08-04 03:00:00,notebook,notebook,412
+2017-08-04 03:00:00,lecture,lecture,987
+2017-08-04 03:00:00,programming,graded programming,188
+2017-08-05 03:00:00,lecture,lecture,1115
+2017-08-05 03:00:00,supplement,supplement,77
+2017-08-05 03:00:00,programming,graded programming,120
+2017-08-05 03:00:00,quiz,exam,464
+2017-08-05 03:00:00,notebook,notebook,268
+2017-08-06 03:00:00,supplement,supplement,58
+2017-08-06 03:00:00,lecture,lecture,1265
+2017-08-06 03:00:00,quiz,exam,544
+2017-08-06 03:00:00,programming,graded programming,96
+2017-08-06 03:00:00,notebook,notebook,336
+2017-08-07 03:00:00,supplement,supplement,93
+2017-08-07 03:00:00,notebook,notebook,464
+2017-08-07 03:00:00,quiz,exam,364
+2017-08-07 03:00:00,lecture,lecture,987
+2017-08-07 03:00:00,programming,graded programming,200
+2017-08-07 03:00:00,,others,4
+2017-08-08 03:00:00,lecture,lecture,1731
+2017-08-08 03:00:00,supplement,supplement,73
+2017-08-08 03:00:00,notebook,notebook,584
+2017-08-08 03:00:00,quiz,exam,272
+2017-08-08 03:00:00,programming,graded programming,244
+2017-08-09 03:00:00,notebook,notebook,532
+2017-08-09 03:00:00,lecture,lecture,1452
+2017-08-09 03:00:00,supplement,supplement,110
+2017-08-09 03:00:00,programming,graded programming,200
+2017-08-09 03:00:00,quiz,exam,620
+2017-08-09 03:00:00,,others,3
+2017-08-10 03:00:00,programming,graded programming,344
+2017-08-10 03:00:00,supplement,supplement,111
+2017-08-10 03:00:00,lecture,lecture,1002
+2017-08-10 03:00:00,quiz,exam,216
+2017-08-10 03:00:00,notebook,notebook,676
+2017-08-11 03:00:00,notebook,notebook,532
+2017-08-11 03:00:00,lecture,lecture,1020
+2017-08-11 03:00:00,supplement,supplement,89
+2017-08-11 03:00:00,quiz,exam,264
+2017-08-11 03:00:00,programming,graded programming,240
+2017-08-12 03:00:00,lecture,lecture,914
+2017-08-12 03:00:00,notebook,notebook,448
+2017-08-12 03:00:00,quiz,exam,244
+2017-08-12 03:00:00,supplement,supplement,54
+2017-08-12 03:00:00,programming,graded programming,152
+2017-08-12 03:00:00,,others,3
+2017-08-13 03:00:00,quiz,exam,244
+2017-08-13 03:00:00,supplement,supplement,59
+2017-08-13 03:00:00,programming,graded programming,192
+2017-08-13 03:00:00,lecture,lecture,1132
+2017-08-13 03:00:00,,others,3
+2017-08-13 03:00:00,notebook,notebook,544
+2017-08-14 03:00:00,supplement,supplement,129
+2017-08-14 03:00:00,notebook,notebook,596
+2017-08-14 03:00:00,quiz,exam,744
+2017-08-14 03:00:00,lecture,lecture,1830
+2017-08-14 03:00:00,programming,graded programming,268
+2017-08-15 03:00:00,lecture,lecture,1607
+2017-08-15 03:00:00,quiz,exam,384
+2017-08-15 03:00:00,supplement,supplement,145
+2017-08-15 03:00:00,programming,graded programming,264
+2017-08-15 03:00:00,notebook,notebook,468
+2017-08-15 03:00:00,,others,7
+2017-08-16 03:00:00,lecture,lecture,1841
+2017-08-16 03:00:00,quiz,exam,676
+2017-08-16 03:00:00,programming,graded programming,324
+2017-08-16 03:00:00,supplement,supplement,103
+2017-08-16 03:00:00,notebook,notebook,692
+2017-08-17 03:00:00,lecture,lecture,1520
+2017-08-17 03:00:00,supplement,supplement,163
+2017-08-17 03:00:00,notebook,notebook,516
+2017-08-17 03:00:00,quiz,exam,1256
+2017-08-17 03:00:00,programming,graded programming,232
+2017-08-17 03:00:00,,others,4
+2017-08-18 03:00:00,lecture,lecture,759
+2017-08-18 03:00:00,notebook,notebook,416
+2017-08-18 03:00:00,supplement,supplement,48
+2017-08-18 03:00:00,quiz,exam,744
+2017-08-18 03:00:00,programming,graded programming,100
+2017-08-19 03:00:00,lecture,lecture,1081
+2017-08-19 03:00:00,notebook,notebook,544
+2017-08-19 03:00:00,supplement,supplement,101
+2017-08-19 03:00:00,quiz,exam,296
+2017-08-19 03:00:00,programming,graded programming,200
+2017-08-19 03:00:00,,others,11
+2017-08-20 03:00:00,programming,graded programming,116
+2017-08-20 03:00:00,lecture,lecture,1064
+2017-08-20 03:00:00,supplement,supplement,56
+2017-08-20 03:00:00,notebook,notebook,388
+2017-08-20 03:00:00,quiz,exam,1104
+2017-08-20 03:00:00,,others,3
+2017-08-21 03:00:00,notebook,notebook,516
+2017-08-21 03:00:00,supplement,supplement,91
+2017-08-21 03:00:00,lecture,lecture,1215
+2017-08-21 03:00:00,quiz,exam,216
+2017-08-21 03:00:00,programming,graded programming,296
+2017-08-21 03:00:00,,others,3
+2017-08-22 03:00:00,quiz,exam,232
+2017-08-22 03:00:00,lecture,lecture,949
+2017-08-22 03:00:00,notebook,notebook,580
+2017-08-22 03:00:00,supplement,supplement,75
+2017-08-22 03:00:00,programming,graded programming,208
+2017-08-23 03:00:00,lecture,lecture,1160
+2017-08-23 03:00:00,,others,10
+2017-08-23 03:00:00,notebook,notebook,572
+2017-08-23 03:00:00,quiz,exam,720
+2017-08-23 03:00:00,supplement,supplement,99
+2017-08-23 03:00:00,programming,graded programming,196
+2017-08-24 03:00:00,quiz,exam,376
+2017-08-24 03:00:00,notebook,notebook,448
+2017-08-24 03:00:00,supplement,supplement,62
+2017-08-24 03:00:00,lecture,lecture,909
+2017-08-24 03:00:00,programming,graded programming,132
+2017-08-24 03:00:00,,others,4
+2017-08-25 03:00:00,quiz,exam,112
+2017-08-25 03:00:00,supplement,supplement,53
+2017-08-25 03:00:00,,others,4
+2017-08-25 03:00:00,programming,graded programming,200
+2017-08-25 03:00:00,lecture,lecture,822
+2017-08-25 03:00:00,notebook,notebook,356
+2017-08-26 03:00:00,lecture,lecture,641
+2017-08-26 03:00:00,quiz,exam,12
+2017-08-26 03:00:00,supplement,supplement,67
+2017-08-26 03:00:00,programming,graded programming,168
+2017-08-26 03:00:00,notebook,notebook,392
+2017-08-27 03:00:00,lecture,lecture,1276
+2017-08-27 03:00:00,supplement,supplement,73
+2017-08-27 03:00:00,notebook,notebook,600
+2017-08-27 03:00:00,programming,graded programming,356
+2017-08-27 03:00:00,quiz,exam,392
+2017-08-27 03:00:00,,others,10
+2017-08-28 03:00:00,,others,4
+2017-08-28 03:00:00,lecture,lecture,1299
+2017-08-28 03:00:00,notebook,notebook,460
+2017-08-28 03:00:00,quiz,exam,360
+2017-08-28 03:00:00,supplement,supplement,105
+2017-08-28 03:00:00,programming,graded programming,228
+2017-08-29 03:00:00,notebook,notebook,556
+2017-08-29 03:00:00,lecture,lecture,888
+2017-08-29 03:00:00,supplement,supplement,83
+2017-08-29 03:00:00,quiz,exam,448
+2017-08-29 03:00:00,programming,graded programming,244
+2017-08-30 03:00:00,supplement,supplement,57
+2017-08-30 03:00:00,quiz,exam,604
+2017-08-30 03:00:00,programming,graded programming,336
+2017-08-30 03:00:00,lecture,lecture,1117
+2017-08-30 03:00:00,notebook,notebook,532
+2017-08-31 03:00:00,notebook,notebook,372
+2017-08-31 03:00:00,supplement,supplement,115
+2017-08-31 03:00:00,quiz,exam,800
+2017-08-31 03:00:00,lecture,lecture,1009
+2017-08-31 03:00:00,programming,graded programming,100
+2017-09-01 03:00:00,quiz,exam,656
+2017-09-01 03:00:00,lecture,lecture,1038
+2017-09-01 03:00:00,supplement,supplement,113
+2017-09-01 03:00:00,notebook,notebook,268
+2017-09-01 03:00:00,programming,graded programming,240
+2017-09-01 03:00:00,,others,6
+2017-09-02 03:00:00,notebook,notebook,412
+2017-09-02 03:00:00,lecture,lecture,832
+2017-09-02 03:00:00,quiz,exam,468
+2017-09-02 03:00:00,supplement,supplement,85
+2017-09-02 03:00:00,,others,3
+2017-09-02 03:00:00,programming,graded programming,260
+2017-09-03 03:00:00,lecture,lecture,1033
+2017-09-03 03:00:00,notebook,notebook,764
+2017-09-03 03:00:00,supplement,supplement,105
+2017-09-03 03:00:00,quiz,exam,232
+2017-09-03 03:00:00,programming,graded programming,708
+2017-09-04 03:00:00,lecture,lecture,904
+2017-09-04 03:00:00,supplement,supplement,50
+2017-09-04 03:00:00,notebook,notebook,480
+2017-09-04 03:00:00,quiz,exam,820
+2017-09-04 03:00:00,programming,graded programming,348
+2017-09-05 03:00:00,notebook,notebook,416
+2017-09-05 03:00:00,quiz,exam,1436
+2017-09-05 03:00:00,supplement,supplement,93
+2017-09-05 03:00:00,,others,10
+2017-09-05 03:00:00,lecture,lecture,936
+2017-09-05 03:00:00,programming,graded programming,112
+2017-09-06 03:00:00,lecture,lecture,934
+2017-09-06 03:00:00,supplement,supplement,66
+2017-09-06 03:00:00,quiz,exam,788
+2017-09-06 03:00:00,,others,7
+2017-09-06 03:00:00,programming,graded programming,268
+2017-09-06 03:00:00,notebook,notebook,544
+2017-09-07 03:00:00,supplement,supplement,94
+2017-09-07 03:00:00,lecture,lecture,1209
+2017-09-07 03:00:00,quiz,exam,1136
+2017-09-07 03:00:00,notebook,notebook,660
+2017-09-07 03:00:00,programming,graded programming,404
+2017-09-08 03:00:00,programming,graded programming,344
+2017-09-08 03:00:00,lecture,lecture,1189
+2017-09-08 03:00:00,,others,3
+2017-09-08 03:00:00,supplement,supplement,111
+2017-09-08 03:00:00,notebook,notebook,440
+2017-09-08 03:00:00,quiz,exam,188
+2017-09-09 03:00:00,supplement,supplement,53
+2017-09-09 03:00:00,quiz,exam,304
+2017-09-09 03:00:00,programming,graded programming,268
+2017-09-09 03:00:00,lecture,lecture,948
+2017-09-09 03:00:00,notebook,notebook,372
+2017-09-10 03:00:00,supplement,supplement,46
+2017-09-10 03:00:00,lecture,lecture,1085
+2017-09-10 03:00:00,quiz,exam,464
+2017-09-10 03:00:00,notebook,notebook,424
+2017-09-10 03:00:00,programming,graded programming,136
+2017-09-11 03:00:00,notebook,notebook,544
+2017-09-11 03:00:00,supplement,supplement,107
+2017-09-11 03:00:00,lecture,lecture,1047
+2017-09-11 03:00:00,,others,4
+2017-09-11 03:00:00,quiz,exam,952
+2017-09-11 03:00:00,programming,graded programming,164
+2017-09-12 03:00:00,supplement,supplement,104
+2017-09-12 03:00:00,lecture,lecture,1173
+2017-09-12 03:00:00,programming,graded programming,224
+2017-09-12 03:00:00,quiz,exam,212
+2017-09-12 03:00:00,notebook,notebook,620
+2017-09-13 03:00:00,notebook,notebook,516
+2017-09-13 03:00:00,supplement,supplement,93
+2017-09-13 03:00:00,programming,graded programming,292
+2017-09-13 03:00:00,quiz,exam,1236
+2017-09-13 03:00:00,,others,3
+2017-09-13 03:00:00,lecture,lecture,1374
+2017-09-14 03:00:00,lecture,lecture,1212
+2017-09-14 03:00:00,notebook,notebook,644
+2017-09-14 03:00:00,programming,graded programming,388
+2017-09-14 03:00:00,supplement,supplement,75
+2017-09-14 03:00:00,quiz,exam,380
+2017-09-15 03:00:00,quiz,exam,792
+2017-09-15 03:00:00,notebook,notebook,428
+2017-09-15 03:00:00,lecture,lecture,932
+2017-09-15 03:00:00,supplement,supplement,51
+2017-09-15 03:00:00,,others,15
+2017-09-15 03:00:00,programming,graded programming,160
+2017-09-16 03:00:00,lecture,lecture,1428
+2017-09-16 03:00:00,supplement,supplement,78
+2017-09-16 03:00:00,notebook,notebook,404
+2017-09-16 03:00:00,quiz,exam,736
+2017-09-16 03:00:00,,others,7
+2017-09-16 03:00:00,programming,graded programming,332
+2017-09-17 03:00:00,lecture,lecture,734
+2017-09-17 03:00:00,supplement,supplement,74
+2017-09-17 03:00:00,notebook,notebook,364
+2017-09-17 03:00:00,quiz,exam,612
+2017-09-17 03:00:00,programming,graded programming,500
+2017-09-18 03:00:00,quiz,exam,416
+2017-09-18 03:00:00,programming,graded programming,292
+2017-09-18 03:00:00,notebook,notebook,320
+2017-09-18 03:00:00,,others,10
+2017-09-18 03:00:00,lecture,lecture,929
+2017-09-18 03:00:00,supplement,supplement,58
+2017-09-19 03:00:00,quiz,exam,176
+2017-09-19 03:00:00,supplement,supplement,84
+2017-09-19 03:00:00,programming,graded programming,264
+2017-09-19 03:00:00,lecture,lecture,1186
+2017-09-19 03:00:00,notebook,notebook,492
+2017-09-20 03:00:00,programming,graded programming,284
+2017-09-20 03:00:00,lecture,lecture,765
+2017-09-20 03:00:00,,others,11
+2017-09-20 03:00:00,notebook,notebook,412
+2017-09-20 03:00:00,quiz,exam,112
+2017-09-20 03:00:00,supplement,supplement,43
+2017-09-21 03:00:00,supplement,supplement,69
+2017-09-21 03:00:00,lecture,lecture,938
+2017-09-21 03:00:00,programming,graded programming,280
+2017-09-21 03:00:00,quiz,exam,940
+2017-09-21 03:00:00,,others,3
+2017-09-21 03:00:00,notebook,notebook,500
+2017-09-22 03:00:00,lecture,lecture,1204
+2017-09-22 03:00:00,supplement,supplement,81
+2017-09-22 03:00:00,programming,graded programming,336
+2017-09-22 03:00:00,quiz,exam,660
+2017-09-22 03:00:00,,others,3
+2017-09-22 03:00:00,notebook,notebook,468
+2017-09-23 03:00:00,quiz,exam,748
+2017-09-23 03:00:00,lecture,lecture,996
+2017-09-23 03:00:00,,others,6
+2017-09-23 03:00:00,supplement,supplement,61
+2017-09-23 03:00:00,notebook,notebook,432
+2017-09-23 03:00:00,programming,graded programming,132
+2017-09-24 03:00:00,quiz,exam,404
+2017-09-24 03:00:00,supplement,supplement,46
+2017-09-24 03:00:00,lecture,lecture,1160
+2017-09-24 03:00:00,programming,graded programming,16
+2017-09-24 03:00:00,notebook,notebook,268
+2017-09-25 03:00:00,lecture,lecture,1867
+2017-09-25 03:00:00,supplement,supplement,234
+2017-09-25 03:00:00,notebook,notebook,520
+2017-09-25 03:00:00,quiz,exam,1064
+2017-09-25 03:00:00,programming,graded programming,76
+2017-09-26 03:00:00,programming,graded programming,200
+2017-09-26 03:00:00,notebook,notebook,456
+2017-09-26 03:00:00,lecture,lecture,1339
+2017-09-26 03:00:00,supplement,supplement,125
+2017-09-26 03:00:00,quiz,exam,1196
+2017-09-27 03:00:00,notebook,notebook,376
+2017-09-27 03:00:00,supplement,supplement,79
+2017-09-27 03:00:00,lecture,lecture,1041
+2017-09-27 03:00:00,programming,graded programming,284
+2017-09-27 03:00:00,quiz,exam,724
+2017-09-27 03:00:00,,others,3
+2017-09-28 03:00:00,lecture,lecture,632
+2017-09-28 03:00:00,quiz,exam,596
+2017-09-28 03:00:00,notebook,notebook,256
+2017-09-28 03:00:00,programming,graded programming,148
+2017-09-28 03:00:00,supplement,supplement,78
+2017-09-28 03:00:00,,others,3
+2017-09-29 03:00:00,lecture,lecture,1417
+2017-09-29 03:00:00,notebook,notebook,296
+2017-09-29 03:00:00,supplement,supplement,94
+2017-09-29 03:00:00,quiz,exam,1144
+2017-09-29 03:00:00,,others,14
+2017-09-29 03:00:00,programming,graded programming,140
+2017-09-30 03:00:00,notebook,notebook,440
+2017-09-30 03:00:00,lecture,lecture,1020
+2017-09-30 03:00:00,supplement,supplement,43
+2017-09-30 03:00:00,quiz,exam,472
+2017-09-30 03:00:00,programming,graded programming,412
+2017-09-30 03:00:00,,others,3
+2017-10-01 03:00:00,lecture,lecture,894
+2017-10-01 03:00:00,quiz,exam,984
+2017-10-01 03:00:00,notebook,notebook,328
+2017-10-01 03:00:00,supplement,supplement,66
+2017-10-01 03:00:00,programming,graded programming,308
+2017-10-02 03:00:00,notebook,notebook,436
+2017-10-02 03:00:00,lecture,lecture,1116
+2017-10-02 03:00:00,supplement,supplement,69
+2017-10-02 03:00:00,programming,graded programming,272
+2017-10-02 03:00:00,quiz,exam,340
+2017-10-03 03:00:00,notebook,notebook,516
+2017-10-03 03:00:00,lecture,lecture,1170
+2017-10-03 03:00:00,quiz,exam,508
+2017-10-03 03:00:00,programming,graded programming,112
+2017-10-03 03:00:00,supplement,supplement,88
+2017-10-03 03:00:00,,others,3
+2017-10-04 03:00:00,lecture,lecture,1248
+2017-10-04 03:00:00,notebook,notebook,508
+2017-10-04 03:00:00,supplement,supplement,147
+2017-10-04 03:00:00,quiz,exam,136
+2017-10-04 03:00:00,programming,graded programming,168
+2017-10-05 03:00:00,quiz,exam,416
+2017-10-05 03:00:00,supplement,supplement,63
+2017-10-05 03:00:00,lecture,lecture,1021
+2017-10-05 03:00:00,programming,graded programming,180
+2017-10-05 03:00:00,notebook,notebook,352
+2017-10-06 03:00:00,supplement,supplement,88
+2017-10-06 03:00:00,quiz,exam,248
+2017-10-06 03:00:00,,others,4
+2017-10-06 03:00:00,lecture,lecture,834
+2017-10-06 03:00:00,programming,graded programming,184
+2017-10-06 03:00:00,notebook,notebook,260
+2017-10-07 03:00:00,notebook,notebook,272
+2017-10-07 03:00:00,lecture,lecture,732
+2017-10-07 03:00:00,quiz,exam,360
+2017-10-07 03:00:00,supplement,supplement,90
+2017-10-07 03:00:00,programming,graded programming,84
+2017-10-08 03:00:00,lecture,lecture,942
+2017-10-08 03:00:00,quiz,exam,568
+2017-10-08 03:00:00,notebook,notebook,404
+2017-10-08 03:00:00,programming,graded programming,200
+2017-10-08 03:00:00,supplement,supplement,48
+2017-10-09 03:00:00,supplement,supplement,104
+2017-10-09 03:00:00,lecture,lecture,1232
+2017-10-09 03:00:00,quiz,exam,360
+2017-10-09 03:00:00,notebook,notebook,396
+2017-10-09 03:00:00,programming,graded programming,144
+2017-10-10 03:00:00,lecture,lecture,1345
+2017-10-10 03:00:00,quiz,exam,488
+2017-10-10 03:00:00,notebook,notebook,360
+2017-10-10 03:00:00,programming,graded programming,3956
+2017-10-10 03:00:00,supplement,supplement,81
+2017-10-11 03:00:00,lecture,lecture,1345
+2017-10-11 03:00:00,quiz,exam,956
+2017-10-11 03:00:00,notebook,notebook,312
+2017-10-11 03:00:00,supplement,supplement,96
+2017-10-11 03:00:00,programming,graded programming,196
+2017-10-12 03:00:00,quiz,exam,400
+2017-10-12 03:00:00,lecture,lecture,818
+2017-10-12 03:00:00,notebook,notebook,364
+2017-10-12 03:00:00,supplement,supplement,26
+2017-10-12 03:00:00,programming,graded programming,116
+2017-10-13 03:00:00,lecture,lecture,774
+2017-10-13 03:00:00,quiz,exam,372
+2017-10-13 03:00:00,,others,13
+2017-10-13 03:00:00,notebook,notebook,308
+2017-10-13 03:00:00,supplement,supplement,83
+2017-10-13 03:00:00,programming,graded programming,8676
+2017-10-14 03:00:00,lecture,lecture,1120
+2017-10-14 03:00:00,notebook,notebook,236
+2017-10-14 03:00:00,supplement,supplement,124
+2017-10-14 03:00:00,quiz,exam,428
+2017-10-14 03:00:00,programming,graded programming,24
+2017-10-15 03:00:00,notebook,notebook,496
+2017-10-15 03:00:00,supplement,supplement,29
+2017-10-15 03:00:00,lecture,lecture,602
+2017-10-15 03:00:00,programming,graded programming,3476
+2017-10-15 03:00:00,quiz,exam,348
+2017-10-16 03:00:00,quiz,exam,588
+2017-10-16 03:00:00,supplement,supplement,52
+2017-10-16 03:00:00,programming,graded programming,356
+2017-10-16 03:00:00,lecture,lecture,878
+2017-10-16 03:00:00,notebook,notebook,332
+2017-10-17 03:00:00,quiz,exam,1336
+2017-10-17 03:00:00,notebook,notebook,408
+2017-10-17 03:00:00,supplement,supplement,191
+2017-10-17 03:00:00,lecture,lecture,1299
+2017-10-17 03:00:00,programming,graded programming,464
+2017-10-18 03:00:00,supplement,supplement,39
+2017-10-18 03:00:00,lecture,lecture,768
+2017-10-18 03:00:00,quiz,exam,648
+2017-10-18 03:00:00,notebook,notebook,420
+2017-10-18 03:00:00,programming,graded programming,192
+2017-10-19 03:00:00,supplement,supplement,128
+2017-10-19 03:00:00,programming,graded programming,288
+2017-10-19 03:00:00,quiz,exam,992
+2017-10-19 03:00:00,lecture,lecture,1051
+2017-10-19 03:00:00,notebook,notebook,508
+2017-10-20 03:00:00,notebook,notebook,400
+2017-10-20 03:00:00,lecture,lecture,680
+2017-10-20 03:00:00,quiz,exam,800
+2017-10-20 03:00:00,programming,graded programming,208
+2017-10-20 03:00:00,supplement,supplement,39
+2017-10-21 03:00:00,lecture,lecture,554
+2017-10-21 03:00:00,notebook,notebook,120
+2017-10-21 03:00:00,programming,graded programming,56
+2017-10-21 03:00:00,supplement,supplement,49
+2017-10-21 03:00:00,quiz,exam,152
+2017-10-22 03:00:00,lecture,lecture,602
+2017-10-22 03:00:00,notebook,notebook,308
+2017-10-22 03:00:00,programming,graded programming,192
+2017-10-22 03:00:00,supplement,supplement,64
+2017-10-22 03:00:00,quiz,exam,464
+2017-10-23 03:00:00,supplement,supplement,57
+2017-10-23 03:00:00,lecture,lecture,660
+2017-10-23 03:00:00,quiz,exam,780
+2017-10-23 03:00:00,notebook,notebook,280
+2017-10-23 03:00:00,programming,graded programming,180
+2017-10-24 03:00:00,notebook,notebook,292
+2017-10-24 03:00:00,lecture,lecture,724
+2017-10-24 03:00:00,supplement,supplement,61
+2017-10-24 03:00:00,quiz,exam,560
+2017-10-24 03:00:00,programming,graded programming,52
+2017-10-25 03:00:00,supplement,supplement,55
+2017-10-25 03:00:00,notebook,notebook,256
+2017-10-25 03:00:00,quiz,exam,1120
+2017-10-25 03:00:00,lecture,lecture,536
+2017-10-25 03:00:00,programming,graded programming,232
+2017-10-26 03:00:00,supplement,supplement,78
+2017-10-26 03:00:00,lecture,lecture,997
+2017-10-26 03:00:00,programming,graded programming,804
+2017-10-26 03:00:00,quiz,exam,896
+2017-10-26 03:00:00,notebook,notebook,220
+2017-10-27 03:00:00,lecture,lecture,728
+2017-10-27 03:00:00,quiz,exam,524
+2017-10-27 03:00:00,programming,graded programming,28
+2017-10-27 03:00:00,supplement,supplement,58
+2017-10-27 03:00:00,notebook,notebook,300
+2017-10-28 03:00:00,notebook,notebook,424
+2017-10-28 03:00:00,supplement,supplement,63
+2017-10-28 03:00:00,programming,graded programming,632
+2017-10-28 03:00:00,quiz,exam,1008
+2017-10-28 03:00:00,lecture,lecture,991
+2017-10-29 03:00:00,notebook,notebook,536
+2017-10-29 03:00:00,lecture,lecture,995
+2017-10-29 03:00:00,programming,graded programming,304
+2017-10-29 03:00:00,supplement,supplement,51
+2017-10-29 03:00:00,quiz,exam,532
+2017-10-30 03:00:00,supplement,supplement,72
+2017-10-30 03:00:00,lecture,lecture,997
+2017-10-30 03:00:00,quiz,exam,588
+2017-10-30 03:00:00,notebook,notebook,316
+2017-10-30 03:00:00,programming,graded programming,288
+2017-10-31 03:00:00,lecture,lecture,691
+2017-10-31 03:00:00,,others,4
+2017-10-31 03:00:00,supplement,supplement,35
+2017-10-31 03:00:00,notebook,notebook,328
+2017-10-31 03:00:00,quiz,exam,568
+2017-10-31 03:00:00,programming,graded programming,256
+2017-11-01 03:00:00,lecture,lecture,717
+2017-11-01 03:00:00,supplement,supplement,89
+2017-11-01 03:00:00,programming,graded programming,56
+2017-11-01 03:00:00,notebook,notebook,208
+2017-11-01 03:00:00,quiz,exam,704
+2017-11-02 03:00:00,lecture,lecture,933
+2017-11-02 03:00:00,supplement,supplement,93
+2017-11-02 03:00:00,quiz,exam,956
+2017-11-02 03:00:00,programming,graded programming,724
+2017-11-02 03:00:00,notebook,notebook,272
+2017-11-03 03:00:00,supplement,supplement,94
+2017-11-03 03:00:00,notebook,notebook,276
+2017-11-03 03:00:00,programming,graded programming,92
+2017-11-03 03:00:00,lecture,lecture,1052
+2017-11-03 03:00:00,quiz,exam,532
+2017-11-04 03:00:00,notebook,notebook,192
+2017-11-04 03:00:00,lecture,lecture,774
+2017-11-04 03:00:00,quiz,exam,416
+2017-11-04 03:00:00,supplement,supplement,100
+2017-11-04 03:00:00,programming,graded programming,48
+2017-11-05 02:00:00,lecture,lecture,848
+2017-11-05 02:00:00,supplement,supplement,73
+2017-11-05 02:00:00,notebook,notebook,488
+2017-11-05 02:00:00,quiz,exam,816
+2017-11-05 02:00:00,programming,graded programming,320
+2017-11-06 03:00:00,notebook,notebook,512
+2017-11-06 03:00:00,quiz,exam,456
+2017-11-06 03:00:00,lecture,lecture,1078
+2017-11-06 03:00:00,programming,graded programming,8900
+2017-11-06 03:00:00,supplement,supplement,132
+2017-11-06 03:00:00,,others,4
+2017-11-07 03:00:00,supplement,supplement,121
+2017-11-07 03:00:00,quiz,exam,416
+2017-11-07 03:00:00,programming,graded programming,160
+2017-11-07 03:00:00,,others,8
+2017-11-07 03:00:00,lecture,lecture,972
+2017-11-07 03:00:00,notebook,notebook,416
+2017-11-08 03:00:00,lecture,lecture,798
+2017-11-08 03:00:00,supplement,supplement,66
+2017-11-08 03:00:00,quiz,exam,792
+2017-11-08 03:00:00,programming,graded programming,368
+2017-11-08 03:00:00,notebook,notebook,264
+2017-11-09 03:00:00,lecture,lecture,940
+2017-11-09 03:00:00,supplement,supplement,55
+2017-11-09 03:00:00,notebook,notebook,372
+2017-11-09 03:00:00,quiz,exam,1116
+2017-11-09 03:00:00,programming,graded programming,452
+2017-11-10 03:00:00,supplement,supplement,43
+2017-11-10 03:00:00,quiz,exam,416
+2017-11-10 03:00:00,programming,graded programming,396
+2017-11-10 03:00:00,notebook,notebook,336
+2017-11-10 03:00:00,,others,8
+2017-11-10 03:00:00,lecture,lecture,901
+2017-11-11 03:00:00,supplement,supplement,81
+2017-11-11 03:00:00,quiz,exam,628
+2017-11-11 03:00:00,notebook,notebook,284
+2017-11-11 03:00:00,programming,graded programming,136
+2017-11-11 03:00:00,lecture,lecture,714
+2017-11-12 03:00:00,supplement,supplement,21
+2017-11-12 03:00:00,notebook,notebook,380
+2017-11-12 03:00:00,programming,graded programming,224
+2017-11-12 03:00:00,lecture,lecture,937
+2017-11-12 03:00:00,quiz,exam,876
+2017-11-13 03:00:00,lecture,lecture,899
+2017-11-13 03:00:00,supplement,supplement,81
+2017-11-13 03:00:00,quiz,exam,380
+2017-11-13 03:00:00,notebook,notebook,404
+2017-11-13 03:00:00,programming,graded programming,140
+2017-11-14 03:00:00,lecture,lecture,679
+2017-11-14 03:00:00,notebook,notebook,504
+2017-11-14 03:00:00,supplement,supplement,64
+2017-11-14 03:00:00,quiz,exam,152
+2017-11-14 03:00:00,programming,graded programming,264
+2017-11-15 03:00:00,supplement,supplement,101
+2017-11-15 03:00:00,lecture,lecture,803
+2017-11-15 03:00:00,quiz,exam,332
+2017-11-15 03:00:00,notebook,notebook,436
+2017-11-15 03:00:00,programming,graded programming,1584
+2017-11-16 03:00:00,supplement,supplement,39
+2017-11-16 03:00:00,programming,graded programming,4048
+2017-11-16 03:00:00,quiz,exam,240
+2017-11-16 03:00:00,lecture,lecture,895
+2017-11-16 03:00:00,,others,4
+2017-11-16 03:00:00,notebook,notebook,392
+2017-11-17 03:00:00,supplement,supplement,79
+2017-11-17 03:00:00,quiz,exam,644
+2017-11-17 03:00:00,lecture,lecture,814
+2017-11-17 03:00:00,notebook,notebook,320
+2017-11-17 03:00:00,programming,graded programming,60
+2017-11-18 03:00:00,lecture,lecture,592
+2017-11-18 03:00:00,notebook,notebook,240
+2017-11-18 03:00:00,programming,graded programming,256
+2017-11-18 03:00:00,quiz,exam,96
+2017-11-18 03:00:00,supplement,supplement,10
+2017-11-19 03:00:00,notebook,notebook,468
+2017-11-19 03:00:00,lecture,lecture,653
+2017-11-19 03:00:00,programming,graded programming,348
+2017-11-19 03:00:00,supplement,supplement,24
+2017-11-19 03:00:00,quiz,exam,176
+2017-11-20 03:00:00,quiz,exam,196
+2017-11-20 03:00:00,notebook,notebook,456
+2017-11-20 03:00:00,programming,graded programming,760
+2017-11-20 03:00:00,lecture,lecture,508
+2017-11-20 03:00:00,supplement,supplement,40
+2017-11-21 03:00:00,supplement,supplement,82
+2017-11-21 03:00:00,lecture,lecture,858
+2017-11-21 03:00:00,quiz,exam,448
+2017-11-21 03:00:00,notebook,notebook,448
+2017-11-21 03:00:00,programming,graded programming,448
+2017-11-22 03:00:00,supplement,supplement,50
+2017-11-22 03:00:00,notebook,notebook,360
+2017-11-22 03:00:00,quiz,exam,300
+2017-11-22 03:00:00,programming,graded programming,332
+2017-11-22 03:00:00,lecture,lecture,716
+2017-11-23 03:00:00,notebook,notebook,216
+2017-11-23 03:00:00,lecture,lecture,564
+2017-11-23 03:00:00,supplement,supplement,39
+2017-11-23 03:00:00,quiz,exam,168
+2017-11-23 03:00:00,programming,graded programming,308
+2017-11-24 03:00:00,lecture,lecture,1036
+2017-11-24 03:00:00,notebook,notebook,380
+2017-11-24 03:00:00,programming,graded programming,188
+2017-11-24 03:00:00,supplement,supplement,104
+2017-11-24 03:00:00,quiz,exam,596
+2017-11-25 03:00:00,lecture,lecture,657
+2017-11-25 03:00:00,notebook,notebook,336
+2017-11-25 03:00:00,supplement,supplement,121
+2017-11-25 03:00:00,programming,graded programming,120
+2017-11-25 03:00:00,quiz,exam,124
+2017-11-26 03:00:00,programming,graded programming,736
+2017-11-26 03:00:00,lecture,lecture,885
+2017-11-26 03:00:00,notebook,notebook,332
+2017-11-26 03:00:00,supplement,supplement,48
+2017-11-26 03:00:00,quiz,exam,356
+2017-11-27 03:00:00,lecture,lecture,986
+2017-11-27 03:00:00,programming,graded programming,272
+2017-11-27 03:00:00,supplement,supplement,62
+2017-11-27 03:00:00,notebook,notebook,388
+2017-11-27 03:00:00,quiz,exam,412
+2017-11-27 03:00:00,,others,8
+2017-11-28 03:00:00,lecture,lecture,1283
+2017-11-28 03:00:00,programming,graded programming,668
+2017-11-28 03:00:00,notebook,notebook,548
+2017-11-28 03:00:00,,others,4
+2017-11-28 03:00:00,supplement,supplement,47
+2017-11-28 03:00:00,quiz,exam,360
+2017-11-29 03:00:00,lecture,lecture,376
+2017-11-29 03:00:00,quiz,exam,72
+2017-11-29 03:00:00,notebook,notebook,268
+2017-11-29 03:00:00,supplement,supplement,49
+2017-11-29 03:00:00,programming,graded programming,408
+2017-11-30 03:00:00,notebook,notebook,236
+2017-11-30 03:00:00,supplement,supplement,87
+2017-11-30 03:00:00,lecture,lecture,1002
+2017-11-30 03:00:00,programming,graded programming,544
+2017-11-30 03:00:00,quiz,exam,596
+2017-12-01 03:00:00,lecture,lecture,895
+2017-12-01 03:00:00,quiz,exam,164
+2017-12-01 03:00:00,notebook,notebook,312
+2017-12-01 03:00:00,programming,graded programming,672
+2017-12-01 03:00:00,supplement,supplement,32
+2017-12-02 03:00:00,quiz,exam,36
+2017-12-02 03:00:00,notebook,notebook,300
+2017-12-02 03:00:00,supplement,supplement,26
+2017-12-02 03:00:00,lecture,lecture,573
+2017-12-02 03:00:00,programming,graded programming,92
+2017-12-03 03:00:00,notebook,notebook,368
+2017-12-03 03:00:00,supplement,supplement,66
+2017-12-03 03:00:00,quiz,exam,76
+2017-12-03 03:00:00,programming,graded programming,252
+2017-12-03 03:00:00,lecture,lecture,392
+2017-12-04 03:00:00,supplement,supplement,88
+2017-12-04 03:00:00,lecture,lecture,906
+2017-12-04 03:00:00,quiz,exam,452
+2017-12-04 03:00:00,notebook,notebook,368
+2017-12-04 03:00:00,programming,graded programming,368
+2017-12-05 03:00:00,programming,graded programming,220
+2017-12-05 03:00:00,lecture,lecture,623
+2017-12-05 03:00:00,notebook,notebook,368
+2017-12-05 03:00:00,supplement,supplement,67
+2017-12-05 03:00:00,quiz,exam,124
+2017-12-06 03:00:00,quiz,exam,568
+2017-12-06 03:00:00,lecture,lecture,857
+2017-12-06 03:00:00,supplement,supplement,127
+2017-12-06 03:00:00,notebook,notebook,336
+2017-12-06 03:00:00,programming,graded programming,200
+2017-12-07 03:00:00,lecture,lecture,523
+2017-12-07 03:00:00,quiz,exam,464
+2017-12-07 03:00:00,notebook,notebook,296
+2017-12-07 03:00:00,supplement,supplement,80
+2017-12-07 03:00:00,programming,graded programming,116
+2017-12-07 03:00:00,,others,4
+2017-12-08 03:00:00,quiz,exam,836
+2017-12-08 03:00:00,lecture,lecture,288
+2017-12-08 03:00:00,programming,graded programming,188
+2017-12-08 03:00:00,supplement,supplement,45
+2017-12-08 03:00:00,notebook,notebook,188
+2017-12-09 03:00:00,notebook,notebook,260
+2017-12-09 03:00:00,supplement,supplement,48
+2017-12-09 03:00:00,lecture,lecture,345
+2017-12-09 03:00:00,quiz,exam,700
+2017-12-09 03:00:00,programming,graded programming,104
+2017-12-10 03:00:00,supplement,supplement,103
+2017-12-10 03:00:00,lecture,lecture,627
+2017-12-10 03:00:00,quiz,exam,1212
+2017-12-10 03:00:00,notebook,notebook,180
+2017-12-10 03:00:00,programming,graded programming,348
+2017-12-11 03:00:00,lecture,lecture,691
+2017-12-11 03:00:00,quiz,exam,352
+2017-12-11 03:00:00,supplement,supplement,50
+2017-12-11 03:00:00,programming,graded programming,1016
+2017-12-11 03:00:00,notebook,notebook,208
+2017-12-12 03:00:00,notebook,notebook,356
+2017-12-12 03:00:00,lecture,lecture,881
+2017-12-12 03:00:00,quiz,exam,456
+2017-12-12 03:00:00,supplement,supplement,60
+2017-12-12 03:00:00,programming,graded programming,108
+2017-12-13 03:00:00,supplement,supplement,126
+2017-12-13 03:00:00,lecture,lecture,1010
+2017-12-13 03:00:00,quiz,exam,200
+2017-12-13 03:00:00,notebook,notebook,144
+2017-12-13 03:00:00,programming,graded programming,120
+2017-12-14 03:00:00,supplement,supplement,37
+2017-12-14 03:00:00,lecture,lecture,841
+2017-12-14 03:00:00,quiz,exam,36
+2017-12-14 03:00:00,notebook,notebook,224
+2017-12-14 03:00:00,programming,graded programming,284
+2017-12-15 03:00:00,lecture,lecture,621
+2017-12-15 03:00:00,supplement,supplement,98
+2017-12-15 03:00:00,notebook,notebook,272
+2017-12-15 03:00:00,programming,graded programming,116
+2017-12-15 03:00:00,quiz,exam,376
+2017-12-16 03:00:00,notebook,notebook,244
+2017-12-16 03:00:00,lecture,lecture,825
+2017-12-16 03:00:00,quiz,exam,776
+2017-12-16 03:00:00,supplement,supplement,90
+2017-12-16 03:00:00,programming,graded programming,92
+2017-12-17 03:00:00,lecture,lecture,727
+2017-12-17 03:00:00,programming,graded programming,176
+2017-12-17 03:00:00,notebook,notebook,300
+2017-12-17 03:00:00,supplement,supplement,52
+2017-12-17 03:00:00,quiz,exam,496
+2017-12-18 03:00:00,lecture,lecture,1007
+2017-12-18 03:00:00,notebook,notebook,512
+2017-12-18 03:00:00,quiz,exam,780
+2017-12-18 03:00:00,supplement,supplement,144
+2017-12-18 03:00:00,programming,graded programming,7732
+2017-12-19 03:00:00,lecture,lecture,596
+2017-12-19 03:00:00,supplement,supplement,54
+2017-12-19 03:00:00,programming,graded programming,328
+2017-12-19 03:00:00,notebook,notebook,436
+2017-12-19 03:00:00,,others,4
+2017-12-19 03:00:00,quiz,exam,536
+2017-12-20 03:00:00,supplement,supplement,64
+2017-12-20 03:00:00,lecture,lecture,988
+2017-12-20 03:00:00,notebook,notebook,400
+2017-12-20 03:00:00,programming,graded programming,404
+2017-12-20 03:00:00,quiz,exam,232
+2017-12-21 03:00:00,quiz,exam,480
+2017-12-21 03:00:00,lecture,lecture,717
+2017-12-21 03:00:00,programming,graded programming,204
+2017-12-21 03:00:00,notebook,notebook,304
+2017-12-21 03:00:00,supplement,supplement,117
+2017-12-22 03:00:00,supplement,supplement,79
+2017-12-22 03:00:00,notebook,notebook,388
+2017-12-22 03:00:00,programming,graded programming,36
+2017-12-22 03:00:00,lecture,lecture,898
+2017-12-22 03:00:00,quiz,exam,392
+2017-12-23 03:00:00,supplement,supplement,41
+2017-12-23 03:00:00,lecture,lecture,628
+2017-12-23 03:00:00,quiz,exam,356
+2017-12-23 03:00:00,notebook,notebook,344
+2017-12-23 03:00:00,programming,graded programming,340
+2017-12-24 03:00:00,notebook,notebook,400
+2017-12-24 03:00:00,lecture,lecture,532
+2017-12-24 03:00:00,quiz,exam,368
+2017-12-24 03:00:00,supplement,supplement,78
+2017-12-24 03:00:00,programming,graded programming,156
+2017-12-25 03:00:00,quiz,exam,288
+2017-12-25 03:00:00,lecture,lecture,339
+2017-12-25 03:00:00,programming,graded programming,108
+2017-12-25 03:00:00,supplement,supplement,34
+2017-12-25 03:00:00,notebook,notebook,276
+2017-12-26 03:00:00,lecture,lecture,889
+2017-12-26 03:00:00,notebook,notebook,388
+2017-12-26 03:00:00,supplement,supplement,105
+2017-12-26 03:00:00,quiz,exam,156
+2017-12-26 03:00:00,programming,graded programming,196
+2017-12-27 03:00:00,notebook,notebook,256
+2017-12-27 03:00:00,lecture,lecture,473
+2017-12-27 03:00:00,quiz,exam,192
+2017-12-27 03:00:00,supplement,supplement,40
+2017-12-27 03:00:00,programming,graded programming,192
+2017-12-28 03:00:00,lecture,lecture,719
+2017-12-28 03:00:00,programming,graded programming,40
+2017-12-28 03:00:00,supplement,supplement,57
+2017-12-28 03:00:00,notebook,notebook,280
+2017-12-28 03:00:00,quiz,exam,308
+2017-12-29 03:00:00,lecture,lecture,520
+2017-12-29 03:00:00,supplement,supplement,37
+2017-12-29 03:00:00,notebook,notebook,340
+2017-12-29 03:00:00,programming,graded programming,148
+2017-12-29 03:00:00,quiz,exam,588
+2017-12-30 03:00:00,quiz,exam,104
+2017-12-30 03:00:00,lecture,lecture,523
+2017-12-30 03:00:00,programming,graded programming,356
+2017-12-30 03:00:00,notebook,notebook,280
+2017-12-30 03:00:00,supplement,supplement,36
+2017-12-31 03:00:00,supplement,supplement,47
+2017-12-31 03:00:00,lecture,lecture,436
+2017-12-31 03:00:00,quiz,exam,148
+2017-12-31 03:00:00,notebook,notebook,300
+2017-12-31 03:00:00,programming,graded programming,212
+2018-01-01 03:00:00,notebook,notebook,136
+2018-01-01 03:00:00,lecture,lecture,358
+2018-01-01 03:00:00,quiz,exam,360
+2018-01-01 03:00:00,programming,graded programming,124
+2018-01-01 03:00:00,supplement,supplement,4
+2018-01-02 03:00:00,quiz,exam,256
+2018-01-02 03:00:00,notebook,notebook,232
+2018-01-02 03:00:00,lecture,lecture,423
+2018-01-02 03:00:00,supplement,supplement,31
+2018-01-02 03:00:00,programming,graded programming,152
+2018-01-03 03:00:00,supplement,supplement,148
+2018-01-03 03:00:00,notebook,notebook,352
+2018-01-03 03:00:00,quiz,exam,364
+2018-01-03 03:00:00,lecture,lecture,686
+2018-01-03 03:00:00,programming,graded programming,1540
+2018-01-04 03:00:00,supplement,supplement,73
+2018-01-04 03:00:00,lecture,lecture,815
+2018-01-04 03:00:00,quiz,exam,328
+2018-01-04 03:00:00,notebook,notebook,176
+2018-01-04 03:00:00,programming,graded programming,204
+2018-01-05 03:00:00,notebook,notebook,552
+2018-01-05 03:00:00,,others,4
+2018-01-05 03:00:00,supplement,supplement,65
+2018-01-05 03:00:00,programming,graded programming,516
+2018-01-05 03:00:00,quiz,exam,436
+2018-01-05 03:00:00,lecture,lecture,674
+2018-01-06 03:00:00,lecture,lecture,306
+2018-01-06 03:00:00,notebook,notebook,256
+2018-01-06 03:00:00,programming,graded programming,168
+2018-01-06 03:00:00,quiz,exam,12
+2018-01-06 03:00:00,supplement,supplement,18
+2018-01-07 03:00:00,lecture,lecture,568
+2018-01-07 03:00:00,notebook,notebook,276
+2018-01-07 03:00:00,supplement,supplement,97
+2018-01-07 03:00:00,quiz,exam,140
+2018-01-07 03:00:00,programming,graded programming,132
+2018-01-08 03:00:00,lecture,lecture,899
+2018-01-08 03:00:00,notebook,notebook,404
+2018-01-08 03:00:00,supplement,supplement,129
+2018-01-08 03:00:00,programming,graded programming,268
+2018-01-08 03:00:00,quiz,exam,188
+2018-01-09 03:00:00,notebook,notebook,344
+2018-01-09 03:00:00,lecture,lecture,1026
+2018-01-09 03:00:00,quiz,exam,568
+2018-01-09 03:00:00,programming,graded programming,48
+2018-01-09 03:00:00,supplement,supplement,48
+2018-01-10 03:00:00,,others,4
+2018-01-10 03:00:00,notebook,notebook,248
+2018-01-10 03:00:00,supplement,supplement,59
+2018-01-10 03:00:00,lecture,lecture,784
+2018-01-10 03:00:00,quiz,exam,212
+2018-01-10 03:00:00,programming,graded programming,128
+2018-01-11 03:00:00,programming,graded programming,140
+2018-01-11 03:00:00,supplement,supplement,108
+2018-01-11 03:00:00,lecture,lecture,785
+2018-01-11 03:00:00,quiz,exam,116
+2018-01-11 03:00:00,notebook,notebook,376
+2018-01-12 03:00:00,lecture,lecture,522
+2018-01-12 03:00:00,quiz,exam,72
+2018-01-12 03:00:00,notebook,notebook,268
+2018-01-12 03:00:00,supplement,supplement,50
+2018-01-12 03:00:00,programming,graded programming,252
+2018-01-13 03:00:00,supplement,supplement,68
+2018-01-13 03:00:00,notebook,notebook,280
+2018-01-13 03:00:00,programming,graded programming,636
+2018-01-13 03:00:00,lecture,lecture,545
+2018-01-13 03:00:00,quiz,exam,328
+2018-01-14 03:00:00,lecture,lecture,512
+2018-01-14 03:00:00,notebook,notebook,116
+2018-01-14 03:00:00,supplement,supplement,31
+2018-01-14 03:00:00,quiz,exam,160
+2018-01-14 03:00:00,programming,graded programming,216
+2018-01-15 03:00:00,lecture,lecture,914
+2018-01-15 03:00:00,supplement,supplement,116
+2018-01-15 03:00:00,programming,graded programming,20
+2018-01-15 03:00:00,notebook,notebook,188
+2018-01-15 03:00:00,quiz,exam,336
+2018-01-16 03:00:00,quiz,exam,76
+2018-01-16 03:00:00,lecture,lecture,803
+2018-01-16 03:00:00,supplement,supplement,36
+2018-01-16 03:00:00,notebook,notebook,280
+2018-01-16 03:00:00,programming,graded programming,320
+2018-01-17 03:00:00,notebook,notebook,232
+2018-01-17 03:00:00,supplement,supplement,102
+2018-01-17 03:00:00,lecture,lecture,954
+2018-01-17 03:00:00,quiz,exam,188
+2018-01-17 03:00:00,programming,graded programming,280
+2018-01-18 03:00:00,programming,graded programming,104
+2018-01-18 03:00:00,supplement,supplement,48
+2018-01-18 03:00:00,,others,8
+2018-01-18 03:00:00,quiz,exam,636
+2018-01-18 03:00:00,notebook,notebook,272
+2018-01-18 03:00:00,lecture,lecture,1088
+2018-01-19 03:00:00,notebook,notebook,172
+2018-01-19 03:00:00,quiz,exam,180
+2018-01-19 03:00:00,lecture,lecture,723
+2018-01-19 03:00:00,supplement,supplement,65
+2018-01-19 03:00:00,programming,graded programming,292
+2018-01-20 03:00:00,notebook,notebook,324
+2018-01-20 03:00:00,lecture,lecture,463
+2018-01-20 03:00:00,supplement,supplement,13
+2018-01-20 03:00:00,quiz,exam,376
+2018-01-20 03:00:00,programming,graded programming,340
+2018-01-21 03:00:00,supplement,supplement,106
+2018-01-21 03:00:00,notebook,notebook,376
+2018-01-21 03:00:00,programming,graded programming,148
+2018-01-21 03:00:00,lecture,lecture,804
+2018-01-21 03:00:00,quiz,exam,160
+2018-01-22 03:00:00,lecture,lecture,756
+2018-01-22 03:00:00,notebook,notebook,340
+2018-01-22 03:00:00,supplement,supplement,55
+2018-01-22 03:00:00,quiz,exam,268
+2018-01-22 03:00:00,programming,graded programming,36
+2018-01-23 03:00:00,supplement,supplement,19
+2018-01-23 03:00:00,lecture,lecture,695
+2018-01-23 03:00:00,quiz,exam,320
+2018-01-23 03:00:00,notebook,notebook,300
+2018-01-23 03:00:00,programming,graded programming,260
+2018-01-24 03:00:00,notebook,notebook,252
+2018-01-24 03:00:00,quiz,exam,240
+2018-01-24 03:00:00,lecture,lecture,558
+2018-01-24 03:00:00,supplement,supplement,36
+2018-01-24 03:00:00,programming,graded programming,124
+2018-01-25 03:00:00,programming,graded programming,204
+2018-01-25 03:00:00,supplement,supplement,49
+2018-01-25 03:00:00,lecture,lecture,750
+2018-01-25 03:00:00,quiz,exam,340
+2018-01-25 03:00:00,notebook,notebook,416
+2018-01-26 03:00:00,notebook,notebook,352
+2018-01-26 03:00:00,supplement,supplement,114
+2018-01-26 03:00:00,quiz,exam,216
+2018-01-26 03:00:00,lecture,lecture,798
+2018-01-26 03:00:00,programming,graded programming,188
+2018-01-27 03:00:00,supplement,supplement,12
+2018-01-27 03:00:00,lecture,lecture,580
+2018-01-27 03:00:00,programming,graded programming,288
+2018-01-27 03:00:00,quiz,exam,600
+2018-01-27 03:00:00,notebook,notebook,312
+2018-01-28 03:00:00,quiz,exam,24
+2018-01-28 03:00:00,notebook,notebook,416
+2018-01-28 03:00:00,programming,graded programming,216
+2018-01-28 03:00:00,lecture,lecture,743
+2018-01-28 03:00:00,supplement,supplement,74
+2018-01-29 03:00:00,programming,graded programming,344
+2018-01-29 03:00:00,lecture,lecture,841
+2018-01-29 03:00:00,,others,8
+2018-01-29 03:00:00,notebook,notebook,392
+2018-01-29 03:00:00,supplement,supplement,48
+2018-01-29 03:00:00,quiz,exam,224
+2018-01-30 03:00:00,notebook,notebook,448
+2018-01-30 03:00:00,quiz,exam,384
+2018-01-30 03:00:00,lecture,lecture,1108
+2018-01-30 03:00:00,programming,graded programming,128
+2018-01-30 03:00:00,supplement,supplement,131
+2018-01-30 03:00:00,,others,4
+2018-01-31 03:00:00,supplement,supplement,45
+2018-01-31 03:00:00,quiz,exam,256
+2018-01-31 03:00:00,programming,graded programming,164
+2018-01-31 03:00:00,notebook,notebook,272
+2018-01-31 03:00:00,,others,4
+2018-01-31 03:00:00,lecture,lecture,624
+2018-02-01 03:00:00,notebook,notebook,280
+2018-02-01 03:00:00,programming,graded programming,40
+2018-02-01 03:00:00,quiz,exam,264
+2018-02-01 03:00:00,lecture,lecture,519
+2018-02-01 03:00:00,supplement,supplement,18
+2018-02-02 03:00:00,lecture,lecture,605
+2018-02-02 03:00:00,supplement,supplement,32
+2018-02-02 03:00:00,notebook,notebook,348
+2018-02-02 03:00:00,quiz,exam,308
+2018-02-02 03:00:00,programming,graded programming,204
+2018-02-03 03:00:00,lecture,lecture,790
+2018-02-03 03:00:00,supplement,supplement,53
+2018-02-03 03:00:00,notebook,notebook,228
+2018-02-03 03:00:00,quiz,exam,204
+2018-02-03 03:00:00,programming,graded programming,188
+2018-02-04 03:00:00,notebook,notebook,332
+2018-02-04 03:00:00,lecture,lecture,592
+2018-02-04 03:00:00,quiz,exam,480
+2018-02-04 03:00:00,supplement,supplement,35
+2018-02-04 03:00:00,programming,graded programming,224
+2018-02-05 03:00:00,notebook,notebook,156
+2018-02-05 03:00:00,lecture,lecture,378
+2018-02-05 03:00:00,quiz,exam,240
+2018-02-05 03:00:00,supplement,supplement,38
+2018-02-05 03:00:00,programming,graded programming,172
+2018-02-06 03:00:00,lecture,lecture,563
+2018-02-06 03:00:00,supplement,supplement,53
+2018-02-06 03:00:00,quiz,exam,244
+2018-02-06 03:00:00,programming,graded programming,272
+2018-02-06 03:00:00,notebook,notebook,220
+2018-02-07 03:00:00,lecture,lecture,672
+2018-02-07 03:00:00,programming,graded programming,376
+2018-02-07 03:00:00,quiz,exam,404
+2018-02-07 03:00:00,supplement,supplement,95
+2018-02-07 03:00:00,notebook,notebook,460
+2018-02-08 03:00:00,lecture,lecture,687
+2018-02-08 03:00:00,notebook,notebook,256
+2018-02-08 03:00:00,supplement,supplement,59
+2018-02-08 03:00:00,quiz,exam,292
+2018-02-08 03:00:00,programming,graded programming,192
+2018-02-09 03:00:00,quiz,exam,40
+2018-02-09 03:00:00,notebook,notebook,260
+2018-02-09 03:00:00,lecture,lecture,405
+2018-02-09 03:00:00,supplement,supplement,20
+2018-02-09 03:00:00,programming,graded programming,212
+2018-02-10 03:00:00,notebook,notebook,192
+2018-02-10 03:00:00,lecture,lecture,523
+2018-02-10 03:00:00,programming,graded programming,324
+2018-02-10 03:00:00,supplement,supplement,14
+2018-02-10 03:00:00,quiz,exam,4
+2018-02-11 03:00:00,supplement,supplement,44
+2018-02-11 03:00:00,notebook,notebook,196
+2018-02-11 03:00:00,lecture,lecture,362
+2018-02-11 03:00:00,quiz,exam,132
+2018-02-11 03:00:00,programming,graded programming,244
+2018-02-12 03:00:00,supplement,supplement,140
+2018-02-12 03:00:00,notebook,notebook,236
+2018-02-12 03:00:00,lecture,lecture,744
+2018-02-12 03:00:00,quiz,exam,68
+2018-02-12 03:00:00,programming,graded programming,88
+2018-02-13 03:00:00,lecture,lecture,703
+2018-02-13 03:00:00,quiz,exam,208
+2018-02-13 03:00:00,supplement,supplement,43
+2018-02-13 03:00:00,programming,graded programming,68
+2018-02-13 03:00:00,notebook,notebook,308
+2018-02-14 03:00:00,notebook,notebook,236
+2018-02-14 03:00:00,supplement,supplement,105
+2018-02-14 03:00:00,lecture,lecture,493
+2018-02-14 03:00:00,programming,graded programming,36
+2018-02-14 03:00:00,quiz,exam,256
+2018-02-15 03:00:00,quiz,exam,96
+2018-02-15 03:00:00,supplement,supplement,37
+2018-02-15 03:00:00,lecture,lecture,790
+2018-02-15 03:00:00,programming,graded programming,392
+2018-02-15 03:00:00,notebook,notebook,352
+2018-02-15 03:00:00,,others,4
+2018-02-16 03:00:00,notebook,notebook,256
+2018-02-16 03:00:00,supplement,supplement,50
+2018-02-16 03:00:00,lecture,lecture,584
+2018-02-16 03:00:00,programming,graded programming,148
+2018-02-16 03:00:00,quiz,exam,340
+2018-02-17 03:00:00,supplement,supplement,32
+2018-02-17 03:00:00,lecture,lecture,245
+2018-02-17 03:00:00,quiz,exam,12
+2018-02-17 03:00:00,programming,graded programming,140
+2018-02-17 03:00:00,notebook,notebook,204
+2018-02-18 03:00:00,supplement,supplement,24
+2018-02-18 03:00:00,notebook,notebook,232
+2018-02-18 03:00:00,programming,graded programming,364
+2018-02-18 03:00:00,lecture,lecture,437
+2018-02-18 03:00:00,quiz,exam,296
+2018-02-19 03:00:00,lecture,lecture,279
+2018-02-19 03:00:00,notebook,notebook,240
+2018-02-19 03:00:00,supplement,supplement,27
+2018-02-19 03:00:00,programming,graded programming,172
+2018-02-19 03:00:00,quiz,exam,180
+2018-02-20 03:00:00,notebook,notebook,336
+2018-02-20 03:00:00,lecture,lecture,756
+2018-02-20 03:00:00,programming,graded programming,172
+2018-02-20 03:00:00,supplement,supplement,69
+2018-02-20 03:00:00,quiz,exam,292
+2018-02-21 03:00:00,notebook,notebook,160
+2018-02-21 03:00:00,programming,graded programming,48
+2018-02-21 03:00:00,supplement,supplement,65
+2018-02-21 03:00:00,lecture,lecture,641
+2018-02-21 03:00:00,quiz,exam,28
+2018-02-22 03:00:00,quiz,exam,476
+2018-02-22 03:00:00,supplement,supplement,112
+2018-02-22 03:00:00,lecture,lecture,1288
+2018-02-22 03:00:00,programming,graded programming,188
+2018-02-22 03:00:00,notebook,notebook,296
+2018-02-23 03:00:00,notebook,notebook,120
+2018-02-23 03:00:00,lecture,lecture,656
+2018-02-23 03:00:00,programming,graded programming,56
+2018-02-23 03:00:00,supplement,supplement,45
+2018-02-23 03:00:00,quiz,exam,136
+2018-02-24 03:00:00,quiz,exam,216
+2018-02-24 03:00:00,lecture,lecture,391
+2018-02-24 03:00:00,programming,graded programming,320
+2018-02-24 03:00:00,notebook,notebook,140
+2018-02-24 03:00:00,supplement,supplement,21
+2018-02-25 03:00:00,notebook,notebook,164
+2018-02-25 03:00:00,supplement,supplement,55
+2018-02-25 03:00:00,programming,graded programming,80
+2018-02-25 03:00:00,quiz,exam,20
+2018-02-25 03:00:00,lecture,lecture,297
+2018-02-26 03:00:00,supplement,supplement,77
+2018-02-26 03:00:00,programming,graded programming,140
+2018-02-26 03:00:00,quiz,exam,60
+2018-02-26 03:00:00,notebook,notebook,336
+2018-02-26 03:00:00,lecture,lecture,796
+2018-02-27 03:00:00,supplement,supplement,76
+2018-02-27 03:00:00,notebook,notebook,396
+2018-02-27 03:00:00,quiz,exam,452
+2018-02-27 03:00:00,lecture,lecture,588
+2018-02-27 03:00:00,programming,graded programming,176
+2018-02-27 03:00:00,,others,8
+2018-02-28 03:00:00,quiz,exam,220
+2018-02-28 03:00:00,notebook,notebook,284
+2018-02-28 03:00:00,lecture,lecture,683
+2018-02-28 03:00:00,supplement,supplement,85
+2018-02-28 03:00:00,programming,graded programming,204
+2018-03-01 03:00:00,notebook,notebook,208
+2018-03-01 03:00:00,lecture,lecture,691
+2018-03-01 03:00:00,supplement,supplement,68
+2018-03-01 03:00:00,quiz,exam,92
+2018-03-01 03:00:00,programming,graded programming,136
+2018-03-01 03:00:00,,others,4
+2018-03-02 03:00:00,supplement,supplement,41
+2018-03-02 03:00:00,notebook,notebook,148
+2018-03-02 03:00:00,quiz,exam,60
+2018-03-02 03:00:00,programming,graded programming,116
+2018-03-02 03:00:00,lecture,lecture,726
+2018-03-03 03:00:00,quiz,exam,280
+2018-03-03 03:00:00,programming,graded programming,32
+2018-03-03 03:00:00,supplement,supplement,42
+2018-03-03 03:00:00,lecture,lecture,785
+2018-03-03 03:00:00,notebook,notebook,280
+2018-03-04 03:00:00,lecture,lecture,893
+2018-03-04 03:00:00,programming,graded programming,256
+2018-03-04 03:00:00,supplement,supplement,110
+2018-03-04 03:00:00,notebook,notebook,220
+2018-03-04 03:00:00,quiz,exam,160
+2018-03-05 03:00:00,notebook,notebook,400
+2018-03-05 03:00:00,programming,graded programming,320
+2018-03-05 03:00:00,lecture,lecture,820
+2018-03-05 03:00:00,supplement,supplement,71
+2018-03-05 03:00:00,quiz,exam,312
+2018-03-06 03:00:00,notebook,notebook,304
+2018-03-06 03:00:00,lecture,lecture,1026
+2018-03-06 03:00:00,programming,graded programming,140
+2018-03-06 03:00:00,supplement,supplement,60
+2018-03-06 03:00:00,quiz,exam,476
+2018-03-07 03:00:00,,others,4
+2018-03-07 03:00:00,lecture,lecture,651
+2018-03-07 03:00:00,supplement,supplement,110
+2018-03-07 03:00:00,notebook,notebook,376
+2018-03-07 03:00:00,quiz,exam,104
+2018-03-07 03:00:00,programming,graded programming,72
+2018-03-08 03:00:00,quiz,exam,244
+2018-03-08 03:00:00,notebook,notebook,208
+2018-03-08 03:00:00,lecture,lecture,543
+2018-03-08 03:00:00,supplement,supplement,58
+2018-03-08 03:00:00,programming,graded programming,124
+2018-03-09 03:00:00,programming,graded programming,208
+2018-03-09 03:00:00,supplement,supplement,64
+2018-03-09 03:00:00,lecture,lecture,548
+2018-03-09 03:00:00,quiz,exam,56
+2018-03-09 03:00:00,notebook,notebook,240
+2018-03-10 03:00:00,programming,graded programming,408
+2018-03-10 03:00:00,quiz,exam,104
+2018-03-10 03:00:00,lecture,lecture,645
+2018-03-10 03:00:00,supplement,supplement,4
+2018-03-10 03:00:00,notebook,notebook,284
+2018-03-11 04:00:00,notebook,notebook,328
+2018-03-11 04:00:00,lecture,lecture,798
+2018-03-11 04:00:00,supplement,supplement,45
+2018-03-11 04:00:00,quiz,exam,272
+2018-03-11 04:00:00,programming,graded programming,240
+2018-03-12 03:00:00,supplement,supplement,97
+2018-03-12 03:00:00,notebook,notebook,312
+2018-03-12 03:00:00,programming,graded programming,164
+2018-03-12 03:00:00,quiz,exam,168
+2018-03-12 03:00:00,lecture,lecture,695
+2018-03-13 03:00:00,notebook,notebook,268
+2018-03-13 03:00:00,supplement,supplement,95
+2018-03-13 03:00:00,lecture,lecture,926
+2018-03-13 03:00:00,quiz,exam,500
+2018-03-13 03:00:00,programming,graded programming,264
+2018-03-14 03:00:00,notebook,notebook,152
+2018-03-14 03:00:00,quiz,exam,288
+2018-03-14 03:00:00,lecture,lecture,578
+2018-03-14 03:00:00,supplement,supplement,43
+2018-03-14 03:00:00,programming,graded programming,232
+2018-03-15 03:00:00,supplement,supplement,36
+2018-03-15 03:00:00,lecture,lecture,362
+2018-03-15 03:00:00,quiz,exam,104
+2018-03-15 03:00:00,notebook,notebook,112
+2018-03-15 03:00:00,programming,graded programming,80
+2018-03-16 03:00:00,quiz,exam,396
+2018-03-16 03:00:00,supplement,supplement,44
+2018-03-16 03:00:00,lecture,lecture,391
+2018-03-16 03:00:00,programming,graded programming,72
+2018-03-16 03:00:00,notebook,notebook,128
+2018-03-17 03:00:00,lecture,lecture,562
+2018-03-17 03:00:00,supplement,supplement,33
+2018-03-17 03:00:00,programming,graded programming,172
+2018-03-17 03:00:00,quiz,exam,328
+2018-03-17 03:00:00,notebook,notebook,144
+2018-03-18 03:00:00,quiz,exam,220
+2018-03-18 03:00:00,supplement,supplement,70
+2018-03-18 03:00:00,lecture,lecture,614
+2018-03-18 03:00:00,programming,graded programming,64
+2018-03-18 03:00:00,notebook,notebook,196
+2018-03-19 03:00:00,lecture,lecture,723
+2018-03-19 03:00:00,supplement,supplement,41
+2018-03-19 03:00:00,notebook,notebook,260
+2018-03-19 03:00:00,quiz,exam,672
+2018-03-19 03:00:00,programming,graded programming,1148
+2018-03-20 03:00:00,quiz,exam,552
+2018-03-20 03:00:00,supplement,supplement,81
+2018-03-20 03:00:00,programming,graded programming,184
+2018-03-20 03:00:00,lecture,lecture,906
+2018-03-20 03:00:00,notebook,notebook,204
+2018-03-21 03:00:00,supplement,supplement,64
+2018-03-21 03:00:00,quiz,exam,552
+2018-03-21 03:00:00,programming,graded programming,296
+2018-03-21 03:00:00,lecture,lecture,408
+2018-03-21 03:00:00,notebook,notebook,196
+2018-03-22 03:00:00,lecture,lecture,577
+2018-03-22 03:00:00,notebook,notebook,64
+2018-03-22 03:00:00,supplement,supplement,117
+2018-03-22 03:00:00,quiz,exam,680
+2018-03-22 03:00:00,programming,graded programming,4
+2018-03-23 03:00:00,notebook,notebook,100
+2018-03-23 03:00:00,lecture,lecture,634
+2018-03-23 03:00:00,quiz,exam,56
+2018-03-23 03:00:00,supplement,supplement,87
+2018-03-23 03:00:00,programming,graded programming,52
+2018-03-24 03:00:00,lecture,lecture,572
+2018-03-24 03:00:00,supplement,supplement,25
+2018-03-24 03:00:00,notebook,notebook,100
+2018-03-24 03:00:00,programming,graded programming,52
+2018-03-24 03:00:00,quiz,exam,12
+2018-03-25 03:00:00,quiz,exam,48
+2018-03-25 03:00:00,programming,graded programming,84
+2018-03-25 03:00:00,notebook,notebook,56
+2018-03-25 03:00:00,lecture,lecture,244
+2018-03-26 03:00:00,programming,graded programming,64
+2018-03-26 03:00:00,notebook,notebook,160
+2018-03-26 03:00:00,lecture,lecture,686
+2018-03-26 03:00:00,supplement,supplement,38
+2018-03-26 03:00:00,quiz,exam,12
+2018-03-27 03:00:00,lecture,lecture,435
+2018-03-27 03:00:00,notebook,notebook,232
+2018-03-27 03:00:00,supplement,supplement,43
+2018-03-27 03:00:00,quiz,exam,92
+2018-03-27 03:00:00,programming,graded programming,144
+2018-03-28 03:00:00,lecture,lecture,698
+2018-03-28 03:00:00,supplement,supplement,92
+2018-03-28 03:00:00,programming,graded programming,200
+2018-03-28 03:00:00,quiz,exam,284
+2018-03-28 03:00:00,notebook,notebook,156
+2018-03-29 03:00:00,lecture,lecture,513
+2018-03-29 03:00:00,programming,graded programming,196
+2018-03-29 03:00:00,notebook,notebook,240
+2018-03-29 03:00:00,supplement,supplement,40
+2018-03-29 03:00:00,quiz,exam,240
+2018-03-30 03:00:00,notebook,notebook,148
+2018-03-30 03:00:00,programming,graded programming,40
+2018-03-30 03:00:00,lecture,lecture,655
+2018-03-30 03:00:00,supplement,supplement,55
+2018-03-30 03:00:00,quiz,exam,332
+2018-03-31 03:00:00,supplement,supplement,42
+2018-03-31 03:00:00,quiz,exam,572
+2018-03-31 03:00:00,lecture,lecture,232
+2018-03-31 03:00:00,programming,graded programming,8
+2018-03-31 03:00:00,notebook,notebook,80
+2018-04-01 03:00:00,lecture,lecture,790
+2018-04-01 03:00:00,programming,graded programming,108
+2018-04-01 03:00:00,supplement,supplement,44
+2018-04-01 03:00:00,notebook,notebook,176
+2018-04-01 03:00:00,quiz,exam,232
+2018-04-02 03:00:00,supplement,supplement,71
+2018-04-02 03:00:00,lecture,lecture,667
+2018-04-02 03:00:00,quiz,exam,360
+2018-04-02 03:00:00,notebook,notebook,260
+2018-04-02 03:00:00,programming,graded programming,264
+2018-04-03 03:00:00,lecture,lecture,466
+2018-04-03 03:00:00,supplement,supplement,24
+2018-04-03 03:00:00,notebook,notebook,188
+2018-04-03 03:00:00,quiz,exam,184
+2018-04-03 03:00:00,programming,graded programming,132
+2018-04-04 03:00:00,supplement,supplement,28
+2018-04-04 03:00:00,quiz,exam,124
+2018-04-04 03:00:00,lecture,lecture,345
+2018-04-04 03:00:00,notebook,notebook,212
+2018-04-04 03:00:00,programming,graded programming,508
+2018-04-05 03:00:00,notebook,notebook,96
+2018-04-05 03:00:00,supplement,supplement,76
+2018-04-05 03:00:00,quiz,exam,32
+2018-04-05 03:00:00,lecture,lecture,421
+2018-04-06 03:00:00,supplement,supplement,48
+2018-04-06 03:00:00,notebook,notebook,116
+2018-04-06 03:00:00,programming,graded programming,56
+2018-04-06 03:00:00,lecture,lecture,323
+2018-04-06 03:00:00,quiz,exam,288
+2018-04-07 03:00:00,quiz,exam,24
+2018-04-07 03:00:00,lecture,lecture,215
+2018-04-07 03:00:00,notebook,notebook,120
+2018-04-07 03:00:00,supplement,supplement,11
+2018-04-07 03:00:00,programming,graded programming,72
+2018-04-08 03:00:00,lecture,lecture,213
+2018-04-08 03:00:00,notebook,notebook,116
+2018-04-08 03:00:00,supplement,supplement,28
+2018-04-08 03:00:00,quiz,exam,272
+2018-04-08 03:00:00,programming,graded programming,164
+2018-04-09 03:00:00,notebook,notebook,212
+2018-04-09 03:00:00,lecture,lecture,535
+2018-04-09 03:00:00,quiz,exam,140
+2018-04-09 03:00:00,programming,graded programming,312
+2018-04-09 03:00:00,supplement,supplement,31
+2018-04-10 03:00:00,lecture,lecture,402
+2018-04-10 03:00:00,notebook,notebook,172
+2018-04-10 03:00:00,programming,graded programming,32
+2018-04-10 03:00:00,quiz,exam,428
+2018-04-10 03:00:00,supplement,supplement,45
+2018-04-11 03:00:00,notebook,notebook,148
+2018-04-11 03:00:00,lecture,lecture,428
+2018-04-11 03:00:00,supplement,supplement,43
+2018-04-11 03:00:00,quiz,exam,296
+2018-04-11 03:00:00,programming,graded programming,144
+2018-04-12 03:00:00,programming,graded programming,180
+2018-04-12 03:00:00,lecture,lecture,572
+2018-04-12 03:00:00,notebook,notebook,432
+2018-04-12 03:00:00,supplement,supplement,70
+2018-04-12 03:00:00,quiz,exam,236
+2018-04-13 03:00:00,supplement,supplement,54
+2018-04-13 03:00:00,lecture,lecture,437
+2018-04-13 03:00:00,notebook,notebook,224
+2018-04-13 03:00:00,quiz,exam,144
+2018-04-13 03:00:00,programming,graded programming,140
+2018-04-14 03:00:00,lecture,lecture,544
+2018-04-14 03:00:00,,others,4
+2018-04-14 03:00:00,quiz,exam,256
+2018-04-14 03:00:00,notebook,notebook,288
+2018-04-14 03:00:00,supplement,supplement,34
+2018-04-14 03:00:00,programming,graded programming,464
+2018-04-15 03:00:00,programming,graded programming,368
+2018-04-15 03:00:00,supplement,supplement,90
+2018-04-15 03:00:00,lecture,lecture,596
+2018-04-15 03:00:00,quiz,exam,468
+2018-04-15 03:00:00,notebook,notebook,256
+2018-04-16 03:00:00,notebook,notebook,296
+2018-04-16 03:00:00,supplement,supplement,92
+2018-04-16 03:00:00,lecture,lecture,916
+2018-04-16 03:00:00,quiz,exam,308
+2018-04-16 03:00:00,programming,graded programming,324
+2018-04-17 03:00:00,quiz,exam,288
+2018-04-17 03:00:00,notebook,notebook,316
+2018-04-17 03:00:00,programming,graded programming,576
+2018-04-17 03:00:00,lecture,lecture,410
+2018-04-17 03:00:00,supplement,supplement,6
+2018-04-18 03:00:00,programming,graded programming,516
+2018-04-18 03:00:00,supplement,supplement,38
+2018-04-18 03:00:00,lecture,lecture,544
+2018-04-18 03:00:00,quiz,exam,148
+2018-04-18 03:00:00,notebook,notebook,424

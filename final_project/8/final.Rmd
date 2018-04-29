@@ -1,0 +1,583 @@
+---
+title: "SV in Mean Model for NASDAQ Index"
+date: "2018/4/23"
+output: 
+  html_document: 
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+require(doParallel)
+registerDoParallel()
+require(pomp)
+require(tseries)
+```
+
+#1. Introduction
+
+##1.1 Background
+
+From the midterm project, we find that there exist a volatility cluster of the log return of stock prices. This means, for log return of stock prices, high volatility today implies high volatility tomorrow. And ARIMA model couldn't catch the volatility well, so we introduce SVM Model and GARCH Model. 
+
+>GARCH models define the time-varying variance as a deterministic function of past squared innovations and lagged conditional variances whereas the variance in the SV model is modelled as an unobserved component that follows Markov process. The SVM model incorporates the unobserved volatility as an explanatory variable in the mean equation.[1] 
+
+Besides, I use pomp model to estimate the parameters in the SVM model. After I've done all the process for these two models, I compare the log likelihood of these two models and explain which model is better based on AIC criteria.
+
+##1.2 Data Introduction
+
+>The NASDAQ Composite Index includes all domestic and international based common type stocks listed on The NASDAQ Stock Market. The NASDAQ Composite Index is a broad based Index.[2] 
+
+>The recent surge in popularity of technological stocks has launched the Nasdaq into the spotlight. Consequently, the composite index has become one of the premier indexes in the world. The Nasdaq Composite is heavily weighted in technology and Internet stocks. As such, the companies listed in the Composite are considered to have high growth potential.[3]
+
+The data I use in this report is the daily data of NASDAQ from 2014-04-24 to 2018-04-23, which are captured from [Yahoo Finance](https://finance.yahoo.com/quote/%5EIXIC?p=^IXIC). The dataset comtains Open prices, High prices, Low prices, Close prices, Adjusted Close prices and Volumn of NASDAQ. I've checked that there is no NA or omitted data, so we don't need to work on the missing values. This process is the same as I've done in the midterm project.
+
+##1.3 Data Preparing
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+setwd("~/Desktop/final proj 531/531 Final_Zixuanzhu")
+data=read.table("nasdaq_1304-1804.csv",sep=",",header=TRUE)
+nasdaq = data$Adj.Close
+plot(nasdaq, type='l',xlab="Time",ylab="Adjusted Closing Price", main="Time Plot of NASDAQ")
+```
+  
+From the plot of Adjusted Close price, we can see there is a general increasing trend over time. And there is a significant downward trend in the middle of the time period.
+
+```{r}
+lret = diff(log(nasdaq))
+plot(lret, type='l', ylab="LogReturn", main="Log Return of Nasdaq")
+```
+
+For the purpose of detrend, I try to analyse log return instead of the stock price. Then we can get a more stationary and more stable financial data. Here we can plot the log return of Nasdaq.
+
+We can see the mean of log return is almost zero, but the volatility becomes larger in the middle of the time period, which is identify with the price plot above. 
+
+In this project, we will focus on the Stochastic Volatility Model.    
+    
+#2.Stochatic Volatility in Mean Model (SVM Model)
+
+>The general form of SVM Model is:[4]
+
+$Y_t = d\cdot H_t + \exp^{\frac{H_t}{2}}u_t$    
+$H_t = \mu + \phi(H_{t-1}-\mu) + \eta_t$    
+$u_t \sim \mathcal{N}(0,1)$    
+$\eta_t \sim \mathcal{N}(0,\sigma_{\eta}^2)$    
+where $d$, $\mu$, $\sigma_{\eta}$ are constants.
+
+Here, the parameter $d$ captures the relationship between log returns and both expected as well as unexpected volatility components. Here, $Y_t$ represents the log return of NASDAQ data, which we can directly observe from the stock data, and $H_t$ represents the log volatility, which is the latent component we need estimate from the estimated parameters. Hence the above model is recognized as partially observed Markov process model.
+
+According to the reference [4], we can rewrite the equation of $Y_t$ in the model as:
+
+$Y_t = d\cdot H_{t|t-1} + d(H_t-H_{t|t-1}) + \exp^{\frac{H_t}{2}}u_t$ 
+where $H_{t|t-1}$ denotes the expected log volatility defined by the conditional variance at time $t$ given all the information up to time $t-1$. Together with the $(H_t-H_{t|t-1})$ gives the innovation to the volatility process.
+    
+    
+#3.Model Constructing
+
+##3.1 Pomp Model
+
+First step, we should define the variables of the pomp object.    
+
+```{r warning=FALSE}
+nasdaq_statenames  <-  c("H","Y_state")
+nasdaq_rp_names    <-  c("d","mu","phi","sigma_eta")
+nasdaq_ivp_names   <-  c("H_0")
+nasdaq_paramnames  <-  c(nasdaq_rp_names,nasdaq_ivp_names)
+nasdaq_covarnames  <-  "covaryt"
+```
+    
+Then, use the SVM model equation, we have:
+
+```{r}
+rproc1 <- "
+double eta;
+eta = rnorm(0, sigma_eta);
+H = mu + phi*(H - mu) + eta;
+"
+rproc2.sim <- "
+Y_state = rnorm(d*H, exp(H/2));
+"
+rproc2.filt <- "
+Y_state = covaryt;
+"
+nasdaq_rproc.sim   <-  paste(rproc1,rproc2.sim)
+nasdaq_rproc.filt  <-  paste(rproc1,rproc2.filt)
+```
+
+The nasdaq_initializer is:
+
+```{r}
+nasdaq_initializer <- "
+H = H_0;
+Y_state = rnorm(d*H, exp(H/2));
+"
+```
+
+```{r}
+nasdaq_rmeasure <- "
+y = Y_state;
+"
+nasdaq_dmeasure <- "
+lik = dnorm(y, d*H, exp(H/2), give_log);
+"
+```
+    
+For optimization procedures such as iterated filtering, it is convenient to transform parameters to be defined on the whole real line. We therefore transform $\phi$ as logistic scale because it's value range is $[0,1]$. Then, we transform $\sigma_{\eta}$ as exponential scale because it should be non-negative. We don't transform $d$ and $\mu$ because they should be as the real world, so we couldn't add a constrain on them.
+
+```{r}
+nasdaq_toEstimationScale = "
+Td = d;
+Tmu = mu;
+Tphi = logit(phi);
+Tsigma_eta = log(sigma_eta);
+"
+nasdaq_fromEstimationScale = "
+Td = d;
+Tmu = mu;
+Tphi = expit(phi);
+Tsigma_eta = exp(sigma_eta);
+"
+```
+    
+Now we build the pomp object that can be used for filtering. 
+
+```{r}
+nasdaq.filt = pomp(data=data.frame(y=lret,
+                                   time=1:length(lret)),
+                   statenames=nasdaq_statenames,
+                   paramnames=nasdaq_paramnames,
+                   covarnames=nasdaq_covarnames,
+                   times="time",
+                   t0=0,
+                   covar=data.frame(covaryt=c(0,lret),
+                                    time=0:length(lret)),
+                   tcovar="time",
+                   rmeasure=Csnippet(nasdaq_rmeasure),
+                   dmeasure=Csnippet(nasdaq_dmeasure),
+                   rprocess=discrete.time.sim(step.fun=Csnippet(nasdaq_rproc.filt),delta.t=1),
+                   initializer=Csnippet(nasdaq_initializer),
+                   toEstimationScale=Csnippet(nasdaq_toEstimationScale), 
+                   fromEstimationScale=Csnippet(nasdaq_fromEstimationScale)
+)
+```
+    
+Simulating from the model is convenient for developing and testing the code, as well as to investigate a fitted model. We can do this as follows:
+
+```{r}
+expit=function(x){1/(1+exp(x))}
+logit=function(y){log(y/(1-y))}
+params_test = c(
+  d         = 0.0001,  
+  mu        = -9,       
+  phi       = expit(2),
+  sigma_eta = exp(-0.8),
+  H_0       = 0
+)
+
+sim1.sim = pomp(nasdaq.filt, 
+                 statenames=nasdaq_statenames,
+                 paramnames=nasdaq_paramnames,
+                 covarnames=nasdaq_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(nasdaq_rproc.sim),delta.t=1)
+)
+
+sim1.sim = simulate(sim1.sim,seed=1,params=params_test)
+```
+
+We plot the simulated data v.s observed data as follows. Here we can see that the simulated log return could capture the general patterns of the observed log return, and we can see the volatility cluster occurs often.
+
+```{r}
+plot(Y_state~time, data=sim1.sim, type='l', col='red', ylim=c(-0.1,0.1), main="Observed Log Return vs Simulated Log Return", ylab="Log Return")
+lines(lret,col='black')
+legend(0,0.1, c("Observed Log Return","Simulated Log Return"), col=c("black","red"), lty=c(1,1))
+```
+
+Hence, we set the parameters:
+```{r}
+sim1.filt = pomp(sim1.sim, 
+                  covar=data.frame(
+                    covaryt=c(obs(sim1.sim),NA),
+                    time=c(timezero(sim1.sim),time(sim1.sim))),
+                  tcovar="time",
+                  statenames=nasdaq_statenames,
+                  paramnames=nasdaq_paramnames,
+                  covarnames=nasdaq_covarnames,
+                  rprocess=discrete.time.sim(step.fun=Csnippet(nasdaq_rproc.filt),delta.t=1)
+)
+```
+    
+##3.2 Filtering on Simulated Data
+
+Here, Np is the number of particles (i.e., sequential Monte Carlo sample size), and Nmif is the number of iterations of the optimization procedure carried out below.
+
+```{r}
+run_level = 2 
+nasdaq_Np          = c(100,1000,20000)
+nasdaq_Nmif        = c(10, 200,400)
+nasdaq_Nreps_eval  = c(4,  10,  20)
+nasdaq_Nreps_local = c(10, 20,  20)
+nasdaq_Nreps_global= c(10, 20, 100)
+```
+    
+    
+```{r}
+stew(file=sprintf("first_loglik.rda",run_level),{
+t.pf1 = system.time(
+  pf1 <- foreach(i=1:nasdaq_Nreps_eval[run_level],.packages='pomp',
+                 .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                   pfilter(sim1.filt,Np=nasdaq_Np[run_level])
+                 )
+)
+},seed=493536993,kind="L'Ecuyer")
+(L.pf1 = logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+Here, we obtain an unbiased likelihood estimate of 3760.737 with a Monte standard error of $7.5*10^{-3}$, which is small enough. The simulation is quite stable, and we can conclude that the model and parameter we chose is reasonable.
+    
+#4.Model Fitting
+
+Here we consider the three different run levels we've set before. The first two levels will help us to estimate the value range of parameters and check whether the model is correct. And level 3 would give us a more accurate result. For the parameter estimating, we need to do search both on local level and global level. Here, local level search is to determinate the value range for the global search, and then it can save time on global level searching.
+
+##4.1 Run level setting
+
+```{r}
+run_level = 2
+nasdaq_Np          = c(100,1000,20000)
+nasdaq_Nmif        = c(10, 200,400)
+nasdaq_Nreps_eval  = c(4,  10,  20)
+nasdaq_Nreps_local = c(10, 20,  20)
+nasdaq_Nreps_global= c(10, 20, 100)
+```
+
+##4.2 Local search for MLE
+
+###4.2.1 Local search at level 2
+
+Here, we first use run level = 2. With the previous analysis, we can do a local search for MLE with the previous determined parameters. 
+
+```{r}
+run_level = 2
+
+nasdaq_rw.sd_rp = 0.02
+nasdaq_rw.sd_ivp = 0.1
+nasdaq_cooling.fraction.50 = 0.5
+
+stew("local_level2.rda",{
+t.if1 <- system.time({
+  if1 <- foreach(i=1:nasdaq_Nreps_local[run_level],
+                 .packages='pomp', .combine=c,
+                 .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                   mif2(nasdaq.filt,
+                        start=params_test,
+                        Np=nasdaq_Np[run_level],
+                        Nmif=nasdaq_Nmif[run_level],
+                        cooling.type="geometric",
+                        cooling.fraction.50=nasdaq_cooling.fraction.50,
+                        transform=TRUE,
+                        rw.sd = rw.sd(
+                          d         = nasdaq_rw.sd_rp,
+                          mu        = nasdaq_rw.sd_rp,
+                          phi       = nasdaq_rw.sd_rp,
+                          sigma_eta = nasdaq_rw.sd_rp,
+                          H_0       = ivp(nasdaq_rw.sd_ivp)
+                        )
+                   )
+                 )
+  
+  L.if1 <- foreach(i=1:nasdaq_Nreps_local[run_level],.packages='pomp',
+                   .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                   {
+                     logmeanexp(
+                       replicate(nasdaq_Nreps_eval[run_level],
+                                 logLik(pfilter(nasdaq.filt,params=coef(if1[[i]]),Np=nasdaq_Np[run_level]))
+                       ),
+                       se=TRUE)
+                   }
+})
+},seed=318817883,kind="L'Ecuyer")
+
+local2 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+
+summary(local2$logLik,digits=5)
+```
+
+From the result above, we obtain the max log likelihood at 3797. 
+
+The pairs plots are shown below.
+
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=local2)
+```
+
+This plot looks much scatter than I expected before. From each parameter, we can get the conclusion:
+
+(1) Parameter $d$ locates at the positive value range around zero, but it is quite close to zero.
+
+(2) Parameter $\mu$ locates at about $[-10.2,-9.8]$, which is not quite far from -9. 
+
+(3) Parameter $\phi$ gathers together at zero, which shows a converge trend. This is a good thing to our analysis, since we want all the parameters to converge to a certain number. Even though some points at around 0.2, but it is quite close to 0, so we may think that when the run level =3, these points around 0.2 will converge to 0 to some extend.
+
+(4) Parameter $\sigma_{\eta}$ gathers together at zero, which also shows a converge trend. But there are still some points around 0.6, we may need to see what it looks like at run level =3.
+
+(5) We can see that with $\mu$ increasing, log likelihood also increase, which means there maybe exist a positive relationship. While for other parameters, we couldn't see significant correlation.
+
+###4.2.2 Local search at level 3
+
+```{r}
+run_level = 3
+
+nasdaq_rw.sd_rp = 0.02
+nasdaq_rw.sd_ivp = 0.1
+nasdaq_cooling.fraction.50 = 0.5
+
+stew("local_final3.rda",{
+t.if1 <- system.time({
+  if1 <- foreach(i=1:nasdaq_Nreps_local[run_level],
+                 .packages='pomp', .combine=c,
+                 .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                   mif2(nasdaq.filt,
+                        start=params_test,
+                        Np=nasdaq_Np[run_level],
+                        Nmif=nasdaq_Nmif[run_level],
+                        cooling.type="geometric",
+                        cooling.fraction.50=nasdaq_cooling.fraction.50,
+                        transform=TRUE,
+                        rw.sd = rw.sd(
+                          d         = nasdaq_rw.sd_rp,
+                          mu        = nasdaq_rw.sd_rp,
+                          phi       = nasdaq_rw.sd_rp,
+                          sigma_eta = nasdaq_rw.sd_rp,
+                          H_0       = ivp(nasdaq_rw.sd_ivp)
+                        )
+                   )
+                 )
+
+  L.if1 <- foreach(i=1:nasdaq_Nreps_local[run_level],.packages='pomp',
+                   .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar%
+                   {
+                     logmeanexp(
+                       replicate(nasdaq_Nreps_eval[run_level],
+                                 logLik(pfilter(nasdaq.filt,params=coef(if1[[i]]),Np=nasdaq_Np[run_level]))
+                       ),
+                       se=TRUE)
+                   }
+})
+},seed=318817883,kind="L'Ecuyer")
+
+local3 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+
+summary(local3$logLik,digits=5)
+```
+    
+We plot th scatter plot    
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=local3)
+```
+
+It looks like there are not much differences between this and local level 2.
+
+Here, we only focus on local search, however, if our initial point is not proper, maybe there exists a completely different parameter set which may work better than I choose. So even though the global search is time consuming, we still need to do so.
+
+##4.3 Global search for MLE
+
+In this section, we will work on the global likelihood maximization. This means that we may start at different initial points, which may much more time consuming than the local search. To do a quick check, we first consider that run_level = 2.
+
+###4.3.1 Global search at level 2
+
+```{r}
+run_level <- 2
+nasdaq_box <- rbind(
+d = c(-1,1),
+mu = c(-20,0),
+phi = c(0,0.9999),
+sigma_eta = c(0,0.9999),
+H_0 = c(-0.5,0.5)
+)
+stew(file="global_level2.rda",{
+t.box <- system.time({if.box <- foreach(i=1:nasdaq_Nreps_global[run_level],.packages='pomp',.combine=c,
+.options.multicore=list(set.seed=TRUE)) %dopar%
+mif2(
+if1[[1]],
+start=apply(nasdaq_box,1,function(x)runif(1,x[1],x[2]))
+)
+L.box <- foreach(i=1:nasdaq_Nreps_global[run_level],.packages='pomp',.combine=
+rbind,
+.options.multicore=list(set.seed=TRUE)) %dopar% {
+set.seed(87932+i)
+logmeanexp(
+replicate(nasdaq_Nreps_eval[run_level],
+logLik(pfilter(nasdaq.filt,params=coef(if.box[[i]]),Np=nasdaq_Np[run_level]))),
+se=TRUE)}})},seed=290860873,kind="L'Ecuyer")
+global2 <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+summary(global2$logLik,digits=5)                                      
+```
+
+From the result above, we obtain the max likelihood at 3920, which is bigger than the likelihood from local search. This means that global level search could give us a better result. 
+
+Now we plot all the points to see if we have multiple peaks.
+
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=global2)
+```
+
+This plot looks much better than before. From each parameter, we can get the conclusion:
+
+(1) Parameter $d$ locates at the positive value range around zero, but it is quite close to zero. We can see a convergence at around 0.
+
+(2) Parameter $\mu$ converges to -10, and is quite stable.
+
+(3) Parameter $\phi$ gathers together at zero, which shows a converge trend. However, in the global level search, there are some points at 0.8, which is against the convergence.
+
+(4) Parameter $\sigma_{\eta}$ gathers together at zero, and the points are all smaller than 0.15, which we can see a significant convergence. 
+
+(5) Considering together with the local pair plot, we couldn't see any significantly relationship between each two parameters.
+
+```{r}
+plot(if.box)
+```
+
+From the plot we can see that there are still large fluctuations for the parameter estimation since there are plenty of sharp peaks.
+
+From the MIF2 Convergence Diagnostics, we can see:
+
+(1) The log likelihood is still increasing, but it converges to an increasing line.
+
+(2) Parameter $d$ converges to a value which is very close to zero.
+
+(3) Parameter $\mu$ converges as a decreasing line, which will converge at -10 at the end.
+
+(4) Parameter $\phi$ couldn't find a significant converge, since it fluctuate at $[0,0.8]$.
+
+(5) Parameter $\sigma_{\eta}$ converges to a value which is very close to zero.
+
+Hence, we can narrow the value range to some extend. Since $d$ and $\sigma_{\eta}$ both show a significant convergence to 0, so I converge the value range of them to zero. And we do a global search at level3.
+
+###4.3.2 Global search at level 3
+
+```{r}
+nasdaq_Np          = c(100,1000,5000)
+nasdaq_Nmif        = c(10, 200,400)
+nasdaq_Nreps_eval  = c(4,  10,  20)
+nasdaq_Nreps_local = c(10, 20,  20)
+nasdaq_Nreps_global= c(10, 20, 100)
+```
+
+```{r}
+run_level <- 3
+nasdaq_box <- rbind(
+d = c(-0.9,0.9),
+mu = c(-20,0),
+phi = c(0,0.9999),
+sigma_eta = c(0,0.9),
+H_0 = c(-0.5,0.5)
+)
+stew(file="global_level3.rda",{
+t.box <- system.time({if.box <- foreach(i=1:nasdaq_Nreps_global[run_level],.packages='pomp',.combine=c,
+.options.multicore=list(set.seed=TRUE)) %dopar%
+mif2(
+if1[[1]],
+start=apply(nasdaq_box,1,function(x)runif(1,x[1],x[2]))
+)
+L.box <- foreach(i=1:nasdaq_Nreps_global[run_level],.packages='pomp',.combine=
+rbind,
+.options.multicore=list(set.seed=TRUE)) %dopar% {
+set.seed(87932+i)
+logmeanexp(
+replicate(nasdaq_Nreps_eval[run_level],
+logLik(pfilter(nasdaq.filt,params=coef(if.box[[i]]),Np=nasdaq_Np[run_level]))),
+se=TRUE)}})},seed=290860873,kind="L'Ecuyer")
+global3 <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+summary(global3$logLik,digits=5)
+```
+
+The max log likelihood doesn't increase much.
+
+We see the pair plots as below:
+
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=global3)
+```
+
+```{r}
+plot(if.box)
+```
+
+We can make some conclusions according to the above two plots:
+
+(1) Parameter $d$ has significant evidence of convergence to a value near 0.
+
+(2) Parameter $\mu$ seems not that converge to -10 as we've seen from level2, and $\phi$ seems not converge, instead, it shows some fluctuation in the interval $[0,0.8]$. Hence, we may need to do a larger level to see whether it may converge at last. 
+
+(3) Parameter $\sigma_{\eta}$ gathers together at zero.
+
+(4) The log likelihood converge to an increasing line. This means that the log likehood can converge, but we need to do a more bigger run_level.
+
+So we could try to determinate the values of all the parameters, here we focus on the parameter values which could lead a best log likelihood:
+
+```{r}
+global3[which.max(global3$logLik),]
+```
+
+
+
+(1) To maximize the log likelihood, $\phi$ tends to be 1. However, in our model equation, $H_t = \mu + \phi(H_{t-1}-\mu) + \eta_t$, when $\phi = 1$, we can see $H_t$ has nothing to do with $\mu$, which means $\mu$ could set to arbitrary value, so it will not converge, which is corresponds with our plot before. Since $\phi=1$ may not lead to a reasonable result, we try to set $\phi=0.9999991$. Hence $\mu$ is not converge, so we only set an interval $[-20,0]$ for its value.
+
+(2) We set $d$ to 0.0004 from the plot above. And we set $\sigma_{\eta}$ to 0.148. 
+
+
+#5.Garch Model
+
+```{r}
+garch = garch(lret,grad="numerical",trace=FALSE)
+summary(garch)
+```
+
+As a comparison, we consider Garch(1,1) model which is often used in financial market. Here from the JB Test and Box_ljung Test, we can reject that the residuals are normal distributed and has no correlation between the squared residuals. This means that there actually exist some volatility cluster which Garch model couldn't explain it well.
+
+```{r}
+l.garch = logLik(garch)
+l.garch
+```
+
+Although the log likelihood of Garch is 4129, which is a little bit larger than SVM, but since it couldn't explain the volatility enough, I'll still try to use SVM, or other stochastic volatility models to interpret further.
+
+#6.Conclusion
+
+(1) In this project, we focus on SVM model. Because we need to observe from the market and then estimate the latent process, so it is a pomp model. In order to estimate the parameters, we first use local search for a quick check. And based on the results from local search, we narrow the value range to do a global search. 
+
+(2) For our model:
+
+$Y_t = d\cdot H_t + \exp^{\frac{H_t}{2}}u_t$    
+$H_t = \mu + \phi(H_{t-1}-\mu) + \eta_t$    
+$u_t \sim \mathcal{N}(0,1)$    
+$\eta_t \sim \mathcal{N}(0,\sigma_{\eta}^2)$    
+where $d$, $\mu$, $\sigma_{\eta}$ are constants.
+
+We can see from the whole project that: $ d = 0.004, \sigma_{\eta} = 0.148, \mu = 0.9999991$ and since $\phi$ is not converge, we only provide its range value $[-20,0]$.
+
+We may still work on the unstability on parameter $\phi$.
+
+(3) After comparing with Garch model, even Garch has a larger log likelihood than SVM, which means under AIC, we need to choose Garch. However, AIC is just a reference when we need to make a choice. Since the Garch model couldn't explain the volatility cluster well, I think I may still choose the SVM model. And maybe focus on other stochastic volatility model.
+
+(4) Further study: We may consider the Financial Leverage which we've mentioned on the lecture. Because it may make sense that the direction of returns move (positive or negative) may influence the volatility to different levels, even though the magnitude are the same.
+
+
+#7.Reference
+
+[1]. [The Stochastic Volatility in Mean model: Empirical evidence from international stock markets](http://personal.vu.nl/s.j.koopman/old/papers/svm300701.pdf)
+
+[2]. [NASDAQ Composite Index Methodology](https://indexes.nasdaqomx.com/docs/Methodology_COMP.pdf)
+
+[3]. [Index Investing: The Nasdaq Composite Index](https://www.investopedia.com/university/indexes/index4.asp)
+
+[4]. [Discrete-Time Stochastic Volatility Models and MCMC-Based Statistical Inference](http://sfb649.wiwi.hu-berlin.de/papers/pdf/SFB649DP2008-063.pdf)
+
+[5]. [Financial Volatility Analysis with SV-in-Mean Model in Pomp](https://ionides.github.io/531w16/final_project/Project08/Final/Stats_531_Final_Project.html)
+
+[6]. [Lecture Notes](https://ionides.github.io/531w18/)
+
+

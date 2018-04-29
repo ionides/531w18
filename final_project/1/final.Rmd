@@ -1,0 +1,453 @@
+---
+title: "Investigate Financial Volatility of Google Stock"
+output: html_document
+---
+
+```{r ,results="asis",tidy=FALSE,eval=TRUE, echo=FALSE}
+cat("1. [Introduction](#introduction)\n")
+cat("2. [Data Description](#data)\n")
+cat("3. [Benchmark Likelihoods of GARCH models](#garch)\n")
+cat("4. [Financial Leverage](#leverage)\n")
+cat("5. [Building POMP model](#pomp)\n")
+cat("6. [Fitting the Stochastic Leverage Model](#fixed)\n")
+cat("7. [Likelihood Maximization Using Randomized Starting Values](#random)\n")
+cat("8. [Profile Likelihood](#profile)\n")
+cat("9. [Conclusions](#conclu)\n")
+cat("10. [References](#references)\n")
+```
+
+### 1. Introduction {#introduction}
+
+In financial markets, investors are always interested in investigating the financial volatility for predicting the price trend of certain stocks. "volatility is the degree of variation of a trading price series over time as measured by the standard deviation of logarithmic returns." [1] [2]
+
+In this project, we study the stock data of Google (Alphabet Inc.), which is one of largest information technology companies of the world. For the large companies such as Google, the large fluctuations of its stock can possibly result in the profound influence on the entire financial market. Thus, it will be interesting and meaningfui to study the trend of Google stock.
+
+
+### 2. Data Description {#data}
+
+The historical financial data of Google can be downloaded from Yahoo Finance (https://finance.yahoo.com/quote/GOOG/history?p=GOOG). This dataset consists of 7 variables and 2669 observations. In this project, we use the adjusted close price from 2007 to 2017 to investigate the financial volatility of Google stock.
+
+Adjusted Close Price:$\{z_n*,n=1,...,N\}$
+Log Return: $log(z_n^*)$
+
+```{r read_data, echo=FALSE}
+goog <- read.csv("GOOG.csv", header = T)
+goog$Date <- format(as.Date(goog$Date, format = "%m/%d/%Y"), "%Y-%m-%d")
+summary(goog$AdjClose)
+```
+
+
+```{r, echo=FALSE}
+
+date <- as.Date(goog$Date)
+adjclose <- as.numeric(goog$AdjClose)
+adj_log=log(goog$AdjClose)
+
+par(mfrow=c(1,2))
+plot(date,adjclose,main = "Ajusted Close Price", xlab = "", ylab = "Adjusted Close Price",type="l")
+plot(date, adj_log, main = "Log Return", type = "l")
+
+```
+
+In order to obtain a demeaned stationary dataset, we apply a difference operation to the log return and then remove the mean. [3]
+
+Difference of Log Return: $y_n^*=log(z_n^*)-log(z_{n-1}^*)$
+
+```{r, echo=FALSE}
+goog_diff=diff(log(goog$AdjClose))
+goog_demean=goog_diff-mean(goog_diff)
+plot(goog_demean, type="l")
+```
+
+We can see the high volatility around 480 index when the 2008 financial crisis took place.
+
+### 3. Benchmark Likelihoods of GARCH models {#garch}
+
+The GARCH models have become "widely used for financial time series modeling." [7] Here, we introduce the GARCH(p,q) model.
+The GARCH(p,q) has the form:
+$$Y_n=\epsilon_n\sqrt{V_n}$$
+
+where $$V_n=a_0+\sum_{j=1}^pa_jY_{n-j}^2+\sum_{k=1}^qb_kY_{n-k}^2$$
+and $\epsilon_{1:N}$ is white noise.
+
+We use the GARCH model as a benchmark since GARCH is a simpler model than POMP. In practice, the GARCH(1,1) model is a popular choice (Cowpertwait and Metcalfe 2009 [5]), which can fitted as follows.
+
+GARCH(1,1) model
+```{r, echo=FALSE}
+require(tseries)
+goog <- read.csv("GOOG.csv", header = T)
+goog$Date <- format(as.Date(goog$Date, format = "%m/%d/%Y"), "%Y-%m-%d")
+goog_diff=diff(log(goog$AdjClose))
+goog_demean=goog_diff-mean(goog_diff)
+fit.garch = garch(goog_demean, order = c(1,1), grad = "numerical", trace = FALSE)
+L.garch = logLik(fit.garch)
+```
+
+From the result above, the logLikelihood of GARCH(1,1) model is 7222.91 with 3 parameters.
+
+
+### 4. Financial Leverage {#leverage}
+
+Previously, we perform GARCH model to predict the financial volatulity. However, the parameters in the GARCH model are not explanatory. To better understand the correlation between daily return and volatility, the stochastic POMP model will be presented. 
+
+"$R_n$ is formally defined as leverage on day n as the correlation between index return on day (n-1) and the inincrease in the log volatility from day (n-1) to day n."[7] Here, we introduce a pomp implementation of Breto (2014) [4], which models $R_n$ as a random walk on a transformed scale $$R_n=\frac{exp(2G_n)-1}{exp(2G_n)+1}$$
+where $G_n$ is the usual, Gaussian random walk.
+
+
+
+Then we continue to build the POMP model following the notations from Breto (2014) [4].
+
+(Denote that $H_n=log(\sigma_n^2)=2log(\sigma^n)$)
+$$Y_n=exp(H_n/2)\epsilon_n$$
+$$H_n=\mu_h(1-\phi)+\phi H_{n-1}+\beta_{n-1}R_nexp(-H_{n-1}/2)+W_n$$
+$$G_n=G_{n-1}+v_n$$
+where 
+$$\beta_n=Y_n\sigma_{\eta}\sqrt{1-\phi^2}$$
+$$\sigma_{\omega}=\sigma_{\eta}\sqrt{1-\phi^2}\sqrt{1-R_n^2}$$
+$$\epsilon_n \sim  i.i.d. N(0,1)$$ 
+$$v_n \sim i.i.d. N(0,\sigma_v^2)$$
+$$w_n \sim i.i.d. N(0,\sigma_{\omega}^2)$$
+
+### 5. Building POMP model {#pomp}
+
+Here, we choose the iterated filtering algorithm (IF2) [6] to converge toward the region of parameter space maximizing the maximum likelihood. In this case, we use the state variable $X_n=(G_n,H_n,Y_n)$. [7]
+
+Filter particle j at time (n-1) is denoted as: 
+$$X_{n-1,j}^F=(G_{n-1,j}^F,H_{n-1,j}^F,y_{n-1}^*)$$
+
+Prediction particles at time n are denoted as:
+$$(G_{n,j}^p,H_{n,j}^p)\sim f_{G_n,H_n|G_{n-1},H_{n-1},Y_{n-1}}(g_n|G_{n-1,j}^F,H_{n-1,j}^F,y_{n-1}^*)$$
+with corresponding weight $w_{n,j}=f_{Y_n|G_n,H_n}(y_n^*|G_{n,j}^P,H_{n,j}^P)$
+
+
+```{r, echo=FALSE}
+goog_statenames = c("H","G","Y_state")
+goog_rp_names = c("sigma_nu","mu_h","phi","sigma_eta")
+goog_ivp_names <- c("G_0","H_0")
+goog_paramnames <- c(goog_rp_names,goog_ivp_names)
+goog_covarnames <- "covaryt"
+```
+
+```{r, echo=FALSE}
+require(pomp)
+require(doParallel)
+rproc1 = "
+  double beta, omega, nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh(G) * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+
+goog_rproc.sim <- paste(rproc1,rproc2.sim)
+goog_rproc.filt <- paste(rproc1,rproc2.filt)
+
+goog_initializer <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+
+goog_rmeasure <- "
+   y=Y_state;
+"
+
+goog_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+goog_toEstimationScale <- "
+  Tsigma_eta = log(sigma_eta);
+  Tsigma_nu = log(sigma_nu);
+  Tphi = logit(phi);
+"
+
+goog_fromEstimationScale <- "
+  Tsigma_eta = exp(sigma_eta);
+  Tsigma_nu = exp(sigma_nu);
+  Tphi = expit(phi);
+"
+
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+
+cores <- 20
+registerDoParallel(cores)
+
+goog.filt <- pomp(data=data.frame(y=goog_demean,
+                     time=1:length(goog_demean)),
+              statenames=goog_statenames,
+              paramnames=goog_paramnames,
+              covarnames=goog_covarnames,
+              times="time",
+              t0=0,
+              covar=data.frame(covaryt=c(0,goog_demean),
+                     time=0:length(goog_demean)),
+              tcovar="time",
+              rmeasure=Csnippet(goog_rmeasure),
+              dmeasure=Csnippet(goog_dmeasure),
+              rprocess=discrete.time.sim(step.fun=Csnippet(goog_rproc.filt),delta.t=1),
+              initializer=Csnippet(goog_initializer),
+              toEstimationScale=Csnippet(goog_toEstimationScale), 
+              fromEstimationScale=Csnippet(goog_fromEstimationScale)
+)
+
+
+```
+
+### 6. Fitting the Stochastic Leverage Model {#fixed}
+
+The initial values and the starting values of parameters are set at the first step.
+
+```{r, echo=FALSE}
+require(doParallel)
+require(foreach)
+
+run_level = 4
+switch(run_level,
+       {goog_Np=100; goog_Nmif=10; goog_Neval=10; goog_Nglobal=10; goog_Nlocal=10},
+       {goog_Np=500; goog_Nmif=100; goog_Neval=10; goog_Nglobal=10; goog_Nlocal=10},
+       {goog_Np=1000; goog_Nmif=200; goog_Neval=10; goog_Nglobal=20; goog_Nlocal=20},
+       {goog_Np=2000; goog_Nmif=300; goog_Neval=10; goog_Nglobal=50; goog_Nlocal=20})
+
+```
+
+```{r}
+params_test <- c(
+  sigma_nu = 0.10,  
+     mu_h = -9.0,       
+     phi = 0.02,     
+     sigma_eta = 0.02,
+    G_0=0,
+    H_0=0
+)
+
+goog_rw.sd_rp <- 0.02
+goog_rw.sd_ivp <- 0.01
+goog_cooling.fraction.50 <- 0.5
+
+```
+
+
+```{r, echo=FALSE}
+
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:goog_Nlocal,.packages='pomp', .combine=c, .options.multicore=list(set.seed=TRUE)) %dopar%  {
+      mif2(
+        goog.filt,
+        start=params_test,
+        Np=goog_Np,
+        Nmif=goog_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=goog_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          sigma_nu=goog_rw.sd_rp,
+          mu_h=goog_rw.sd_rp,
+          phi=goog_rw.sd_rp,
+          sigma_eta=goog_rw.sd_rp,
+          G_0=goog_rw.sd_ivp,
+          H_0=goog_rw.sd_ivp
+        )
+      )
+      
+    }
+  })
+  
+},seed=90027869,kind="L'Ecuyer")
+```
+
+We can see that the maximum value of logLikelihood ($=7746$) shown below is obviously larger than the value generated from the GARCH(1,1) model ($\sim7223$).
+
+```{r, echo=FALSE}
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+    t_local_eval <- system.time({
+    liks_local <- foreach(i=1:goog_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(goog_Neval, logLik(pfilter(goog.filt,params=coef(mifs_local[[i]]),Np=goog_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=90027869,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+```
+
+From the plots, we can summarize that there is a larger possibility of obtaining the maximum logLiklihood when $\sigma_\nu$ is close to 0, and $\phi$ is close to 0.92. Other parameters does not show obvious patterns of their relationship with logLiklihood.
+
+```{r, echo=FALSE}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(results_local,logLik>max(logLik)-30))
+```
+
+### 7. Likelihood Maximization Using Randomized Starting Values {#random}
+
+Instead of setting a fixed group of starting values which is exactly what we do at the previous step, we begin to randomly select the starting values inside the box of parameter vectors. The parameter vectors are determined based on the summarized patterns of the parameter plots above.
+
+Here is the box of parameter vectors.
+
+```{r}
+goog_box <- rbind(
+  sigma_nu=c(0.0002,0.002),
+  mu_h    =c(-8.7,-8.6),
+  phi = c(0.90,0.92),
+  sigma_eta = c(0.95,1.05),
+  G_0 = c(-2,2),
+  H_0 = c(-1,1)
+)
+
+```
+
+Although the maximum logLikelihood ($=7744$) is slightly smaller than that ($=7746$) in the POMP model with fixed parameters, the values of logLikelihood actually appears much denser with the minimum 7581 comparing to the minimum 7162 in the previous POMP model.
+
+```{r, echo=FALSE}
+
+stew(file="box_eval.rda",{
+  t.box <- system.time({
+    if.box <- foreach(i=1:goog_Nglobal,.packages='pomp',.combine=c,
+                  .options.multicore=list(set.seed=TRUE)) %dopar%  
+      mif2(
+        mifs_local[[1]],
+        start=apply(goog_box,1,function(x)runif(1,x))
+        
+      )
+    
+    L.box <- foreach(i=1:goog_Nglobal,.packages='pomp',.combine=rbind,
+                      .options.multicore=list(set.seed=TRUE)) %dopar% {
+                        set.seed(87977+i)
+                        logmeanexp(
+                          replicate(goog_Neval,
+                         logLik(pfilter(goog.filt,params=coef(if.box[[i]]),Np=goog_Np))
+                          ), 
+                          se=TRUE)
+                      }
+  })
+},seed=290864636,kind="L'Ecuyer")
+
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="goog_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+```
+
+Since we randomly select the starting values, the parameters here look more diverse than the parameters in the model with fixed starting values. In this plot, $\mu_h$ is pretty dense around 0. Moreover, the pattern of the relationship between $\phi$ and logLikelihood still seems to exist, but remains to be checked afterwards.  
+
+```{r, echo=FALSE}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.box,logLik>max(logLik)-30))
+```
+
+The likelihood does not converge very fast in this case. As we can see, the logLikelihood begins to converge after 150 iterations. We should increase the sample size and the number of iterations in the future study. In addtion, the outlier appearing in $\sigma_\eta$ shows great influence in this plot. Since the extreme value is too large, we are not able to clearly identify the true pattern of $\sigma_\eta$. As we know that occasional numerical failures in mif2 like this are not uncommon, and also the starting values are randomized at this step, the proper way we can implement next to make any improvement is probably to refine the parameters box and then re-run the algorithms. 
+
+```{r, echo=FALSE}
+plot(if.box)
+```
+
+
+### 8. Profile Likelihood {#profile}
+
+From the diagnostics plots, we observe that logLiklihood will increase as $\phi$ increases to 1. Therefore, we are going to investigate $\phi$ by constructing profile likelihood.[8]
+
+$$\{\phi:max\{l^{profile}(\phi)\}-l^{profile}(\phi)<1.92\}$$
+
+```{r, echo=FALSE}
+require(plyr)
+require(ggplot2)
+require(dplyr)
+
+It=20
+nprof=20
+profile.box <- profileDesign(  
+  phi=exp(seq(log(0.85),log(0.95),length.out=It)),
+  lower=c(sigma_nu=0.0002,mu_h=-8.7,sigma_eta=0.86,G_0=-2,H_0=-1),
+  upper=c(sigma_nu=0.003,mu_h=-8.6,sigma_eta=1,G_0=2,H_0=1),
+  nprof=nprof
+)
+```
+
+```{r, echo=FALSE}
+stew(file=sprintf("profile_phi-%d.rda",It),{
+  t_pro <- system.time({
+      prof.llh<- foreach(i=1:(It*nprof),.packages='pomp', .combine=rbind, .options.multicore=list(set.seed=TRUE)) %dopar%{
+        mif2(
+          mifs_local[[1]],
+          start=c(unlist(profile.box[i,]),params_test),
+          Np=50,Nmif=10,
+          rw.sd=rw.sd(
+                           sigma_nu  = goog_rw.sd_rp,
+                            mu_h      = goog_rw.sd_rp,
+                            sigma_eta = goog_rw.sd_rp,
+                            G_0       = ivp(goog_rw.sd_ivp),
+                            H_0       = ivp(goog_rw.sd_ivp)
+          )
+        )->mifs_pro
+        evals = replicate(10, logLik(pfilter(mifs_pro,Np=50)))
+        ll=logmeanexp(evals, se=TRUE)        
+        data.frame(as.list(coef(mifs_pro)),
+                   loglik = ll[1],
+                   loglik.se = ll[2])
+      }
+  })
+},seed=5556129,kind="L'Ecuyer")
+
+
+prof.llh %<>%
+  mutate(phi=exp(signif(log(phi),5))) %>%
+  ddply(~phi,subset,rank(-loglik)<=1)
+
+a=max(prof.llh$loglik)
+b=a-1.92
+CI=which(prof.llh$loglik>=b)
+c=prof.llh$phi[min(CI)]
+d=prof.llh$phi[max(CI)]
+
+prof.llh %>%
+  ggplot(aes(x=phi,y=loglik))+
+  geom_point()+
+  geom_smooth(method="loess")+
+  geom_hline(aes(yintercept=a),linetype="dashed")+
+  geom_hline(aes(yintercept=b),linetype="dashed")+
+  geom_vline(aes(xintercept=c),linetype="dashed")+
+  geom_vline(aes(xintercept=d),linetype="dashed")
+c(lower=c,upper=d)
+
+
+```
+
+From the result above, we discover a problem that both the lower bound and the upper bound of the 95% confidence interval are 0.9012433. The reason why this problem arises probably is that the reference statistic 1.92  is too small comparing to the logLikelihood which is about 7700. We can only conclude that the estimate of $\phi$ is around 0.90 right now. However, we still need to narrow down the range of Phi to a much smaller size  based on the finding from this result to precisely locate the confidence interval, such as from 0.895 to 0.905, at the next step. 
+
+### 9. Conclusions {#conclu}
+
+After comparing the GARCH model and the POMP models, we conclude that the random walk leverage POMP model with randomized starting values is generally the best choice to investigate the financial volatility of Google stock. Moreover, by implementing a POMP model, we can estimate the parameters denoted in the financial model which is remarkbly benefial for financial study of volatility. 
+
+Due to the limited time and the considerable amount of computations, we are unable to provide an optimal presentation of our models. In the future, apart from refining the algorithms by increasing the sample size and the amount of iterations, we can also provide the best estimates for all parameters, not only $\phi$. Last, we also have to find proper method to solve the outlier problem in this case.
+
+### 10. References {#references}
+
+[1] https://en.wikipedia.org/wiki/Volatility_(finance)
+
+[2] https://www.investopedia.com/walkthrough/corporate-finance/5/capital-structure/financial-leverage.aspx
+
+[3] Edward Ionides, "6.2 ARMA models for differenced data" from class notes, https://ionides.github.io/531w18/06/notes06.html
+
+[4] Bretó, C. 2014. On idiosyncratic stochasticity of financial leverage effects. Statistics & Probability Letters 91:20–26.
+
+[5] Cowpertwait, P.S., and A.V. Metcalfe. 2009. Introductory time series with R. Springer Science & Business Media.
+
+[6] Ionides, E.L., D.Nguyen, Y.Atchadé, S.Stoev, and A.A. King. 2015. Inference for dynamic and latent variable models via iterated, perturbed Bayes maps. Proceedings of the National Academy of Sciences of the U.S.A. 112:719–724.
+
+[7] Edward Ionides, "14. Case study: POMP modeling to investigate financial volatility", https://ionides.github.io/531w18/14/notes14.html#arch-and-garch-models
+
+[8] Yitong Chen, https://ionides.github.io/531w16/final_project/Project11/final.html
+
+
+
+

@@ -1,0 +1,563 @@
+---
+title: "Financial Volatility Analysis"
+date: "2018/4/14"
+output:
+  html_document: 
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(doParallel)
+registerDoParallel()
+require(pomp)
+```
+
+## 1 Introduction    
+### 1.1 Background    
+In financial markets, investors pay much attention on varying volatility of financial products, which is the core of asset pricing and risk management. Stochastic Volatility is essential and typical tool for modeling volatility. The Standard Stochastic Volatility Model could capture the volatility based on the given current information. In other words, the estimated process should satisfy the Markov Property. Based on the general SV model, the applications have been widely used in financial markets. Here, we aim to figure out the pattern of volatility of SP500, model and predict the volatility.[1]    
+The Standard & Poor's 500, often abbreviated as the S&P 500, is an American stock market index based on the market capitalizations of 500 large companies having common stock listed on the NYSE or NASDAQ. It is an important index and representation of U.S market.[2]    
+
+### 1.2 Objective    
+In this project, we seek to set up a SV In Mean Model(SVM) for volatility of SP500 by using the observed data from the market. We would estimate the parameters of SVM model, which would help us model and predict the time varying volatility.    
+
+    
+## 2 Data Overview
+In this project, we are going to look at daily data of SP500 Close Price for the last 6 years.    
+Since the lastest of SP500 data available at the time of this project is April, 24, 2018, we would the April, 24, 2012 as the starting point of our dataset for analysis. The historical data of SP500 are downloaded from finance.yahoo.com 
+The dataset does not include seasonally adjusted, since seasonally adjusted may influence our later analysis and model estimation.      
+        
+```{r}
+data=read.table("SP500New.csv",sep=",",header=TRUE)
+SP500 = (data$Adj.Close)
+plot((SP500), type='l',xlab="Time",ylab="Adjusted Closing Price", main="Time Plot of SP500",ylim=c(1300,3000))
+```
+    
+```{r}
+SP500logr = diff(log(SP500))
+plot(SP500logr, type='l', ylab="LogReturn", main="Time Plot of Log Return of SP500")
+```
+
+According to the plots above, we could find that Log Return changes randomly as time increasing. The changement of Log Return could be explained by Log Volatility which is nearly same as Volatility. Compared the Log Return in different periods, we would find that volatility is varying between different time interval. The relationship between Today's Log Return and Yesterday could help us capture the volatility in a single day. Therefore, we would use the CLose Price of SP500, which are observed in the market to model Volatility.    
+
+    
+## 3 The SV In Mean Model     
+The general form of SV In Mean Model is the following,   
+$Y_t = d\cdot H_t + \exp(H_t/2)u_t$    
+$H_t = \mu + \phi(H_{t-1}-\mu) + \eta_t$    
+$u_t \sim \mathcal{N}(0,1)$    
+$\eta_t \sim \mathcal{N}(0,\sigma_{\eta}^2)$    
+where $d$, $\mu$, $\sigma_{\eta}$ are constants    
+In the above model, $Y_t$ is the Log Return of the market, and $H_t$ is the Log Volatility. $d$ describes the relationship between returns and volatility components which would be expected and unexpected.[3]    
+$Y_t$ is the observed process since we can calculate the Log Return directly from the data while $H_t$ is the latent process, which we could not observe from the real market.    
+Hence the above model is recognized as partially observed Markov process model. We should use pomp package to build up model and fit our data.   
+    
+    
+## 4 Building Model    
+Firstly, we should define the variables of the pomp object.    
+
+```{r warning=FALSE}
+SP500_statenames  <-  c("H","Y_state")
+SP500_rp_names    <-  c("d","mu","phi","sigma_eta")
+SP500_ivp_names   <-  c("H_0")
+SP500_paramnames  <-  c(SP500_rp_names,SP500_ivp_names)
+SP500_covarnames  <-  "covaryt"
+```
+    
+Since we know that $Y_t=d\cdot H_t + \exp(H_t/2)u_t$    
+
+```{r}
+rproc1 <- "
+double eta;
+eta = rnorm(0, sigma_eta);
+H = mu + phi*(H - mu) + eta;
+"
+rproc2.sim <- "
+Y_state = rnorm(d*H, exp(H/2));
+"
+rproc2.filt <- "
+Y_state = covaryt;
+"
+SP500_rproc.sim   <-  paste(rproc1,rproc2.sim)
+SP500_rproc.filt  <-  paste(rproc1,rproc2.filt)
+```
+
+```{r}
+SP500_initializer <- "
+H = H_0;
+Y_state = rnorm(d*H, exp(H/2));
+"
+```
+
+```{r}
+SP500_rmeasure <- "
+y = Y_state;
+"
+SP500_dmeasure <- "
+lik = dnorm(y, d*H, exp(H/2), give_log);
+"
+```
+    
+We need to estimate the parameters which should be interpreted by the real data. Therefore, we should make some constraints on the parameters in order to satisfy the common sense in the real world.    
+For $d$ and $mu$, they should be defined in real and could be either positive or negative values. While $\phi$ should be defined between 0 and 1 as it is shown in the equation above. Here, we would use logistic scale. $\sigma_{\eta}$ should be nonegative, and we would use exponential transformation.    
+
+```{r}
+SP500_toEstimationScale = "
+Td = d;
+Tmu = mu;
+Tphi = logit(phi);
+Tsigma_eta = log(sigma_eta);
+"
+SP500_fromEstimationScale = "
+Td = d;
+Tmu = mu;
+Tphi = expit(phi);
+Tsigma_eta = exp(sigma_eta);
+"
+```
+    
+Now we build the pomp object that can be used for filtering.    
+
+```{r}
+SP500.filt = pomp(data=data.frame(y=SP500logr,
+                                   time=1:length(SP500logr)),
+                   statenames=SP500_statenames,
+                   paramnames=SP500_paramnames,
+                   covarnames=SP500_covarnames,
+                   times="time",
+                   t0=0,
+                   covar=data.frame(covaryt=c(0,SP500logr),
+                                    time=0:length(SP500logr)),
+                   tcovar="time",
+                   rmeasure=Csnippet(SP500_rmeasure),
+                   dmeasure=Csnippet(SP500_dmeasure),
+                   rprocess=discrete.time.sim(step.fun=Csnippet(SP500_rproc.filt),delta.t=1),
+                   initializer=Csnippet(SP500_initializer),
+                   toEstimationScale=Csnippet(SP500_toEstimationScale), 
+                   fromEstimationScale=Csnippet(SP500_fromEstimationScale)
+)
+```
+    
+We should make simulation using the testing parameters, which could help us us to determine a reasonable interval for the box evaluation and give a quick test on the code.    
+
+```{r}
+expit=function(x){1/(1+exp(x))}
+logit=function(y){log(y/(1-y))}
+params_test = c(
+  d         = 0.0001,  
+  mu        = -9,       
+  phi       = expit(2),
+  sigma_eta = exp(-0.8),
+  H_0       = 0
+)
+
+sim1.sim = pomp(SP500.filt, 
+                 statenames=SP500_statenames,
+                 paramnames=SP500_paramnames,
+                 covarnames=SP500_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(SP500_rproc.sim),delta.t=1)
+)
+
+sim1.sim = simulate(sim1.sim,seed=1,params=params_test)
+```
+
+We would plot the simulated data with observed data, and make comparison between these two to determine the range of parameters.    
+```{r}
+plot(Y_state~time, data=sim1.sim, type='l', col='red', ylim=c(-0.1,0.1), main="Observed Log Return vs Simulated Log Return", ylab="Log Return")
+lines(SP500logr,col='blue')
+legend(0,0.1, c("Observed Log Return","Simulated Log Return"), col=c("blue","red"), lty=c(1,1))
+```
+
+According to the plot above, we would consider that the model could capture the Observed data from the real market, as the Simulated Log Return has the same pattern with Observed Log Return and volatility of Log Return changes from period to period, high volatility usually following by low volatility.    
+Hence, the parameters     
+```{r}
+sim1.filt = pomp(sim1.sim, 
+                  covar=data.frame(
+                    covaryt=c(obs(sim1.sim),NA),
+                    time=c(timezero(sim1.sim),time(sim1.sim))),
+                  tcovar="time",
+                  statenames=SP500_statenames,
+                  paramnames=SP500_paramnames,
+                  covarnames=SP500_covarnames,
+                  rprocess=discrete.time.sim(step.fun=Csnippet(SP500_rproc.filt),delta.t=1)
+)
+```
+    
+    
+## 5 Fitting Model   
+We set three different run-level. Level 1 and 2 are used for model checking, parameters' estimation and quick check for code. Level 3 would give us the final outcome.    
+
+```{r}
+SP500_Np          = c(100,1000,5000)
+SP500_Nmif        = c(10, 200,400)
+SP500_Nreps_eval  = c(4,  10,  20)
+SP500_Nreps_local = c(10, 20,  20)
+SP500_Nreps_global= c(10, 20, 100)
+```
+    
+    
+### 5.1 Local Research    
+Since the computation is quite time consuming, we would start by local research with the starting value specified in the box evaluation. Since the simulated values based on the box evalutiuon is quite similar as the observed values, it is reasonable for us to use box evaluation as the starting point of local research.    
+For a quick and simple start, we choose run-level 2    
+
+```{r}
+run_level = 2
+
+SP500_rw.sd_rp = 0.02
+SP500_rw.sd_ivp = 0.1
+SP500_cooling.fraction.50 = 0.5
+
+stew("SP500_local2.rda",{
+t.if1 <- system.time({
+  if1 <- foreach(i=1:SP500_Nreps_local[run_level],
+                 .packages='pomp', .combine=c,
+                 .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                   mif2(SP500.filt,
+                        start=params_test,
+                        Np=SP500_Np[run_level],
+                        Nmif=SP500_Nmif[run_level],
+                        cooling.type="geometric",
+                        cooling.fraction.50=SP500_cooling.fraction.50,
+                        transform=TRUE,
+                        rw.sd = rw.sd(
+                          d         = SP500_rw.sd_rp,
+                          mu        = SP500_rw.sd_rp,
+                          phi       = SP500_rw.sd_rp,
+                          sigma_eta = SP500_rw.sd_rp,
+                          H_0       = ivp(SP500_rw.sd_ivp)
+                        )
+                   )
+                 )
+  
+  L.if1 <- foreach(i=1:SP500_Nreps_local[run_level],.packages='pomp',
+                   .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                   {
+                     logmeanexp(
+                       replicate(SP500_Nreps_eval[run_level],
+                                 logLik(pfilter(SP500.filt,params=coef(if1[[i]]),Np=SP500_Np[run_level]))
+                       ),
+                       se=TRUE)
+                   }
+})
+},seed=318817883,kind="L'Ecuyer")
+
+locallevel2 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+
+summary(locallevel2$logLik,digits=5)
+```
+    
+According to the summary above, we would know that the Max Log-likelihood is 5058 by using the local research. We should use them as a comparison among different researches rather than interpret the Loglikelihood on it own. We should expect that the Log-likelihood of latter global research should be no less than this value.    
+We plot th scatter plots to find the estimated values of parameters.    
+
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=locallevel2)
+```
+
+According to the scatter plots above, we could know the following,    
+$d$ tends to have a quite small absolute value and is very close to zero    
+$\mu$ would be around -10, little different as what we have set at before where $\mu=-9$    
+$\phi$ would be around zero for most of the cases, but we still need to consider those points around 0.4    
+$\sigma_{\eta}$ would have peak around zero    
+
+Since the run-level 2 may not be enough to carry out a peak for each parameter, since we would not find obvious one peak in each scatter plot of each parameter. The parameters should converge to some values which could provide us a reasonable box evaluation for further global research.    
+    
+Now we would use run-level 3 for further check the whether our estimation and the box evaluation we made above are reasonable.    
+
+```{r}
+run_level = 2
+
+SP500_rw.sd_rp = 0.02
+SP500_rw.sd_ivp = 0.1
+SP500_cooling.fraction.50 = 0.5
+
+stew("SP500_local3.rda",{
+t.if1 <- system.time({
+  if1 <- foreach(i=1:SP500_Nreps_local[run_level],
+                 .packages='pomp', .combine=c,
+                 .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                   mif2(SP500.filt,
+                        start=params_test,
+                        Np=SP500_Np[run_level],
+                        Nmif=SP500_Nmif[run_level],
+                        cooling.type="geometric",
+                        cooling.fraction.50=SP500_cooling.fraction.50,
+                        transform=TRUE,
+                        rw.sd = rw.sd(
+                          d         = SP500_rw.sd_rp,
+                          mu        = SP500_rw.sd_rp,
+                          phi       = SP500_rw.sd_rp,
+                          sigma_eta = SP500_rw.sd_rp,
+                          H_0       = ivp(SP500_rw.sd_ivp)
+                        )
+                   )
+                 )
+  
+  L.if1 <- foreach(i=1:SP500_Nreps_local[run_level],.packages='pomp',
+                   .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                   {
+                     logmeanexp(
+                       replicate(SP500_Nreps_eval[run_level],
+                                 logLik(pfilter(SP500.filt,params=coef(if1[[i]]),Np=SP500_Np[run_level]))
+                       ),
+                       se=TRUE)
+                   }
+})
+},seed=318817883,kind="L'Ecuyer")
+
+locallevel3 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+
+summary(locallevel3$logLik,digits=5)
+```
+    
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=locallevel3)
+```
+    
+According to the results above, we would know that the outcome of run-level 3 is consistent with the run-level2. Hence, we could follow the results of local research to set up initial positions for global research.
+    
+### 5.2 Global Research    
+It is reasonable to consider that Log-likelihood would become better if we start at different initial position. We should consider different sets of parameters that can actually turn out better log-likelihood and give us more reasonable outcomes. Level 2 and level 3 local research would help us to acquire a rough interval of parameters for global research.    
+We would start at a quite large box evaluation for global research. To improve the efficiency of our work, we would use run-level 2 as start since the setting box evaluation is quite large. The aim of level 2 is just to estimate the relatively small interval for further high run level. The scatter plots and diagnostics would provide evidence for narrow the box evaluation for further high run level. The results of parameters may have multiple peaks as the iteration of level 2 may not be enough for convergent results.    
+
+```{r warning=FALSE}
+run_level = 2
+
+GlobalBox = rbind(
+  d         = c(-1,1),
+  mu        = c(-20,0),
+  phi       = c(0,0.9999),
+  sigma_eta = c(0,0.9999),
+  H_0       = c(-0.5,0.5)
+)
+
+stew(file="SP500_global2.rda",{
+t.box <- system.time({
+  if.box <- foreach(i=1:SP500_Nreps_global[run_level],.packages='pomp',.combine=c,
+                    .options.multicore=list(set.seed=TRUE)) %dopar%  
+    mif2(
+      if1[[1]],
+      start=apply(GlobalBox,1,function(x)runif(1,x[1],x[2]))
+    )
+  
+  L.box <- foreach(i=1:SP500_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% {
+                     set.seed(87932+i)
+                     logmeanexp(
+                       replicate(SP500_Nreps_eval[run_level],
+                                 logLik(pfilter(SP500.filt,params=coef(if.box[[i]]),Np=SP500_Np[run_level]))
+                       ), 
+                       se=TRUE)
+                   }
+})
+},seed=318817883,kind="L'Ecuyer")
+
+globallevel2 = data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+
+summary(globallevel2$logLik,digits=5)
+```
+    
+According to the summary above, we would compare this result with the summary of local research in the former part. The maximum Log-likelihood increases roughly 2% from 5048 to 5141.    
+We would plot the scatter plots of parameters to check the peaks.   
+
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=globallevel2)
+```
+    
+We would find that parameters have multiple peaks for global research,    
+$d$ would still be quite small value and very close to zero, which is consistent with the result from local research     
+$mu$ and $\phi$ would have a least 2 peaks, indicating that these parameters may not converge under current run level
+We would use the diagnostic to check the convergence of parameters.  
+
+```{r warning=FALSE}
+plot(if.box)
+```
+    
+According to the plots above, we would find the following,    
+The Log-likelihood is still increasing and could not find an asympotic value, indicating more iterations are required for a better result    
+$d$ and $\sigma_{\eta}$ have strong evidence that they converge to certain value    
+$\mu$ could converge as we would find that different lines tend to converge as the MIF increasing.    
+$\phi$ could not find an obvious convergence    
+
+Hence we should use higher run-level to check whether the Log-likelihood as well as the parameters could converge to certain value.    
+
+The level 2 global research shows that $d$ and $\sigma_{\eta}$ have strong evidence that they converge to certain value. $d$ would have a quite small absolute value and converge closely to zero. $\sigma_{\eta}$ could converge closely to zero as well. Thus, we could narrow the box evaluation of these two parameters that $d\in[-0.1,0.1]$ and $\sigma_{\eta}\in[0,0.4]$. For $\phi$ and $\mu$, we would not narrow them into quite small interval, but we would acquire some reasonable evidence of their box evaluation from the above scatter plots, profile likelihood as well as the maximum Log-likelihood, which is shown following,    
+
+```{r}
+globallevel2[which.max(globallevel2$logLik),]
+```
+    
+Now, we would start run-level 3,     
+
+```{r warning=FALSE}
+run_level = 3 
+SP500_Np          = c(100,1000,5000)
+SP500_Nmif        = c(10, 200,400)
+SP500_Nreps_eval  = c(4,  10,  20)
+SP500_Nreps_local = c(10, 20,  20)
+SP500_Nreps_global= c(10, 20, 100)
+GlobalBox = rbind(
+  d         = c(-0.1,0.1),
+  mu        = c(-18,-8),
+  phi       = c(0,0.9999),
+  sigma_eta = c(0,0.4),
+  H_0       = c(-0.5,0.5)
+)
+
+stew(file="SP500_global3.rda",{
+t.box <- system.time({
+  if.box <- foreach(i=1:SP500_Nreps_global[run_level],.packages='pomp',.combine=c,
+                    .options.multicore=list(set.seed=TRUE)) %dopar%  
+    mif2(
+      if1[[1]],
+      start=apply(GlobalBox,1,function(x)runif(1,x[1],x[2]))
+    )
+  
+  L.box <- foreach(i=1:SP500_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% {
+                     set.seed(87932+i)
+                     logmeanexp(
+                       replicate(SP500_Nreps_eval[run_level],
+                                 logLik(pfilter(SP500.filt,params=coef(if.box[[i]]),Np=SP500_Np[run_level]))
+                       ), 
+                       se=TRUE)
+                   }
+})
+},seed=318817883,kind="L'Ecuyer")
+
+globallevel3 = data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+
+summary(globallevel3$logLik,digits=5)
+```
+    
+According to the summary above, we would find that the maximum Log-likelihood of level 3 is 5157 which is slightly greater than the maximum Log-likelihood of level 2, incresing roughly about 0.2%. We should use diagnostic to check whether Log-likelihood converges to certain value.    
+
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=globallevel3)
+```
+     
+```{r}
+plot(if.box)
+```
+    
+```{r}
+globallevel3[which.max(globallevel3$logLik),]
+```
+
+    
+According to the scatter plots and profile likeihood above, it may not be obvious for us to find only one peak for each parameters. However, we could analyze the distribution of points and conclude the following,    
+The Log-likelihood converges to the right side in the scatter plots, excepts a few points whose Log-likelihood are far away from the main body. We could consider those points are outliers and Log-likelihood could converge. The diagnostic of Log-likelihood indicates that the Log-likelihood converges to certain value.
+$d$ could be considered as convergence as they all lie in a narrow interval with quite small positive value.    
+$\sigma_{\eta}$ could not find an obvious convergence in the scatter plot, but the points are located in the narrow range from 0 to 0.2. From diagnostic, we could find that $\sigma_{\eta}$ converges to a certain small interval. Although it does not converge to a specific value, it does converge. The only drawback is that we could just estimate a narrow range of $\sigma_{\eta}$. The exact value may need further iteration. However, we would choose it around 0.1585, since under this value, the Log-likelihoond tends to be maximum.
+$\mu$ and $\phi$ could find two peaks in scatter plots, and they seem not to converge as what we have seen in level 2 global reseach. The diagnostic of these two parameters indicates that we could not make them converge under level 3. We may need even large level to acquire convergence.    
+Since we conclude that Log-likelihood converges to certain value, we could use the maximum Log-likelihood as criterion and omit those points whose Log-likelihood are quite small compared with the maximum. We may find some evidence of the convergence or estimation of $\mu$ and $\phi$.    
+```{r}
+pairs(~logLik+d+mu+phi+sigma_eta,data=subset(globallevel3,logLik>max(logLik)-1000))
+```
+    
+    
+According the plots above, we would find the following,    
+$\phi$ should be very close to 1 as Log-likelihood tends to be close to maximum when $\phi$ is very close to 1.    
+In our model $H_t = \mu + \phi(H_{t-1}-\mu) + \eta_t$    
+that is $H_t = (1-\phi)\mu + \phi H_{t-1}+\eta_t$   
+When the estimated $\hat{\phi}$ is close to 1, $H_t$ would more depend on $H_{t-1}$ rather than $\mu$. When we assume $\hat{\phi}$ is equal to 1, we would find that $\mu$ could not affect $H_t$, as $H_t$ depends on $H_{t-1}$ and $\eta_t$. Therefore, $\mu$ may not converge to a specific value or a certain narrow interval when Log-likelihood convenges to its maximum. That is why we could find the $\mu$ could scatter between $[-20,-5]$, indicating that if the estimated $\phi$ is very close to 1, the model may not be stable.    
+
+To further check the whether the value of $\phi$ is on the boudary of 1 along with the unstable value of $\mu$, we have done even larger run-level, setting the number of particle to 20000.    
+
+```{r}
+run_level = 3 
+SP500_Np          = c(100,1000,20000)
+SP500_Nmif        = c(10, 200,400)
+SP500_Nreps_eval  = c(4,  10,  20)
+SP500_Nreps_local = c(10, 20,  20)
+SP500_Nreps_global= c(10, 20, 100)
+GlobalBox = rbind(
+  d         = c(-0.1,0.1),
+  mu        = c(-18,-8),
+  phi       = c(0,0.9999),
+  sigma_eta = c(0,0.4),
+  H_0       = c(-0.5,0.5)
+)
+
+stew(file="SP500_globalnew3.rda",{
+t.box <- system.time({
+  if.box <- foreach(i=1:SP500_Nreps_global[run_level],.packages='pomp',.combine=c,
+                    .options.multicore=list(set.seed=TRUE)) %dopar%  
+    mif2(
+      if1[[1]],
+      start=apply(GlobalBox,1,function(x)runif(1,x[1],x[2]))
+    )
+  
+  L.box <- foreach(i=1:SP500_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% {
+                     set.seed(87932+i)
+                     logmeanexp(
+                       replicate(SP500_Nreps_eval[run_level],
+                                 logLik(pfilter(SP500.filt,params=coef(if.box[[i]]),Np=SP500_Np[run_level]))
+                       ), 
+                       se=TRUE)
+                   }
+})
+},seed=318817883,kind="L'Ecuyer")
+
+globalnewlevel3 = data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+
+summary(globalnewlevel3$logLik,digits=5)
+```
+    
+```{r}
+plot(if.box)
+```
+    
+According to the results above, we would know that $\mu$ does not converge to a narrow interval, and $\phi$ could not converge as well. The estimated value of $\phi$ could be acquired by the former method, which is extremely cloes to one and would cause the instability of $\mu$. Since the Log-likelihood converge around 5200, increasing iteration would not increase Log-likelihood significantly. It is reasonable that the estimated value of each parameters would not change much. The conclusion we have made before is reasonable and convincing though some of the parameters could not be estimated accurately and unsatisfied our previous expectation.    
+
+Therefore, we would draw the following conclusion to the SVM Model,
+$d=0.00015$ is a quite small value, which would describe the relationship between returns and volatility components which would be expected and unexpected.    
+$\phi=0.99999$ could describe the dependence of $H_t$ and $H_{t-1}$. Since in our estimation, the $\phi$ is quite equal to 1. Future volatility would have all the memory about the past, and have relatively weak dependence on the mean. However, $\phi=1$ may have some problems on stability since we could not estimate $\mu$ under such condition.
+$\sigma_{\eta}\in(0,0.2)$ is unable to acquire a specific value since it just converges to a small interval. As we have discussed, we could choose $\sigma_{\eta}=0.15852$. Since $\eta_t$ is the error term of $H_t$, which would have influence of $H_t$ given $H_{t-1}$. It could explain the behavior pattern of volatility magnititude between different time periods. That is, some periods would have high volatiliy and follow by the period with low volatility.    
+$\mu$ is hard to estimate in our model due to the relatively large value of $\phi$. We could choose $\mu=-15$ since it is the mean of estimated value. But the choice of $\mu$ need further diagnostic.    
+The final model is that,    
+$Y_t = 0.00015\cdot H_t + \exp(H_t/2)u_t$    
+$H_t = -15.00000 + 0.99999(H_{t-1}+15.00000) + \eta_t$    
+$u_t \sim \mathcal{N}(0,1)$    
+$\eta_t \sim \mathcal{N}(0,0.025122)$    
+
+        
+## 6 Other Models    
+We would use GARCH to fit our model since GARCH model would be a good choice for volatility cluster, and it could explain the self-excited pattern of volatility, which means high volatility tends to follow high volatiliy and low volatility tends to follow low volatility.    
+    
+```{r warning=FALSE}
+require(tseries)
+benchmark = garch(SP500logr, grad = "numerical", trace = FALSE)
+summary(benchmark)
+```
+
+```{r}
+L.benchmark = logLik(benchmark)
+L.benchmark
+```
+    
+According to the summary above, we would conclude that GARCH Model may just explain part of the volatility pattern as the Box-Ljung Test is significant and we should reject the null hypothesis, indicating that the squared residuals are correlated and GARCH(1,1) could not fully explain. The Log-likelihood of GARCH model is very close to the SVM model we have discussed above. Our objective is to model and predict volatility, we may not choose GARCH Model since it could not fully illstrate the volatility pattern of SP500.    
+
+        
+## 7 Further Study    
+We shoud consider the Financial Leverage in the real world since positive signals and negetive signals would have different effects on the future volatility. That is, an unexpected drop in prices increases the expected volatility more than an unexpected increase of similar magnitude. In other words, investors tend to more sensitive to "bad" news rather than "good" news. Hence, the financial leverage should be considered in order to model and predict volatility more precisely. In our model, the volatility component is just put in the return function, where volatility would have a direct influence on return. We should consider the mutual correlations between return and volatility.                                                
+
+
+## 8 Conclusion    
+According to all the analysis above, we could have the following conclusions,    
+(1) A model for Log Volatility of SP500 have been founded based on the Log Return of Close Price, $Y_t = 0.00015\cdot H_t + \exp(H_t/2)u_t$    
+$H_t = -15.00000 + 0.99999(H_{t-1}+15.00000) + \eta_t$    
+$u_t \sim \mathcal{N}(0,1)$    
+$\eta_t \sim \mathcal{N}(0,0.025122)$       
+(2) Our model is based on the Stochastic Volatility In Mean Model, and tries to capture the future volatility given today's information. Volatility is latent process, which we could not observe from the real market, but we could observe the daily Log Return from the markets. Thus it is recognized as partially observed Markov process model.    
+(3) In order to estimate parameters, we have done local research at first to check the convergence or at least the tendency of convergence of each parameters and acquire the reasonable box evaluation for global research. To improve the efficiency of our work as POMP is quite time consuming, the global research started at a relatively small run-level to acquire an approximate outcome and use it as the guidence for further high run-level research.    
+(4) The estimatation of parameters are not fully perfect, since one of the parameter $\phi$ could have some stability probelms.
+    
+## 9 Reference    
+[1]Hautsch, N. Ou, Y., “Discrete-Time Stochastic Volatility Models and MCMC-Based Statistical Inference”, SFB 649 Discussion Paper 2008-063.    
+[2]Wikipedia:https://en.wikipedia.org/wiki/S%26P_500_Index     
+[3]Ionides, E., "Practical likelihood-based inference for POMP models" https://ionides.github.io/531w18/12/notes12.html#diagnosing-success-or-failure-of-the-maximization-procedure    
+[4]Ionides, E., "Time series models with covariates, and a case study of polio" https://ionides.github.io/531w18/13/notes13.html#case-study-polio-in-wisconsin    
+[5]Ionides, E., "Case study: POMP modeling to investigate financial volatility"https://ionides.github.io/531w18/14/notes14.html

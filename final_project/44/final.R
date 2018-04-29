@@ -1,0 +1,219 @@
+set.seed(594709947L)
+
+library(knitr)
+library(readr)
+library(data.table)
+library(ggplot2)
+library(reshape2)
+
+library(forecast)
+library(mFilter)
+library(doMC)
+library(pomp)
+library(tseries)
+library(doParallel)
+
+stopifnot(packageVersion("pomp")>="0.69-1")
+
+data = read_csv("data.csv")
+names(data) = c("Day", "Price")
+data$Day = as.Date(data$Day, "%m/%d/%y")
+data$Weekday = weekdays(data$Day)
+data = data[data$Day > as.Date("1/1/07", "%m/%d/%y"),]
+data$Time = c(1:nrow(data))
+
+dPrice = diff(log(data$Price))
+dPrice = dPrice - mean(dPrice)
+
+ddPrice = decompose(ts(dPrice, frequency=365, start=2007-01-01))$random
+ddPrice = ddPrice[!is.na(ddPrice)]
+
+ngp_statenames <- c("H", "G", "Y_state")
+ngp_rp_names <- c("sigma_nu", "mu_h", "phi", "sigma_eta")
+ngp_ivp_names <- c("G_0", "H_0")
+ngp_paramnames <- c(ngp_rp_names, ngp_ivp_names)
+ngp_covarnames <- "covaryt"
+
+rproc1 <- "
+double beta,omega,nu;
+omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+nu = rnorm(0, sigma_nu);
+G += nu;
+beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+Y_state = rnorm( 0,exp(H/2) );
+"
+rproc2.filt <- "
+Y_state = covaryt;
+"
+ngp_rproc.sim <- paste(rproc1, rproc2.sim)
+ngp_rproc.filt <- paste(rproc1, rproc2.filt)
+
+ngp_initializer <- "
+G = G_0;
+H = H_0;
+Y_state = rnorm( 0,exp(H/2) );
+"
+
+ngp_rmeasure <- "
+y=Y_state;
+"
+ngp_dmeasure <- "
+lik=dnorm(y,0,exp(H/2),give_log);
+"
+ngp_toEstimationScale <- "
+Tsigma_eta = log(sigma_eta);
+Tsigma_nu = log(sigma_nu);
+Tphi = logit(phi);
+"
+ngp_fromEstimationScale <- "
+Tsigma_eta = exp(sigma_eta);
+Tsigma_nu = exp(sigma_nu);
+Tphi = expit(phi);
+"
+
+expit <- function(real){1/(1+exp(-real))}
+logit <- function(p.arg){log(p.arg/(1-p.arg))}
+
+ngp.filt <- pomp(data=data.frame(y=ddPrice,
+                                 time=1:length(ddPrice)),
+                 statenames=ngp_statenames,
+                 paramnames=ngp_paramnames,
+                 covarnames=ngp_covarnames,
+                 times="time",
+                 t0=0,
+                 covar=data.frame(covaryt=c(0,ddPrice),
+                                  time=0:length(ddPrice)),
+                 tcovar="time",
+                 rmeasure=Csnippet(ngp_rmeasure),
+                 dmeasure=Csnippet(ngp_dmeasure),
+                 rprocess=discrete.time.sim(step.fun=Csnippet(ngp_rproc.filt),delta.t=1),
+                 initializer=Csnippet(ngp_initializer),
+                 toEstimationScale=Csnippet(ngp_toEstimationScale), 
+                 fromEstimationScale=Csnippet(ngp_fromEstimationScale)
+)
+
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,       
+  phi = expit(4),     
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+
+sim1.sim <- pomp(ngp.filt, 
+                 statenames=ngp_statenames,
+                 paramnames=ngp_paramnames,
+                 covarnames=ngp_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(ngp_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+sim1.filt <- pomp(sim1.sim, 
+                  covar=data.frame(
+                    covaryt=c(obs(sim1.sim),NA),
+                    time=c(timezero(sim1.sim),time(sim1.sim))),
+                  tcovar="time",
+                  statenames=ngp_statenames,
+                  paramnames=ngp_paramnames,
+                  covarnames=ngp_covarnames,
+                  rprocess=discrete.time.sim(step.fun=Csnippet(ngp_rproc.filt),delta.t=1)
+)
+
+run_level <- 3 
+ngp_Np <-          c(100, 1e3, 2e3)
+ngp_Nmif <-        c(10, 100, 200)
+ngp_Nreps_eval <-  c(4, 10, 20)
+ngp_Nreps_local <- c(10, 20, 20)
+ngp_Nreps_global <-c(10, 20, 100)
+
+cores <- 20
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+set.seed(1320290398, kind="L'Ecuyer")
+
+ngp_rw.sd_rp <- 0.02
+ngp_rw.sd_ivp <- 0.1
+ngp_cooling.fraction.50 <- 0.5
+
+stew("mif1.rda",{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:ngp_Nreps_local[run_level],
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(ngp.filt,
+                          start=params_test,
+                          Np=ngp_Np[run_level],
+                          Nmif=ngp_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=ngp_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            sigma_nu  = ngp_rw.sd_rp,
+                            mu_h      = ngp_rw.sd_rp,
+                            phi       = ngp_rw.sd_rp,
+                            sigma_eta = ngp_rw.sd_rp,
+                            G_0       = ivp(ngp_rw.sd_ivp),
+                            H_0       = ivp(ngp_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:ngp_Nreps_local[run_level],.packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(ngp_Nreps_eval[run_level],
+                                   logLik(pfilter(ngp.filt,params=coef(if1[[i]]),Np=ngp_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level>1) 
+  write.table(r.if1,file="ngp_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.if1,logLik>max(logLik)-20))
+
+ngp_box <- rbind(
+  sigma_nu=c(0.005, 0.05),
+  mu_h    =c(-1,0),
+  phi = c(0.95, 0.99),
+  sigma_eta = c(0.5, 1),
+  G_0 = c(-2, 2),
+  H_0 = c(-1, 1)
+)
+
+stew(file="box_eval.rda",{
+  t.box <- system.time({
+    if.box <- foreach(i=1:ngp_Nreps_global[run_level],.packages='pomp',.combine=c,
+                      .options.multicore=list(set.seed=TRUE)) %dopar%  
+      mif2(
+        if1[[1]],
+        start=apply(ngp_box,1,function(x)runif(1,x))
+      )
+    
+    L.box <- foreach(i=1:ngp_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                     .options.multicore=list(set.seed=TRUE)) %dopar% {
+                       set.seed(87932+i)
+                       logmeanexp(
+                         replicate(ngp_Nreps_eval[run_level],
+                                   logLik(pfilter(ngp.filt,params=coef(if.box[[i]]),Np=ngp_Np[run_level]))
+                         ), 
+                         se=TRUE)
+                     }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="ngp_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+
+plot(if.box)

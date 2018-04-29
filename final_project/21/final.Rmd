@@ -1,0 +1,651 @@
+---
+title: "final project 531"
+date: "2018/4/7"
+output:
+  html_document:
+    theme: spacelab
+    highlight: tango
+    includes:
+    toc: true
+    number_sections: true
+    toc_depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+
+---
+#Introduction
+We are going to look at weekly stock price data of Altaba Inc.from 2005 to 2018. The data is freely available [here](https://finance.yahoo.com/quote/AABA/history?period1=1112932800&period2=1523160000&interval=1wk&filter=history&frequency=1wk).
+ 
+General speaking, there are several goals in this project:
+ 
+1. Check if it is possible to fit a stationary model (e.g.ARMA) and get appropriate number of parameters.
+  
+2. Fit appropriate model (e.g.GARCH) to volatility of the returns as benchmark, which may be useful for forecasting.
+ 
+3. In order to understand how financial markets work, we need to model financial leaverage by implementing POMP model. Here, we fit the time-varying leverage model.
+
+```{r,include=FALSE}
+library("stochvol")
+```
+ 
+#Explore the data
+Let us plot the weekly closing price of Altaba Inc.from 2015 to 2018. In order to get a demeaned stationary data, we use log return of the index and remove the mean.
+```{r chunk_without_code, echo = FALSE}
+dat <- read.table("AABA.csv",sep=",",header=TRUE)
+dat$Date <- strptime(dat$Date,"%Y-%m-%d")
+dat$year <- as.numeric(format(dat$Date, format="%Y"))
+dat$month <- as.numeric(format(dat$Date, format="%m"))
+dat$day <- as.numeric(format(dat$Date, format="%d"))
+time <- dat$year + dat$month/12 + dat$day/365
+N <- nrow(dat)
+AABA <- dat$Close[1:N]
+log_returns <- diff(log(AABA),lag=1)
+demeaned_returns <- logret(AABA,demean=TRUE)
+par(mfrow=c(2,2))
+plot(time,AABA,type="l",xlab="Date",main = "weekly closing price")
+plot(time,log(AABA),type="l",xlab="Date",main = "log of closing price")
+plot(time[-1],log_returns,type="l",xlab="Date",main = "log of returns")
+plot(time[-1],demeaned_returns,type="l",xlab="Date",main = "demeaned returns")
+```
+ 
+* The plot of log of returns seems like the same as the plot of demeaned returns. In the next step, we are going to try to fit a stationary ARMA model to the demeaned returns. 
+  
+#Fit a ARMA model
+## Selection of parameters
+```{r without, echo=FALSE, warning=FALSE}
+Table_For_AIC <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+Retail_aic_table <- Table_For_AIC(demeaned_returns,5,5)
+knitr::kable(Retail_aic_table,digits=2,caption="AIC Values of SARIMA models for Model Errors with
+Seasonal Component")
+```
+ 
+* The above table indicates that we would prefer to use (4,3) as the ARMA parameters with the lowest AIC value -2165.78. In the next steps, we need to check the residuals of this model.
+ 
+## Diagnosis of the ARMA(4,3) model
+```{r}
+return_arma43 <- arima(demeaned_returns,order=c(4,0,3))
+acf(residuals(return_arma43))
+```
+  
+* The residuals seems like white noise which indicates that the model we fit has no big problem.
+* Since there are some other models with a little bit larger AIC values, let's fit the ARMA(4,3) model recommended by consideration of AIC and examine the roots of the AR and MA roots in order to check its reducibulity. 
+  
+```{r no ,echo=FALSE}
+return_arma43 <- arima(demeaned_returns,order=c(4,0,3))
+return_arma43
+AR_roots <- polyroot(c(1,-coef(return_arma43)[c("ar1","ar2","ar3","ar4")]))
+abs(AR_roots )  
+MA_roots <- polyroot(c(1,-coef(return_arma43)[c("ma1","ma2","ma3")]))
+abs(MA_roots )  
+```
+ 
+* After checking the roots of AR and MA, there are just outside th unit circle, suggesting we have a stationay causal and invertible fitted ARMA model. 
+* Thus, ARMA(4,3) model may be an appropriate moedl.
+* The log likelihood of ARMA(4,3) model is 1091.89.
+  
+#Fit a GARCH model
+The ARCH and GARCH models have become widely used for financial time series modeling. We are going to fit a GARCH model. We know that the GARCH(1,1) model is a popular choice, and is appropriate for most of cases. 
+  
+## Test of ARCH effect in data 
+Before we fit a GARCH(1,1) model to the demeaned returns, we can use ljung box to check the autocorrelations of a time series and McLeod-Li test to examine that if GARCH model is suitable for this data. The null hypothesis of McLeod-Li test is no arch effect in the data.
+  
+```{r,include=FALSE}
+library(TSA)
+library(LSTS)
+```
+
+```{r, echo=FALSE}
+par(mfrow=c(2,2))
+McLeod.Li.test(y=(demeaned_returns))
+Box.Ljung.Test(demeaned_returns, lag = NULL, main = NULL)
+acf(demeaned_returns)
+```
+  
+* Both the ACF plot and Ljung-Box test indicate the possibility of non-zero autocorrelation in some lags. From McLeod.Li.test, all p values are less than significant level 0.05, which illustrates that the null hypothesis of no ARCH effect is rejected. Thus in the next step, we try to fit a GARCH(1,1) model to the demeaned returns.
+  
+##Fit a GARCH(1,1) model
+```{r}
+require(tseries)
+fit.garch <- garch(demeaned_returns,grad = "numerical", trace = FALSE)
+summary(fit.garch)
+L.garch <- logLik(fit.garch)
+L.garch
+
+```
+  
+* The loglikelihood of GARCH(1,1) model is 1120.236, which is larger than that of ARMA(4,3).
+  
+#Fit the time-varying leverage model
+Since the parameters of GARCH model are not explanatory. We are going to implement POMP model using stochastic equation to represent leverage. We used the data that were downloaded, detrended and analyzed by Bretó (2014). The notation of model is given below.
+  
+$R_n=\frac{exp{(2G_n)}-1}{exp{(2G_n)}+1}$,
+  
+$Y_n=exp{(H_n/2)}\epsilon_n$,
+  
+$H_n=\mu_h(1-\phi)+\phi H_{n-1}+\beta_{n-1}R_n exp{(-H_{n-1}/2)} +\omega_n$,
+  
+$G_n = G_{n-1} + \upsilon_n$,
+  
+where $\beta_n = Y_n\sigma_\eta\sqrt{1-\phi^2}$,{$\epsilon_n$} is an iid $N(0,1)$ sequence, { $\upsilon_n$} is an iid $N(0,\sigma_\upsilon^2)$ sequence, and {$\omega_n$} is an iid $N(0,\sigma_\omega^2)$ sequence.
+  
+Here, $H_n$ is the log volatility, $R_n$ is leverage defined as the correlation between index return on day n-1 and the increase in the log volatility from day n-1 to day n.
+  
+##Build a pomp model
+First, we need to build a pomp model based on notation from Bretó (2014). And then we set some parameter values to simulate from the model for testing the code and investigating the fitted model.
+```{r,include=FALSE}
+AABA_statenames <- c("H","G","Y_state")
+AABA_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+AABA_ivp_names <- c("G_0","H_0")
+AABA_paramnames <- c(AABA_rp_names,AABA_ivp_names)
+AABA_covarnames <- "covaryt"
+```
+```{r, include=FALSE}
+require(pomp)
+rproc1 <- "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+AABA_rproc.sim <- paste(rproc1,rproc2.sim)
+AABA_rproc.filt <- paste(rproc1,rproc2.filt)
+
+AABA_initializer <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+
+AABA_rmeasure <- "
+   y=Y_state;
+"
+
+AABA_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+AABA_toEstimationScale <- "
+  Tsigma_eta = log(sigma_eta);
+  Tsigma_nu = log(sigma_nu);
+  Tphi = logit(phi);
+"
+
+AABA_fromEstimationScale <- "
+  Tsigma_eta = exp(sigma_eta);
+  Tsigma_nu = exp(sigma_nu);
+  Tphi = expit(phi);
+"
+
+AABA.filt <- pomp(data=data.frame(y=demeaned_returns,
+                                   time=1:length(demeaned_returns)),
+                   statenames=AABA_statenames,
+                   paramnames=AABA_paramnames,
+                   covarnames=AABA_covarnames,
+                   times="time",
+                   t0=0,
+                   covar=data.frame(covaryt=c(0,demeaned_returns),
+                                    time=0:length(demeaned_returns)),
+                   tcovar="time",
+                   rmeasure=Csnippet(AABA_rmeasure),
+                   dmeasure=Csnippet(AABA_dmeasure),
+                   rprocess=discrete.time.sim(step.fun=Csnippet(AABA_rproc.filt),delta.t=1),
+                   initializer=Csnippet(AABA_initializer),
+                   toEstimationScale=Csnippet(AABA_toEstimationScale), 
+                   fromEstimationScale=Csnippet(AABA_fromEstimationScale)
+)
+```
+
+```{r}
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,       
+  phi = expit(4),     
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+
+sim1.sim <- pomp(AABA.filt, 
+                 statenames=AABA_statenames,
+                 paramnames=AABA_paramnames,
+                 covarnames=AABA_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(AABA_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=10001,params=params_test)
+
+sim1.filt <- pomp(sim1.sim, 
+  covar=data.frame(
+    covaryt=c(obs(sim1.sim),NA),
+    time=c(timezero(sim1.sim),time(sim1.sim))),
+  tcovar="time",
+  statenames=AABA_statenames,
+  paramnames=AABA_paramnames,
+  covarnames=AABA_covarnames,
+  rprocess=discrete.time.sim(step.fun=Csnippet(AABA_rproc.filt),delta.t=1)
+)
+plot (sim1.filt,main="simulated filtering object")
+```
+  
+* After checking, the code works. Compared with the original plot of demeaned returns, we need to further explore the setting of parameters of the model.
+  
+## A local search of the likelihood surface
+Let’s carry out a local search using the IF2 algorithm of Ionides et al.(2015), implemented by mif2. For that, we need to set the rw.sd and cooling.fraction.50 algorithmic parameters:
+```{r}
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,       
+  phi = expit(4),     
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+
+run_level <- 4 
+AABA_Np <-          c(100,1e3,2e3,1e4)
+AABA_Nmif <-        c(10, 100,200,300)
+AABA_Nreps_eval <-  c(4,  10,  20,20)
+AABA_Nreps_local <- c(10, 20, 20,20)
+AABA_Nreps_global <-c(10, 20, 100,100)
+
+AABA_rw.sd_rp <- 0.02
+AABA_rw.sd_ivp <- 0.1
+AABA_cooling.fraction.50 <- 0.5
+
+```
+```{r, include=FALSE}
+require(doParallel)
+registerDoParallel()
+```
+```{r,echo=FALSE}
+stew("local_test_unfixed1.rda",{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:AABA_Nreps_local[run_level],
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(AABA.filt,
+                          start=params_test,
+                          Np=AABA_Np[run_level],
+                          Nmif=AABA_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=AABA_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            sigma_nu  = AABA_rw.sd_rp,
+                            mu_h      = AABA_rw.sd_rp,
+                            phi       = AABA_rw.sd_rp,
+                            sigma_eta = AABA_rw.sd_rp,
+                            G_0       = ivp(AABA_rw.sd_ivp),
+                            H_0       = ivp(AABA_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:AABA_Nreps_local[run_level],.packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(AABA_Nreps_eval[run_level],
+                                   logLik(pfilter(AABA.filt,params=coef(if1[[i]]),Np=AABA_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+  })
+},seed=318817884,kind="L'Ecuyer")
+
+r.if1_test <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level>1) 
+  write.table(r.if1_test,file="AABA_params_nonfix.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1_test$logLik,digits=5)
+```
+
+```{r, echo=FALSE}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.if1_test,logLik>max(logLik)-20))
+```
+  
+* The maximum log likelihood of this local search is 1144.
+* From the geometry of the likelihood surface in a neighborhood of this point estimate, we can get the range used to do global search of likelihood surface.
+  
+## A global search of the likelihood surface
+For better estimating parameters, we need to try different start values of parameters. We could set a value box in reasonable parameter space and then randomly choose initial values from this box. Also, we will plot the global geometry of the likelihood surface around diverse parameter estimates.
+  
+
+```{r}
+AABA_box <- rbind(
+  sigma_nu=c(0.001,0.03),
+  mu_h    =c(-8,-1),
+  phi = c(0.6,0.99),
+  sigma_eta = c(0.001,1),
+  H_0 = c(-1,1),
+  G_0 = c(-2,-2)
+)
+```
+```{r, echo=FALSE}
+stew(file="global_test_unfixed1.rda",{
+  t.box <- system.time({
+    if.box <- foreach(i=1:AABA_Nreps_global[run_level],.packages='pomp',.combine=c,
+                      .options.multicore=list(set.seed=TRUE)) %dopar%  
+      mif2(
+        if1[[1]],
+        start=apply(AABA_box,1,function(x)runif(1))
+      )
+    
+    L.box <- foreach(i=1:AABA_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                     .options.multicore=list(set.seed=TRUE)) %dopar% {
+                       set.seed(87934+i)
+                       logmeanexp(
+                         replicate(AABA_Nreps_eval[run_level],
+                                   logLik(pfilter(AABA.filt,params=coef(if.box[[i]]),Np=AABA_Np[run_level]))
+                         ), 
+                         se=TRUE)
+                     }
+  })
+},seed=290860874,kind="L'Ecuyer")
+
+
+r.global_test <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.global_test,file="globalunfixed_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.global_test$logLik,digits=5)
+```
+```{r, echo=FALSE}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta+H_0,data=subset(r.global_test,logLik>max(logLik)-10))
+```
+  
+* We see that optimization attempts from diverse starting points end up with comparable likelihoods (max.1144).
+* We can see strong tradeoff between H0 and phi, which means there may be different combinations of parameter values that can approach maximum likelihood in this research. 
+* We notice that the plot of point estimates of mu_h and sigma_eta are almost vertical, which means that the range of values here may be close to the MLE.
+    
+## filtering diagnostics and maximization convergence
+```{r}
+plot(if.box[r.global_test$logLik>max(r.global_test$logLik)-10])
+```
+  
+* From the plot of convergence diagnostics, we can see that log likelihood converges. H_0, G_0, phi and sigma_nu are converged in most of the particles. There are only few particles in which mu_h and sigma_eta are not converged.
+* We can see that most of effective sample sizes are close to 5000 (except those time points with sample size less than 500) and all the parameters are converged after 200 MIF iteration. If we want to improve algorithmic parameters, we can try to change the number of particles to 5000 and the number of the MIF iteration (Nmif) to 280.
+  
+```{r, include=FALSE}
+require(doParallel)
+registerDoParallel()
+
+```
+```{r}
+run_level <- 4
+AABA_Np <-          c(100,1e3,2e3,5e3)
+AABA_Nmif <-        c(10, 100,200,280)
+AABA_Nreps_eval <-  c(4,  10,  20, 20)
+AABA_Nreps_local <- c(10, 20, 20, 20)
+AABA_Nreps_global <-c(10, 20, 100, 100)
+```
+
+```{r, echo=FALSE}
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,       
+  phi = expit(4),     
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+
+
+AABA_rw.sd_rp <- 0.02
+AABA_rw.sd_ivp <- 0.1
+AABA_cooling.fraction.50 <- 0.5
+
+stew("local_test_unfixed2.rda",{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:AABA_Nreps_local[run_level],
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(AABA.filt,
+                          start=params_test,
+                          Np=AABA_Np[run_level],
+                          Nmif=AABA_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=AABA_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            sigma_nu  = AABA_rw.sd_rp,
+                            mu_h      = AABA_rw.sd_rp,
+                            phi       = AABA_rw.sd_rp,
+                            sigma_eta = AABA_rw.sd_rp,
+                            G_0       = ivp(AABA_rw.sd_ivp),
+                            H_0       = ivp(AABA_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:AABA_Nreps_local[run_level],.packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(AABA_Nreps_eval[run_level],
+                                   logLik(pfilter(AABA.filt,params=coef(if1[[i]]),Np=AABA_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+  })
+},seed=318817884,kind="L'Ecuyer")
+
+AABA_box <- rbind(
+  sigma_nu=c(0.001,0.03),
+  mu_h    =c(-9,-6),
+  phi = c(0.6,0.99),
+  sigma_eta = c(0.001,1),
+  H_0 = c(-3,1),
+  G_0 = c(-2,-2)
+)
+
+stew(file="global_test_unfixed6.rda",{
+  t.box <- system.time({
+    if.box <- foreach(i=1:AABA_Nreps_global[run_level],.packages='pomp',.combine=c,
+                      .options.multicore=list(set.seed=TRUE)) %dopar%  
+      mif2(
+        if1[[1]],
+        start=apply(AABA_box,1,function(x)runif(1))
+      )
+    
+    L.box <- foreach(i=1:AABA_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                     .options.multicore=list(set.seed=TRUE)) %dopar% {
+                       set.seed(87934+i)
+                       logmeanexp(
+                         replicate(AABA_Nreps_eval[run_level],
+                                   logLik(pfilter(AABA.filt,params=coef(if.box[[i]]),Np=AABA_Np[run_level]))
+                         ), 
+                         se=TRUE)
+                     }
+  })
+},seed=290860874,kind="L'Ecuyer")
+
+
+r.global_test2 <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.global_test,file="globalunfixed_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.global_test2$logLik,digits=5)
+```
+```{r}
+plot(if.box[r.global_test2$logLik>max(r.global_test2$logLik)-10])
+
+```
+  
+* This change reduces the computation time largely. The effective sample sizes are large and basically the same as before. But we can see that it doesn't approach the maximum likelihood(1144) that we got before. Thus, we can try some other setting values of algorithmic parameters in future.
+  
+##Check of likelihood profile  
+Previous analysis does not clearly show the hypothesis that $\sigma_\nu>0$. We can compute a likelihood profile of $\sigma_\nu$ to make a inference. Firstly, we just zoom in on the scatter plot of $\sigma_\nu$ in global search result:
+  
+```{r}
+plot(logLik~sigma_nu,data=subset(r.global_test,logLik>max(r.global_test$logLik)-10),log="x")
+```
+    
+* We can see that there are some points pretty close to 0 with loglikelihood (1138~1142). The log likelihood achieves its maximum when sigma_nu is between 0.005 and 0.02.
+  
+```{r, include=FALSE}
+#code for computing likelihood profile
+require(ggplot2)
+require(plyr)
+require(reshape2)
+require(magrittr)
+```
+
+```{r, echo=FALSE}
+It=50
+nprof=50
+profile.box <- profileDesign(  
+  sigma_nu=seq(0,0.5,length.out=It),
+  lower=c(mu_h=-7,phi=0.01,sigma_eta=0.01,H_0=-6,G_0=-0.4),
+  upper=c(mu_h=0.5,phi=0.9,sigma_eta=9,H_0=2,G_0=1.5),
+  nprof=nprof
+)
+
+stew(file=sprintf("profile_sigmanu-30.rda",It),{
+  
+  t_global.4 <- system.time({
+      prof.llh<- foreach(i=1:(It*nprof),.packages='pomp', .combine=rbind, .options.multicore=mcopts) %dopar%{
+        # Find MLE
+        mif2(
+          if1[[1]],
+          start=unlist(profile.box[i,]),
+          Np=5000,Nmif=100,
+          rw.sd=rw.sd(
+                            mu_h      = AABA_rw.sd_rp,
+                            phi       = AABA_rw.sd_rp,
+                            sigma_eta = AABA_rw.sd_rp,
+                            G_0       = ivp(AABA_rw.sd_ivp),
+                            H_0       = ivp(AABA_rw.sd_ivp)
+          )
+        )->mifs_global.4
+       
+        evals = replicate(10, logLik(pfilter(mifs_global.4,Np=10000)))
+        ll=logmeanexp(evals, se=TRUE)        
+        
+        data.frame(as.list(coef(mifs_global.4)),
+                   loglik = ll[1],
+                   loglik.se = ll[2])
+      }
+  })
+},seed=931129,kind="L'Ecuyer")
+
+
+```
+
+```{r, echo=FALSE}
+
+prof.llh %>% 
+  ddply(~sigma_nu,subset,rank(-loglik)<=10) %>%
+  subset(select=AABA_paramnames) -> pars
+
+
+## mif2 again
+stew(file=sprintf("profile_sigmanu1.rda",It),{
+  
+  t_global.5 <- system.time({
+    prof.llh<- foreach(i=1:(nrow(pars)),.packages='pomp', .combine=rbind, .options.multicore=mcopts) %dopar%{
+      # Find MLE
+      mif2(
+        if1[[1]],
+        start=unlist(pars[i,]),
+        Np=5000,Nmif=50,
+        rw.sd=rw.sd(
+           mu_h      = AABA_rw.sd_rp,
+                            phi       = AABA_rw.sd_rp,
+                            sigma_eta = AABA_rw.sd_rp,
+                            G_0       = ivp(AABA_rw.sd_ivp),
+                            H_0       = ivp(AABA_rw.sd_ivp)
+        )
+      )->mifs_global.5
+      # evaluate llh 
+      pf= replicate(10,pfilter(mifs_global.5,Np=5000))
+      evals=sapply(pf,logLik)
+      ll=logmeanexp(evals, se=TRUE)  
+      nfail=sapply(pf,getElement,"nfail")
+      
+      data.frame(as.list(coef(mifs_global.5)),
+                 loglik = ll[1],
+                 loglik.se = ll[2],
+                 nfail.max=max(nfail))
+    }
+  })
+},seed=931129,kind="L'Ecuyer")
+
+prof.llh %<>%
+  subset(nfail.max==0) %>%
+  mutate(sigma_nu=signif(sigma_nu,digits=6)) %>%
+  ddply(~sigma_nu,subset,rank(-loglik)<=1)
+
+a=max(prof.llh$loglik)
+b=a-1.92
+CI=which(prof.llh$loglik>=b)
+c=prof.llh$sigma_nu[min(CI)]
+d=prof.llh$sigma_nu[max(CI)]
+
+
+prof.llh %>%
+  ggplot(aes(x=sigma_nu,y=loglik))+
+  geom_point()+
+  geom_smooth(method="loess")+
+  geom_hline(aes(yintercept=a),linetype="dashed")+
+  geom_hline(aes(yintercept=b),linetype="dashed")+
+  geom_vline(aes(xintercept=c),linetype="dashed")+
+  geom_vline(aes(xintercept=d),linetype="dashed")
+c(lower=c,upper=d)
+```
+  
+* A 95% confidence interval of sigma_nu is (0.00001,0.086). From the likelihood plot, there is no strong evidence showing that sigma_nu is larger than 0. This might be due to those fixed algorithmic parameters and the searching area (from 0.001 to 0.03) 
+  
+#Conclusion
+* The random walk leverage model performs better than ARMA(4,3) model and GARCH(1,1) model in terms of log likelihood. (1142>1120>1092)
+* GARCH(1,1) seems to be better than ARMA(1,1) but it is hard to interprete its parameters. By constructing a POMP model, we can get the range of estimated parameters that can approach maximum likelihood in our research, such as sigma_nu, which are meaningful in our financial model and provide detailed explanation for the volatility. 
+* The main problem of this project is computational time. In the future study, we can try some different setting values of algorithm parameters to prove time efficiency. 
+
+#Reference
+
+1.[Ionides, E. (n.d.).Stats 531 (Winter 2018) ‘Analysis of Time Series’](https://ionides.github.io/531w18/)
+  
+2.Bretó, C. 2014. On idiosyncratic stochasticity of financial leverage effects. Statistics & Probability Letters 91:20–26.
+  
+3.W.Wang. 2005. Testing and modelling autoregressive conditional heteroskedasticity of streamflow processes. Nonlinear Processes in Geophysics (2005) 12: 55–66.
+  
+4.[PennState online lessons](https://onlinecourses.science.psu.edu/stat510/node/72)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

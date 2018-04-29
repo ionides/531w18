@@ -1,0 +1,720 @@
+---
+title: "Final Project"
+date: "April 25, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(pomp)
+require(mFilter)
+require(forecast)
+require(ggplot2)
+require(foreach)
+require(doParallel)
+```
+
+##Introduction
+Back in the early 1900s the bison population of Yellowstone National Park was extremely low. Efforts were made to increase the bison population. The data collection on counts of bison were separated into the central herd and northern herd. In this project the central herd will be analyzed. This project will attempt to fit pomp models to the central herd to try to understand more about the data and in general will do time series analysis on the data.
+
+This project is important as we continue to have issues with certain animal populations declining. We might be able to look at the bison example and predict how other large mammal populations will behave under conservation efforts.
+
+```{r Introduction, echo=FALSE}
+read.excel <- function(header=TRUE,...) {
+  read.table("clipboard",sep="\t",header=header,...)
+}
+bison <- read.excel()
+bison<-na.omit(bison)
+head(bison)
+plot(bison$Count~bison$Year,type="l", main = "Bison Count from 1936 - 2000", xlab = "Years", ylab ="Count")
+```
+
+
+##Ricker Pomp Model
+Reparameterized Ricker Model is a discrete-time population model given by:
+\[P_{n+1}=rP_{n}e^{-P_{n}/K + \epsilon_n}\]
+where \[\epsilon_n\]~Normal(0,$\sigma^2$)
+and where \[Count_n\]~Negbin\[(\phi*P_n,k)\]
+```{r pomp model}
+bison_p <- pomp(bison, times="Year", t0=1936)
+stochStep <- Csnippet("e = rnorm(0,sigma);
+                  N = r*N*exp(-N/k+e);
+                 ")
+pomp(bison_p,rprocess=discrete.time.sim(step.fun=stochStep,delta.t=1),paramnames=c("r","k","sigma"),statenames=c("N","e"))->bison_p
+
+rmeas <- Csnippet("Count = rnbinom(phi*N*psi/(1-psi),psi);")
+dmeas <- Csnippet("lik = dnbinom(Count,phi*N*psi/(1-psi),psi,give_log);")
+
+pomp(bison_p,rmeasure=rmeas,dmeasure=dmeas,statenames=c("N"),paramnames=c("phi","psi"))->bison_p
+
+
+
+coef(bison_p) <- c(N.0=228,e.0=2,k=800,r= 3,sigma=0.05,phi=.9,psi=.1)
+sims <- simulate(bison_p,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+ggplot(data=sims,mapping=aes(x=time,y=Count))+geom_line()+
+  facet_wrap(~sim)
+```
+
+##Gompertz model
+The Gompertz Model is a discrete-time population model. It is often used in biological models. It is given by:
+\[P_{n+1}=K^{1-e^{-r}}P_n^{e^{-r}}\epsilon_n\]
+where \[\epsilon_t\]~Lognormal\[(0,\sigma^2)\]
+and where K is the carrying capacity and r is the per capita growth rate[1].
+
+```{r gompertz model 2}
+pomp(
+     data=bison,
+     times="Year",
+     t0=1936,
+     rprocess=discrete.time.sim( # a discrete-time process (see ?plugins)
+       step.fun=function (x, t, params, delta.t, ...) { # this function takes one step t -> t+delta.t
+         ## unpack the parameters:
+         r <- params["r"]
+         K <- params["K"]
+         sigma <- params["sigma"]
+         ## the state at time t:
+         X <- x["X"]
+         ## generate a log-normal random variable:
+         eps <- exp(rnorm(n=1,mean=0,sd=sigma))
+         ## compute the state at time t+delta.t:
+         S <- exp(-r*delta.t)
+         xnew <- c(X=unname(K^(1-S)*X^S*eps))
+         return(xnew)
+       },
+       delta.t=1                  # the size of the discrete time-step
+       ),
+     rmeasure=function (x, t, params, ...) {# the measurement model simulator
+       ## unpack the parameters:
+       tau <- params["tau"]
+       ## state at time t:
+       X <- x["X"]
+       ## generate a simulated observation:
+       y <- c(Y=unname(rlnorm(n=1,meanlog=log(X),sdlog=tau)))
+       return(y)
+     },
+     dmeasure=function (y, x, t, params, log, ...) { # measurement model density
+       ## unpack the parameters:
+       tau <- params["tau"]
+       ## state at time t:
+       X <- x["X"]
+       ## observation at time t:
+       Y <- y["Y"]
+       ## compute the likelihood of Y|X,tau
+       f <- dlnorm(x=Y,meanlog=log(X),sdlog=tau,log=log)
+       return(f)
+     },
+     toEstimationScale=function(params,...){
+       log(params)
+     },
+     fromEstimationScale=function(params,...){
+       exp(params)
+     }
+     ) -> bison_p
+
+## Now code up the Gompertz example using C snippets: results in much faster computations.
+
+dmeas <- "
+    lik = dlnorm(Count,log(X),tau,give_log);
+"
+
+rmeas <- "
+    Count = rlnorm(log(X),tau);
+"
+
+step.fun <- "
+  double S = exp(-r*dt);
+  double logeps = (sigma > 0.0) ? rnorm(0,sigma) : 0.0;
+  /* note that X is over-written by the next line */
+  X = pow(K,(1-S))*pow(X,S)*exp(logeps); 
+"
+
+skel <- "
+  double dt = 1.0;
+  double S = exp(-r*dt);
+  /* note that X is not over-written in the skeleton function */
+  DX = pow(K,1-S)*pow(X,S); 
+"
+
+partrans <- "
+  Tr = log(r);
+  TK = log(K);
+  Tsigma = log(sigma);
+  TX_0 = log(X_0);
+  Ttau = log(tau);
+"
+
+paruntrans <- "
+  Tr = exp(r);
+  TK = exp(K);
+  Tsigma = exp(sigma);
+  TX_0 = exp(X_0);
+  Ttau = exp(tau);
+"
+
+pomp(bison_p,
+     paramnames=c("r","K","sigma","X.0","tau"),
+     statenames=c("X"),
+     dmeasure=Csnippet(dmeas),
+     rmeasure=Csnippet(rmeas)
+     ) -> bison_p
+
+## simulate some data
+coef(bison_p) <- c(K=800,r=1,sigma=0.1,tau=0.1,X.0=207)
+Gompertz <- simulate(bison_p,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+ggplot(data=Gompertz,mapping=aes(x=time,y=Count))+geom_line()+
+  facet_wrap(~sim)
+
+```
+
+
+##Beverton-Holt Pomp Model
+The Beverton Holt Model is a discrete-time population model given by:
+\[P_{n+1}= aP_{n}/(1+bP_{n})\] where a and b are parameters and
+\[\epsilon_t\]~Lognormal\[(-1/2\sigma^2,\sigma^2)\]
+```{r Beverton-Holt model}
+bison_p <- pomp(bison, times="Year", t0=1936)
+skel2<-Csnippet("DN=a*N/(1+b*N);")
+bison_p<-pomp(bison_p,skeleton=map(skel2),statenames="N", paramnames = c("a","b"))
+traj2 <- trajectory(bison_p, params=c(N.0=1,a=4,b=2),as.data.frame=TRUE)
+ggplot(data=traj2, aes(x=time,y=N))+geom_line()
+stochStep <- Csnippet("
+  e = rlnorm((-1)*sigma*sigma/2,sigma);
+  N = a*N*e/(1+b*N);
+")
+pomp(bison_p,rprocess=discrete.time.sim(step.fun=stochStep,delta.t=1),
+     paramnames=c("a","b","sigma"),statenames=c("N","e")) -> bison_p
+sim <- simulate(bison_p,params=c(N.0=1,e.0=1,a=4,b=2,sigma=0.2),
+                as.data.frame=TRUE,states=TRUE)
+plot(N~time,data=sim,type='o')
+lines(N~time,data=traj2,type='l',col='red')
+rmeas <- Csnippet("Count = rnbinom(phi*N*psi/(1-psi),psi);")
+dmeas <- Csnippet("lik = dnbinom(Count,phi*N*psi/(1-psi),psi,give_log);")
+pomp(bison_p,rmeasure=rmeas,dmeasure=dmeas,statenames=c("N"),paramnames=c("phi","psi")) -> bison_p
+coef(bison_p) <- c(N.0=207,e.0=1,a =800,b=2,sigma=0.5,phi=1,psi=0.09)
+sims2 <- simulate(bison_p,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+ggplot(data=sims2,mapping=aes(x=time,y=Count))+geom_line()+
+  facet_wrap(~sim)
+```
+
+None of these models seem to fit the data very well. In an attempt to create a model that fits this data better I looked at the Ricker model again and tried to fit a model where $r$ changes depending on the year specified:
+\[P_{n+1}=rP_{n}e^{-P_{n}/K + \epsilon_n}\]
+The model did not perform better. I also tried to fit a model like this: \[P_{n+1}=rP_{n}e^{-P_{n}/K +  \epsilon_n} +a_n\] where $a_n$ changes depending on the year. This model also did not perform well and $a_n$ did not seem to change the model much. Given that I have a limited amount of time, I decided to move on with the Beverton Holt model because it appears to have captured some of the dynamics of the model.
+After it was too late I discovered that previous years students used the blowfly model to fit their data. Perhaps that would have been a good model to try to impliment.
+Secondly, I would like to address why these models that are often used in biology and to model animal populations are not capturing the data very well. I think the reason for this is that the bison population was extremely low to begin with and efforts were being made to try to increase the bison population which led to a huge boom in the population and then we can see that the population dropped after the boom and then stabilized.
+
+```{R simulate}
+sims <- simulate(bison_p,params=c(N.0=207,e.0=1,a =800,b=2,sigma=0.5,phi=1,psi=0.09),nsim=10,
+                 as.data.frame=TRUE,include.data=TRUE)
+
+ggplot(sims,mapping=aes(x=time,y=Count,group=sim,color=sim=="data"))+
+  geom_line()+guides(color=FALSE)
+
+pf <- pfilter(bison_p,Np=5000,params=c(N.0=207,e.0=1,a =800,b=2,sigma=0.5,phi=1,psi=0.09))
+logLik(pf)
+pf <- replicate(10,pfilter(bison_p,Np=5000,params=c(N.0=207,e.0=1,a =800,b=2,sigma=0.5,phi=1,psi=0.09)))
+ll <- sapply(pf,logLik); ll
+logmeanexp(ll,se=TRUE)
+```
+
+```{r slice}
+sliceDesign(
+  c(N.0=207,e.0=1,a =800,b=2,sigma=0.5,phi=1,psi=0.09),
+  a=rep(seq(from=400,to=600,length=40),each=3),
+  b=rep(seq(from=1,to=3,length=40),each=3),
+  sigma=rep(seq(from=0,to=2,length=40),each=3)) -> p
+
+bison_mle=unlist(p[which.max(p$loglik),])
+
+require(foreach)
+library(doParallel)
+
+
+workers=makeCluster(1,type="SOCK")
+registerDoParallel(workers)
+
+
+foreach(i=1:2) %dopar% Sys.getpid()   
+
+set.seed(998468235L,kind="L'Ecuyer")
+mcopts <- list(preschedule=FALSE,set.seed=TRUE)
+
+foreach(theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts,.packages='pomp') %dopar% 
+ {
+   pfilter(bison_p,params=unlist(theta),Np=5000) -> pf
+   theta$loglik <- logLik(pf)
+   theta
+ } -> p
+
+foreach (v=c("a","b","sigma")) %do% 
+{
+  x <- subset(p,slice==v)
+  plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+}
+```
+This is a plot of the likelihood slices to give us a look at the geometry of the likelihood surface
+
+```{r Filtering on simulated data}
+simulate(bison_p,params=c(N.0=207,e.0=1,a =400,b=2,sigma=0.2,phi=2,psi=0.09),
+         nsim=10000,states=TRUE) -> x
+
+ell <- dmeasure(bison_p,y=obs(bison_p),x=x,times=time(bison_p),log=TRUE,
+                params=c(N.0=207,e.0=1,a =400,b=2,sigma=0.2,phi=2,psi=0.09))
+dim(ell)
+ell <- apply(ell,1,sum); summary(exp(ell)); logmeanexp(ell,se=TRUE)
+pf <- pfilter(bison_p,Np=5000,params=c(N.0=207,e.0=1,a =400,b=2,sigma=0.2,phi=2,psi=0.09))
+logLik(pf)
+pf <- replicate(10,pfilter(bison_p,Np=5000,params=c(N.0=207,e.0=1,a =400,b=2,sigma=0.2,phi=2,psi=0.09)))
+ll <- sapply(pf,logLik); ll
+L_pf<-logmeanexp(ll,se=TRUE)
+```
+As we can see from the results they do not perform well. Evaluation for the best result results in likelihood of -551.16 and standard error of 6.827.
+
+## A Local Search of the likelihood surface
+```{r Local Search for MLE}
+run_level <- 2
+switch(run_level,
+       {bison_Np=100; bison_Nmif=10; bison_Neval=10; bison_Nglobal=10; bison_Nlocal=10}, 
+       {bison_Np=20000; bison_Nmif=100; bison_Neval=10; bison_Nglobal=10; bison_Nlocal=10}, 
+       {bison_Np=60000; bison_Nmif=300; bison_Neval=10; bison_Nglobal=100; bison_Nlocal=20}
+)
+stew(file=sprintf("bison_local_search-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:bison_Nlocal,.packages='pomp',.combine=c, .options.multicore=mcopts,.export = ls(globalenv())) %dopar%  {
+      mif2(
+        bison_p,
+        start=c(N.0=207,e.0=1,a =400,b=2,sigma=0.2,phi=2,psi=0.09),
+        Np=bison_Np,
+        Nmif=bison_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=0.5,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          a=10,
+          b=.05,
+          sigma=1
+        )
+      )
+      
+    }
+  })
+  
+},seed=900242057,kind="L'Ecuyer")
+```
+
+```{r stew}
+stew(file=sprintf("bison_lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:bison_Nlocal,.packages='pomp',.combine=rbind,.export = ls(globalenv())) %dopar% {
+      evals <- replicate(bison_Neval, logLik(pfilter(bison_p,params=coef(mifs_local[[i]]),Np=bison_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+bison_results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(bison_results_local$logLik,digits=5)
+```
+
+```{r result}
+pairs(~logLik+a+b+sigma,data=subset(bison_results_local,logLik>max(logLik)-500))
+```
+This plot should give us a image of the geometry of the parameters. Since our model doesn't perform well the geometry is not clear.
+
+##Global Search of likelihood surface
+```{r global}
+bison_box <- rbind(
+  a=c(100,900),
+  b=c(0,3),
+  sigma = c(0,3)
+)
+
+bison_fixed_params<-c(N.0=207,e.0=1,phi=2,psi=.09)
+
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:bison_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts,.export = ls(globalenv())) %dopar%  mif2(
+      mifs_local[[1]],
+      start=c(apply(bison_box,1,function(x)runif(1,x[1],x[2])),bison_fixed_params)
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:bison_Nglobal,.packages='pomp',.combine=rbind,.options.multicore=mcopts,.export = ls(globalenv())) %dopar% {
+      evals <- replicate(bison_Neval, logLik(pfilter(bison_p,params=coef(mifs_global[[i]]),Np=bison_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+bison_results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(bison_results_global$logLik,digits=5)
+```
+```{r run}
+if (run_level>2) 
+  write.table(rbind(bison_results_local,bison_results_global),
+              file="mif_bison_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+
+pairs(~logLik+a+b+sigma,data=subset(bison_results_global,logLik>max(logLik)-250))
+```
+We end up with slightly different likelihoods comparing the global to the local.
+
+##Diagnostics
+```{r mif}
+plot(mifs_global)
+```
+We see that the effective sample size is quite large for most time points. 
+
+
+##Reduced Model
+Since our data set has an huge increase in population due to human interventions, it is really difficult to find a model to fit this data. As a result of this issue I have decided to look at the data from 1966 - 2000. The population appears to be stable. I think the main issue is that with the conservation efforts made by the National Park the Bison population grew well past was is stable and then dropped greatly after this initial "boom". After 1966 its appears to have leveled out and shows that natural increase and decrease in population without a large "boom" in population size or large decrease in population size.
+
+```{r subset}
+bison_reduced <- bison[22:64,]
+bison_reduced<-na.omit(bison_reduced)
+head(bison_reduced)
+plot(bison_reduced$Count~bison_reduced$Year,type="l", main = "Bison Count from 1965 - 2000", xlab = "Years", ylab ="Count")
+```
+
+##Ricker Pomp Model for the Reduced Data
+Reparameterized Ricker Model is a discrete-time population model given by:
+\[P_{n+1}=rP_{n}e^{-P_{n}/K + \epsilon_n}\]
+where \[\epsilon_n\]~Normal(0,$\sigma^2$)
+and where \[Count_n\]~Negbin\[(\phi*P_n,k)\]
+```{r pomp model resduced}
+bison_r <- pomp(bison_reduced, times="Year", t0=1965)
+stochStep <- Csnippet("e = rnorm(0,sigma);
+                  N = r*N*exp(-N/k+e);
+                 ")
+pomp(bison_r,rprocess=discrete.time.sim(step.fun=stochStep,delta.t=1),paramnames=c("r","k","sigma"),statenames=c("N","e"))->bison_r
+
+rmeas <- Csnippet("Count = rnbinom(phi*N*psi/(1-psi),psi);")
+dmeas <- Csnippet("lik = dnbinom(Count,phi*N*psi/(1-psi),psi,give_log);")
+
+pomp(bison_r,rmeasure=rmeas,dmeasure=dmeas,statenames=c("N"),paramnames=c("phi","psi"))->bison_r
+
+
+
+coef(bison_r) <- c(N.0=608,e.0=1,k=800,r= 2,sigma=0.2,phi=1,psi=.9)
+sims <- simulate(bison_r,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+ggplot(data=sims,mapping=aes(x=time,y=Count))+geom_line()+
+  facet_wrap(~sim)
+```
+
+
+
+
+##Gompertz model
+The Gompertz Model is a discrete-time population model. It is often used in biological models. It is given by:
+\[P_{n+1}=K^{1-e^{-r}}P_n^{e^{-r}}\epsilon_n\]
+where \[\epsilon_t\]~Lognormal\[(0,\sigma^2)\]
+and where K is the carrying capacity and r is the per capita growth rate[1].
+
+```{r gompertz model reduced}
+pomp(
+     data=bison_reduced,
+     times="Year",
+     t0=1965,
+     rprocess=discrete.time.sim( # a discrete-time process (see ?plugins)
+       step.fun=function (x, t, params, delta.t, ...) { # this function takes one step t -> t+delta.t
+         ## unpack the parameters:
+         r <- params["r"]
+         K <- params["K"]
+         sigma <- params["sigma"]
+         ## the state at time t:
+         X <- x["X"]
+         ## generate a log-normal random variable:
+         eps <- exp(rnorm(n=1,mean=0,sd=sigma))
+         ## compute the state at time t+delta.t:
+         S <- exp(-r*delta.t)
+         xnew <- c(X=unname(K^(1-S)*X^S*eps))
+         return(xnew)
+       },
+       delta.t=1                  # the size of the discrete time-step
+       ),
+     rmeasure=function (x, t, params, ...) {# the measurement model simulator
+       ## unpack the parameters:
+       tau <- params["tau"]
+       ## state at time t:
+       X <- x["X"]
+       ## generate a simulated observation:
+       y <- c(Y=unname(rlnorm(n=1,meanlog=log(X),sdlog=tau)))
+       return(y)
+     },
+     dmeasure=function (y, x, t, params, log, ...) { # measurement model density
+       ## unpack the parameters:
+       tau <- params["tau"]
+       ## state at time t:
+       X <- x["X"]
+       ## observation at time t:
+       Y <- y["Y"]
+       ## compute the likelihood of Y|X,tau
+       f <- dlnorm(x=Y,meanlog=log(X),sdlog=tau,log=log)
+       return(f)
+     },
+     toEstimationScale=function(params,...){
+       log(params)
+     },
+     fromEstimationScale=function(params,...){
+       exp(params)
+     }
+     ) -> bison_r
+
+## Now code up the Gompertz example using C snippets: results in much faster computations.
+
+dmeas <- "
+    lik = dlnorm(Count,log(X),tau,give_log);
+"
+
+rmeas <- "
+    Count = rlnorm(log(X),tau);
+"
+
+step.fun <- "
+  double S = exp(-r*dt);
+  double logeps = (sigma > 0.0) ? rnorm(0,sigma) : 0.0;
+  /* note that X is over-written by the next line */
+  X = pow(K,(1-S))*pow(X,S)*exp(logeps); 
+"
+
+skel <- "
+  double dt = 1.0;
+  double S = exp(-r*dt);
+  /* note that X is not over-written in the skeleton function */
+  DX = pow(K,1-S)*pow(X,S); 
+"
+
+partrans <- "
+  Tr = log(r);
+  TK = log(K);
+  Tsigma = log(sigma);
+  TX_0 = log(X_0);
+  Ttau = log(tau);
+"
+
+paruntrans <- "
+  Tr = exp(r);
+  TK = exp(K);
+  Tsigma = exp(sigma);
+  TX_0 = exp(X_0);
+  Ttau = exp(tau);
+"
+
+pomp(bison_r,
+     paramnames=c("r","K","sigma","X.0","tau"),
+     statenames=c("X"),
+     dmeasure=Csnippet(dmeas),
+     rmeasure=Csnippet(rmeas)
+     ) -> bison_r
+
+## simulate some data
+coef(bison_r) <- c(K=700,r=2,sigma=0.2,tau=0.1,X.0=608)
+Gompertz <- simulate(bison_r,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+ggplot(data=Gompertz,mapping=aes(x=time,y=Count))+geom_line()+
+  facet_wrap(~sim)
+
+```
+
+The Beverton Holt Model is a discrete-time population model given by:
+\[P_{n+1}= aP_{n}/(1+bP_{n})\] where a and b are parameters and
+\[\epsilon_t\]~Lognormal\[(-1/2\sigma^2,\sigma^2)\]
+```{r Beverton-Holt model reduced}
+bison_r <- pomp(bison_reduced, times="Year", t0=1965)
+skel2<-Csnippet("DN=a*N/(1+b*N);")
+bison_r<-pomp(bison_r,skeleton=map(skel2),statenames="N", paramnames = c("a","b"))
+traj2 <- trajectory(bison_r, params=c(N.0=608,a=800,b=1),as.data.frame=TRUE)
+ggplot(data=traj2, aes(x=time,y=N))+geom_line()
+stochStep <- Csnippet("
+  e = rlnorm((-1)*sigma*sigma/2,sigma);
+  N = a*N*e/(1+b*N);
+")
+pomp(bison_r,rprocess=discrete.time.sim(step.fun=stochStep,delta.t=1),
+     paramnames=c("a","b","sigma"),statenames=c("N","e")) -> bison_r
+rmeas <- Csnippet("Count = rnbinom(phi*N*psi/(1-psi),psi);")
+dmeas <- Csnippet("lik = dnbinom(Count,phi*N*psi/(1-psi),psi,give_log);")
+pomp(bison_r,rmeasure=rmeas,dmeasure=dmeas,statenames=c("N"),paramnames=c("phi","psi")) -> bison_r
+coef(bison_r) <- c(N.0=608,e.0=0,a=500,b=1,sigma=0.2,phi=1,psi=0.06)
+sims2 <- simulate(bison_r,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+ggplot(data=sims2,mapping=aes(x=time,y=Count))+geom_line()+
+  facet_wrap(~sim)
+```
+```{r simulate reduced}
+sims <- simulate(bison_r,params=c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06),nsim=10,
+                 as.data.frame=TRUE,include.data=TRUE)
+
+ggplot(sims,mapping=aes(x=time,y=Count,group=sim,color=sim=="data"))+
+  geom_line()+guides(color=FALSE)
+
+pf <- pfilter(bison_r,Np=5000,params=c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06))
+logLik(pf)
+pf <- replicate(10,pfilter(bison_r,Np=5000,params=c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06)))
+ll <- sapply(pf,logLik); ll
+logmeanexp(ll,se=TRUE)
+```
+
+This model performs quite well with a likelihood of -238.93 and standard error of .0204
+
+```{r slice reduced}
+sliceDesign(
+  c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06),
+  a=rep(seq(from=400,to=600,length=40),each=3),
+  b=rep(seq(from=0,to=3,length=40),each=3),
+  sigma=rep(seq(from=0,to=2,length=40),each=3)) -> p
+
+bison_mle=unlist(p[which.max(p$loglik),])
+
+require(foreach)
+library(doParallel)
+
+
+workers=makeCluster(1,type="SOCK")
+registerDoParallel(workers)
+
+
+foreach(i=1:2) %dopar% Sys.getpid()   
+
+set.seed(998468235L,kind="L'Ecuyer")
+mcopts <- list(preschedule=FALSE,set.seed=TRUE)
+
+foreach(theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts,.packages='pomp') %dopar% 
+ {
+   pfilter(bison_r,params=unlist(theta),Np=5000) -> pf
+   theta$loglik <- logLik(pf)
+   theta
+ } -> p
+
+foreach (v=c("a","b","sigma")) %do% 
+{
+  x <- subset(p,slice==v)
+  plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+}
+```
+This gives us an idea of the likelihood geometry
+```{r reduced simulate}
+simulate(bison_r,params=c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06),
+         nsim=10000,states=TRUE) -> x
+
+ell <- dmeasure(bison_r,y=obs(bison_r),x=x,times=time(bison_r),log=TRUE,
+                params=c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06))
+dim(ell)
+ell <- apply(ell,1,sum); summary(exp(ell)); logmeanexp(ell,se=TRUE)
+pf <- pfilter(bison_r,Np=5000,params=c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06))
+logLik(pf)
+pf <- replicate(10,pfilter(bison_r,Np=5000,params=c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06)))
+ll <- sapply(pf,logLik); ll
+L_pf<-logmeanexp(ll,se=TRUE)
+```
+
+```{r Local Search for MLE Reduced}
+run_level <- 2
+switch(run_level,
+       {bison_r_Np=100; bison_r_Nmif=10; bison_r_Neval=10; bison_r_Nglobal=10; bison_r_Nlocal=10}, 
+       {bison_r_Np=20000; bison_r_Nmif=100; bison_r_Neval=10; bison_r_Nglobal=10; bison_r_Nlocal=10}, 
+       {bison_r_Np=60000; bison_r_Nmif=300; bison_r_Neval=10; bison_r_Nglobal=100; bison_r_Nlocal=20}
+)
+stew(file=sprintf("bison_r_local_search-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:bison_r_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts, .export = ls(globalenv())) %dopar%  {
+      mif2(
+        bison_r,
+        start=c(N.0=608,e.0=1,a =500,b=1,sigma=0.5,phi=1,psi=0.06),
+        Np=bison_r_Np,
+        Nmif=bison_r_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=0.5,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          a=0.002,
+          b=0.001,
+          sigma=0.001
+        )
+      )
+      
+    }
+  })
+  
+},seed=900242057,kind="L'Ecuyer")
+
+
+stew(file=sprintf("bison_r_lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:bison_r_Nlocal,.packages='pomp',.combine=rbind,.export = ls(globalenv())) %dopar% {
+      evals <- replicate(bison_r_Neval, logLik(pfilter(bison_r,params=coef(mifs_local[[i]]),Np=bison_r_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+bison_r_results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(bison_r_results_local$logLik,digits=5)
+```
+```{r result reduced}
+pairs(~logLik+a+b+sigma,data=subset(bison_r_results_local,logLik>max(logLik)-500))
+```
+
+
+This plot give us a image of the geometry of the parameters.
+
+```{r global reduced}
+bison_r_box <- rbind(
+  a=c(400,600),
+  b=c(0,2),
+  sigma = c(.01,.9)
+)
+
+bison_fixed_params<-c(N.0=608,e.0=1,phi=1,psi=.06)
+
+stew(file=sprintf("box_eval_r-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:bison_r_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts,.export = ls(globalenv())) %dopar%  mif2(
+      mifs_local[[1]],
+      start=c(apply(bison_box,1,function(x)runif(1,x[1],x[2])),bison_fixed_params)
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+
+stew(file=sprintf("lik_global_eval_r-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:bison_r_Nglobal,.packages='pomp',.combine=rbind,.options.multicore=mcopts,.export = ls(globalenv())) %dopar% {
+      evals <- replicate(bison_r_Neval, logLik(pfilter(bison_r,params=coef(mifs_global[[i]]),Np=bison_r_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+bison_r_results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(bison_r_results_global$logLik,digits=5)
+```
+```{r geometry reduced}
+if (run_level>2) 
+  write.table(rbind(bison_r_results_local,bison_r_results_global),
+              file="mif_bison_r_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+
+pairs(~logLik+a+b+sigma,data=subset(bison_r_results_global,logLik>max(logLik)-250))
+```
+
+```{r diagnostics reduced}
+plot(mifs_global)
+```
+The sample size is pretty varying as well as the loglikelihood. 
+
+##Conclusion
+I found this project to be exeptionally difficult when it came to the first model. I tried different ways of approaching it and trying to get it to work for a non-stationary model. After excluding the large growth and then depletion of the population the second model does quite well with a lower standard error. I think that it's important to do time series analysis on datasets with animal populations so that we can know what to expect when trying to recover other hurting populations and predict their future growth.
+
+For further consideration I would suggest finding a model that will capture the entire time period. I have done some research in how to adjust for it but none of my methods worked in the limited time that I had. I have seen models suggesting using several different period models to account for changes in the data.
+
+
+##Sources
+[1] Fuller, Julie. "POPULATION DEMOGRAPHY OF THE YELLOWSTONE NATIONAL PARK BISON HERDS", 2006. 
+[2] King, Aaron "Gompertz.R" https://github.com/kingaa/pomp/blob/master/demo/gompertz.R
+[3] King, Aaron "Statistical Inference for Partially Observed Markov Processes", 2017. 
+[5] Ionides Class Notes Ch. 9 - 13

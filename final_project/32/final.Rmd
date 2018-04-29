@@ -1,0 +1,317 @@
+---
+title: "Population of black-tail jackrabbits in Sevilleta National Wildlife Refuge"
+output: html_document
+---
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+# Loading required libraries
+set.seed(594709947L)
+library(ggplot2)
+library(plyr)
+library(reshape2)
+library(foreach)
+library(doMC)
+library(pomp)
+library(knitr)
+stopifnot(packageVersion("pomp")>="0.69-1")
+```
+
+# Introduction
+
+In this report, I investigated the time series data of the population of black-tail jackrabbits (Lepus californicus) in the grasslands and creosote shrublands of McKenzie Flats, Sevilleta National Wildlife Refuge. Rabbits are important herbivores in such habitats. One one hand, rabbits are prey for many carnivores in the environment, and on the other hand, it can influence net primary productivity and plant species composition. The population and density of rabbits can also be used to estimate the herbivore pressure on the plant communities. The study of the rabbit population in Sevilleta National Wildlife Refuge was initiated in January 1992, and continues quarterly each year. Rabbits were sampled via night-time spotlight transect sampling at a specific location once during winter, spring, summer, and fall. In order to learn more about the flutuation of the rabbit population, I aim to find a decent model to fit this time series data. Specifically, I applied both SARMA model and a POMP model on this dataset.
+
+# Data Exploration
+
+The data was first published on the Long Term Ecological Research (LTER) Network Data Portal, including the information for each observed rabbit. We do not need these additional information, so I preprocessed the dataset (codes not shown in this report). After cleaning, the dataset includes the count numbers of black-tail jackrabbits observed in each season starting from Winter 1992:
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+rabbit = read.csv('rabbit_clean1.csv')
+rabbit = rabbit[complete.cases(rabbit),]
+head(rabbit)
+plot(Count~Season, data = rabbit, type='o')
+```
+
+We use the acf plot and smoothed spectrum plot to check the periodic patterns of the data:
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+acf(rabbit$Count)
+spectrum(rabbit$Count,spans=c(3,5,3),main="spectrum of rabbit counts")
+```
+
+Easy to see from the previous plots, there is a significant cycle of every four seasons (every year).
+
+# Fitting a SARMA model
+
+We use a SARMA model to fit our rabbit data to account for the seasonality (a yearly period) we observed.
+
+$$ (1-\Phi_p B^{4})(1-\phi_p B) X_n = (1+\psi_q B)\epsilon_n$$
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+aic_table <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q),seasonal=list(order=c(1,0,0),period=4), method = 'ML')$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+e_aic_table <- aic_table(rabbit$Count,4,5)
+kable(e_aic_table,digits=2)
+```
+
+The AIC table suggests that SARMA(0,1) is the optimal model for the data.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+sarma = arima(rabbit$Count,order=c(0,0,1),seasonal=list(order=c(1,0,0),period=4), method = 'ML')
+sarma
+```
+
+We can plot the residuals of this SARMA(0,1) model, and check its acf and normality:
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+plot(resid(sarma),main="Residuals of SARMA(0,1) model",ylab="Residuals")
+acf(resid(sarma),main="ACF of SARMA(0,1) model")
+qqnorm(resid(sarma))
+```
+
+The acf plot indicates that the residuals are mostly independent. QQ-plot shows that the residuals do not follow a normal distribution.
+
+To sum all above, we find that the best SARMA model for our data is SARMA(0,1). The MA1 and coefficient and the SAR1 coefficient are determined to be 0.2521 and 0.5084 respectively, with a loglikelihood of -367.14.
+
+# Fitting a POMP model
+
+Next, we fit our data to a POMP model. We apply the widely used Beverton-Holt model:
+$$P_{n+1} = \frac{a\,P_n}{1+b\,P_n}\,\varepsilon_n,$$
+
+where $a$ can be interpreted as the proliferation rate per generation and $(a-1)/b$ is the carrying capacity of the environment. The noise process, $\varepsilon$,  follows a lognormal distribution:
+
+$$\varepsilon_t \sim \mathrm{Lognormal}(-\tfrac{1}{2}\sigma^2,\sigma^2).$$
+
+and the measurement model is:
+
+$$Y_{n}|P_n\;\sim\;\mathrm{Poisson}(\phi\,P_{n})$$.
+
+where in this report, $\phi$ is set to be one.
+
+First, we construct a pomp object:
+
+```{r,cache=TRUE,message=FALSE,warning=FALSE}
+rabbits = pomp(rabbit,times="Season",t0=0)
+skel = Csnippet("DN = (a*N)/(1+(b*N));")
+stochStep = Csnippet("e = rlnorm(-0.5*sigma*sigma,sigma);N = ((a*N)/(1+(b*N)))*e;")
+rmeas = Csnippet("Count = rpois(phi*N);")
+dmeas = Csnippet("lik = dpois(Count,phi*N,give_log);")
+
+pomp(rabbits,rmeasure=rmeas,dmeasure=dmeas,
+     skeleton=map(skel),
+     rprocess=discrete.time.sim(step.fun=stochStep,delta.t=1),
+     paramnames=c("a","b","sigma","phi"),
+     statenames=c("N","e"))->rabbits
+```
+
+We can look at the simulation plot of the model:
+
+```{r,cache=TRUE,message=FALSE,warning=FALSE}
+coef(rabbits) = c(N.0=100,e.0=0,a=60,b=2,sigma=0.55,phi=1)
+sims = simulate(rabbits,nsim=3,as.data.frame=TRUE,include.data=TRUE)
+
+ggplot(data = sims, mapping = aes(x = time, y = Count)) + geom_line() + facet_wrap(~sim)
+```
+
+The simulations look moderately similar to the real data. We then investigate how the likelihood changes with the parameters by constructing a likelihood slice. The specific codes and plots are shown below:
+
+```{r,cache=TRUE,message=FALSE,warning=FALSE,prompt=FALSE}
+sliceDesign(
+  c(N.0=100,e.0=0,a=60,b=2,sigma=0.55,phi=1),
+  a=rep(seq(from=55,to=65,length=40),each=3),
+  b=rep(seq(from=1.7,to=2.1,length=40),each=3),
+  sigma=rep(seq(from=0.5,to=0.65,length=40),each=3)) -> p
+
+rabbit_mle=unlist(p[which.max(p$loglik),])
+
+registerDoMC(cores=4)
+
+set.seed(998468235L,kind="L'Ecuyer")
+mcopts <- list(preschedule=FALSE,set.seed=TRUE)
+
+foreach(theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts) %dopar%
+         {
+           pfilter(rabbits,params=unlist(theta),Np=5000) -> pf
+           theta$loglik <- logLik(pf)
+           theta
+         } -> p
+
+foreach (v=c("a","b","sigma")) %do%
+{
+  x <- subset(p,slice==v)
+  plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+}
+```
+
+Next, we can evaluate the log likelihood of the data given the model and the parameters. We use the particle filter to get an estimate of the Monte Carlo variability:
+
+```{r,cache=TRUE,message=FALSE,warning=FALSE}
+simulate(rabbits,params=c(N.0=100,e.0=0,a=60,b=2,sigma=0.55,phi=1),nsim=10000,states=TRUE) -> x
+
+ell = dmeasure(rabbits,y=obs(rabbits),x=x,times=time(rabbits),log=TRUE,
+               params=c(N.0=100,e.0=0,a=60,b=2,sigma=0.55,phi=1))
+dim(ell)
+
+ell = apply(ell,1,sum); summary(exp(ell)); logmeanexp(ell,se=TRUE)
+pf = pfilter(rabbits,Np=5000,params=c(N.0=100,e.0=0,a=60,b=2,sigma=0.55,phi=1))
+logLik(pf)
+pf <- replicate(10,pfilter(rabbits,Np=5000,params=c(N.0=100,e.0=0,a=60,b=2,sigma=0.55,phi=1)))
+ll <- sapply(pf,logLik); ll
+logmeanexp(ll,se=TRUE)
+```
+
+From the results, we obtain an unbiased likelihood estimate of -375.2 with a standard error of 0.08.
+
+Next, we search for the MLE of the parameters using particle filter. We first do a local search around the previously identified MLE based on the information from the likelihood surface slice.
+
+```{r,cache=TRUE,message=FALSE,warning=FALSE}
+# Set run levels
+run_level <- 3
+switch(run_level,
+       {rabbits_Np=100; rabbits_Nmif=10; rabbits_Neval=4; rabbits_Nglobal=10; rabbits_Nlocal=10}, 
+       {rabbits_Np=1000; rabbits_Nmif=100; rabbits_Neval=10; rabbits_Nglobal=20; rabbits_Nlocal=20}, 
+       {rabbits_Np=10000; rabbits_Nmif=300; rabbits_Neval=20; rabbits_Nglobal=100; rabbits_Nlocal=20}
+)
+
+
+
+# Local search for MLE
+stew(file=sprintf("rabbits_local_search-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:rabbits_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        rabbits,
+        start=c(N.0=100,e.0=0,a=60,b=2,sigma=0.55,phi=1),
+        Np=rabbits_Np,
+        Nmif=rabbits_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=0.5,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          a=0.01,
+          b=0.005,
+          sigma=0.001
+        )
+      )
+      
+    }
+  })
+  
+},seed=900242057,kind="L'Ecuyer")
+
+
+stew(file=sprintf("rabbits_lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:rabbits_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(rabbits_Neval, logLik(pfilter(rabbits,params=coef(mifs_local[[i]]),Np=rabbits_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+rabbits_results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(rabbits_results_local$logLik,digits=5)
+
+pairs(~logLik+a+b+sigma,data=subset(rabbits_results_local,logLik>max(logLik)-50))
+```
+
+The evaluation of the best result of this search gives a likelihood of -374.8.  The plots can give us a sense of the geometry of the likelihood surface in the neighbor of this point estimate.
+
+Finally, we maximize the likelihood on a global scale:
+
+```{r,cache=TRUE,message=FALSE,warning=FALSE}
+# Global likelihood maximization
+rabbits_box <- rbind(
+  a=c(20,100),
+  b=c(0.5,4),
+  sigma = c(0.4,0.8)
+)
+
+rabbits_fixed_params<-c(N.0=100,e.0=0,phi=1)
+
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:rabbits_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      mifs_local[[1]],
+      start=c(apply(rabbits_box,1,function(x)runif(1,x[1],x[2])),rabbits_fixed_params)
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:rabbits_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(rabbits_Neval, logLik(pfilter(rabbits,params=coef(mifs_global[[i]]),Np=rabbits_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+rabbits_results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(rabbits_results_global$logLik,digits=5)
+```
+
+The evaluation of the best result of this search gives a likelihood of -374.7.  The following plots can give us a sense of the global geometry of the likelihood surface.
+
+```{r,cache=TRUE,message=FALSE,warning=FALSE}
+if (run_level>2) 
+  write.table(rbind(rabbits_results_local,rabbits_results_global),
+              file="mif_rabbits_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+
+pairs(~logLik+a+b+sigma,data=subset(rabbits_results_global,logLik>max(logLik)-250))
+```
+
+```{r,cache=TRUE,message=FALSE,warning=FALSE}
+# Diagnostic
+plot(mifs_global)
+```
+
+From the diagnostic plots, we can see that the loglikelihood converges. Some parameters ($a$ and $b$) seem to be unstable, which indicates a weakly identified parameter subspace.
+
+# Summary and perspectives
+
+In summary, we used both SARMA and POMP model to fit our data. The best estimated log-likelihood of the SARMA(0,1) model is around -367.14, which is higher than the estimated log-likelihood of the Beverton-Holt model().
+I am unable to construct and analyze the profile likelihood function due to the lack of time. The analysis can be carried out similarly as what we did in homework 9, and a confidence interval can be obtained for each parameter. Also, some other POMP model can be tested as well, such as Ricker model and Hassel model.
+It should be noted that the time points of this dataset is not very large. Thus, asymptotic approximations may not very well applied on this dataset. Either more data points, or more research is needed to better interpret the data analysis.
+
+# References
+
+[1] The time series data was retrieved from: https://portal.edirepository.org/nis/metadataviewer?packageid=knb-lter-sev.23.121705
+\
+[2] https://ionides.github.io/531w18/
+\
+[3] Rabbit Population Dynamics in Chihuahuan Desert Grasslands and Shrublands at the Sevilleta National Wildlife Refuge, New Mexico (1992-present). doi:10.6073/pasta/6b26b77b33e9d7086e37c40aaa05e80d
+
+I have also learned a lot from the previous final projects.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,272 @@
+---
+title: "Applying POMP SIR models to Youtube Videos"
+output: html_document
+bibliography: refs.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = F, warning = F)
+```
+
+##Introduction
+On September 20th, 2011, Carly Rae Jepsen released a single "Call Me Maybe" [@cmb]. During the next year, the song was a part of popular culture because many people made covers or parodies of the song and posted it on Youtube. For instance, someone spliced together auto-tuned clips of President Barack Obama saying words from the song [@obama]. As another example, Sesame Street made a parody with Cookie Monster [@sesame].
+
+While the trend was popular for a year and half at most, it is still worth studying. If a model can be built to describe the spread of this trend, advertisers or content creators might want to use it to evaluate whether something is going viral. While there has been work analyzing the features [@yt_featurs] and viewcounts of viral videos [@yt_views], this report represents a basic, independent attempt to use a POMP SIR models to understand the dissemination of "Call Me Maybe".
+
+##Data
+Using Google's API and modifying some code found from Github, I pulled a list of videos related to the search term "call me maybe" and stored when they were published [@api_doc; @youtube_code].  The number of videos posted each month since September 2011 looks like this:
+
+```{r monthly_data_plot}
+library(dplyr)
+library(ggplot2)
+
+data <- read.csv(file = "vid_date.csv", header = F)
+colnames(data) <- c("y", "m", "d", "count")
+
+data_by_month <- data %>% group_by(y, m) %>% summarize(num = sum(count))
+full_data_by_month <- rbind(expand.grid("y" = 2011, "m" = 10:12),
+  expand.grid("y" = 2012:2017, "m" = 1:12),
+  expand.grid("y" = 2018, "m" = 1:4))
+full_data_by_month$y_m <- apply(full_data_by_month, 1, function(row) {paste(row, collapse = "_")})
+data_by_month$y_m <- apply(data_by_month[, c("y", "m")], 1, 
+                           function(row) {paste(row, collapse = "_")})
+full_data_by_month <- merge(full_data_by_month, data_by_month[, c("y_m", "num")],
+                            by = "y_m", all.x = T)
+full_data_by_month$num[is.na(full_data_by_month$num)] = 0
+full_data_by_month <- full_data_by_month %>% arrange(y, m)
+
+month_label <- apply(full_data_by_month, 1, function(row) {
+  paste(month.abb[as.numeric(row["m"])], row["y"], sep = " ")})
+
+ggplot(full_data_by_month, aes(x = seq_along(num), y = num)) + geom_line() + 
+  scale_x_continuous(breaks = seq(1, 79, by = 4), labels = month_label[seq(1, 79, by = 4)]) + 
+  theme(axis.text.x  = element_text(angle=90, vjust = 0.5)) + xlab("") + ylab("Count") + 
+  ggtitle("Videos Posted By Month")
+```
+
+Aside from the weird spike at the end, this plot seems to show that after the song was released, the number of videos posted related to "Call Me Maybe" increased before peaking in the summer of 2012. Because the trend lasted for a year to a year and a half at most, it makes sense that it peaked in the summer of 2012. However, because there are less than 100 data points, I'll further split the data based on whether they were posted in the first half of the month (days 1-14) or not. The data then looks like this:
+
+```{r bimonthly_data_plot}
+data$w <- (data$d > 14) + 1
+data_by_bimonth <- data %>% group_by(y, m, w) %>% summarize(num = sum(count))
+full_data <- 
+  rbind(expand.grid("y" = 2011, "m" = 10:12, "w" = 1:2),
+  expand.grid("y" = 2012:2017, "m" = 1:12, "w" = 1:2),
+  expand.grid("y" = 2018, "m" = 1:4, "w" = 1:2))
+full_data$y_m_w <- apply(full_data, 1, function(row) {paste(row, collapse = "_")})
+data_by_bimonth$y_m_w <- apply(data_by_bimonth[, c("y", "m", "w")], 1, function(row) {paste(row, collapse = "_")})
+full_data <- merge(full_data, data_by_bimonth[, c("y_m_w", "num")], by = "y_m_w", all.x = T)
+full_data$num[is.na(full_data$num)] = 0
+full_data <- full_data %>% arrange(y, m, w)
+
+plot(full_data$num, main = "Videos Posted by Half Months", 
+     xlab = "Half Months since September 2011", ylab = "Count", type = "l")
+```
+
+While there is more noise and the peak number of videos is smaller, the overall pattern is similar. As a result, because there is now more than 100 data points, I will analyze the dataset of the counts of videos posted during a half month. Further, even though the spike at the end appears legitimate because of the video titles associated with the videos posted, I will ignore it to simplify the analysis. Thus, the dataset looks like this:
+
+```{r final_bimonthly_plot}
+clean_data <- full_data[!(full_data$y == 2018 & full_data$m >= 3),]
+clean_data$index <- 1:nrow(clean_data)
+clean_data <- clean_data[, c("num", "index")]
+plot(clean_data$num, main = "Videos Posted by Half Months", 
+     xlab = "Half Months since September 2011", ylab = "Count", type = "l")
+```
+
+##Models
+Because I am interested in modeling the propogation of "Call Me Maybe"", models that can be used are SIR (Susceptible-Infected-Recovered) models. SIR models have been used in the aforementioned earlier work. However, I will define the compartments as following:
+
+* **S**: People who are "susceptible" to wanting to post a video related to "Call Me Maybe" 
+* **I**: People who are "infected" by a desire to post a video related to "Call Me Maybe"
+* **R**: People who are "recovered"" because they went ahead and posted a video
+
+If N represents the total number of people and $N_{SI}$ and $N_{IR}$ represent the number of people who become infected and recover respectively, then I will model the rate of changes as following: 
+
+$$
+\begin{aligned}
+\frac{d}{dt}N_{SI} &= \frac{\beta * I}{N}\\
+\frac{d}{dt}N_{IR} &= \gamma
+\end{aligned}
+$$
+
+In other words, there is a constant rate at which people will post videos, but the number of people who become interested in posting videos is affected by the proportion of people who are interested in doing so.
+
+However, not all individuals who should become interested or post a video do become interested or post a video. Hence, as suggested in class notes [@class_notes], I will use a binomial approximation with exponential transition probabilities:
+
+$$
+\begin{aligned}
+N_{SI}(t + \delta) &= N_{SI}(t) + Binomial\left(S(t), 1 - exp\left(-\frac{\beta I}{N} * \delta\right)\right)\\
+N_{IR}(t + \delta) &= N_{IR}(t) + Binomial\left(I(t), 1 - exp\left(-\gamma * \delta\right)\right)\\
+\end{aligned}
+$$
+where S(t) and I(t) represent the number of susceptible people and infected people at time t respectively.
+
+Then, I will use a Poisson process to link up this model to the observed number of videos posted. After all, because I used Google's API to get the number of videos posted in a time period, not all videos might have been pulled due to built-in restrictions. On the other hand, my search might have also pulled in unrelated videos. So, if H is the number of new videos posted as predicted by the model above and $\rho$ a number between 0 and 1, then the observed number of videos posted is distributed according to a Poisson distribution with mean measure $\rho$H because we can only expect to see a certain percentage of the videos.
+
+Denote this model as Model 1. I also will try to fit two other models, but they only differ in how $N_{IR}(t + \delta)$ is modeled. 
+
+In particular, for Model 2, $N_{IR}(t + \delta)$ mirrors $N_{SI}(t + \delta)$ and is thus related to the proportion of individuals interested in posting the video. The intuition is that as more people are interested, more people might post a video. In other words, $N_{IR}(t + \delta)$ will be updated in the following way:
+
+$$
+\begin{aligned}
+N_{IR}(t + \delta) &= N_{IR}(t) + Binomial\left(S(t), 1 - exp\left(-\frac{\gamma I}{N} * \delta\right)\right)\\
+\end{aligned}
+$$
+
+Meanwhile, for Model 3, $N_{IR}(t + \delta)$ is now related to H, the proportion of individuals who had just posted a video. The logic is that as more people post a video, more people might want to jump on the bandwagon and post a video. In other words, $N_{IR}(t + \delta)$ will be updated in the following way:
+
+$$
+\begin{aligned}
+N_{IR}(t + \delta) &= N_{IR}(t) + Binomial\left(S(t), 1 - exp\left(-\frac{\gamma H}{N} * \delta\right)\right)\\
+\end{aligned}
+$$
+
+As a result, I am exploring which of these three POMP SIR models to use to explain a trend's transmission. To do so, I will use the R package `pomp` [@pomp] and code from our class notes [@class_notes].
+
+##Model Fit
+Based on the plots below, Model 1 fits reasonably well. The number of effective samples is high and the traceplots suggest that the multiple Monte Carlo replications of the parameter estimates converged. Further, the number of failures looks to be 0 and the log likelihood looks to have converged. 
+
+```{r model_1_code}
+library(pomp)
+
+sir_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/(S + I + R)*dt));
+                     double dN_IR = rbinom(I,1-exp(-gamma*dt));
+                     S -= dN_SI;
+                     I += dN_SI - dN_IR;
+                     R += dN_IR;
+                     H += dN_IR;
+                     ")
+
+# sir_init <- Csnippet("
+#                      S = nearbyint(N)-1;
+#                      I = 1;
+#                      R = 0;
+#                      H = 0;
+#                      ")
+bsflu_initializer <- "
+S=810;
+I=1;
+R=0;
+"
+dmeas <- Csnippet("lik = dpois(num,rho*H + 1e-6,give_log);")
+rmeas <- Csnippet("num = rpois(H * rho + 1e-6);")
+
+bsflu_fromEstimationScale <- "
+TBeta = exp(Beta);
+Tgamma = exp(gamma);
+Trho = expit(rho);
+"
+
+bsflu_toEstimationScale <- "
+TBeta = log(Beta);
+Tgamma = log(gamma);
+Trho = logit(rho);
+"
+
+sir <- pomp(clean_data,
+            times="index",
+            t0=0,
+            rprocess=euler.sim(sir_step,delta.t=1/12),
+            initializer=Csnippet(bsflu_initializer),
+            rmeasure=rmeas,
+            dmeasure=dmeas,
+            zeronames="H",
+            statenames=c("H","S","I","R"),
+            paramnames=c("Beta","gamma","rho"),
+            obsnames = "num",
+            fromEstimationScale=Csnippet(bsflu_fromEstimationScale),
+            toEstimationScale=Csnippet(bsflu_toEstimationScale)
+            )
+```
+
+```{r fit_model_1, eval = F}
+library(doMC)
+registerDoMC(cores=4) 
+mcopts <- list(set.seed=TRUE)
+
+#Guess 810
+set.seed(396658101,kind="L'Ecuyer")
+
+run_level <- 2
+switch(run_level,
+       {bsflu_Np=1000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=20000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=12}, 
+       {bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=12; bsflu_Nlocal=12}
+)
+bsflu_rw.sd <- 0.02
+bsflu_cooling.fraction.50 <- 0.6
+bsflu_box <- rbind(
+  Beta=c(0.001,1),
+  gamma=c(0.001,.5),
+  rho = c(0.5,1)
+)
+
+stew(file=sprintf("search2-%d.rda",run_level),{
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:bsflu_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        sir,
+        start=apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),
+        Np=bsflu_Np,
+        Nmif=bsflu_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=bsflu_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          Beta=bsflu_rw.sd,
+          gamma=bsflu_rw.sd,
+          rho=bsflu_rw.sd
+        )
+      )
+      
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+```
+
+```{r model_1_diag}
+load(file = "model_1_mifs_global.Rdata")
+
+plot(mifs_global)
+```
+
+However, Models 2 and 3 don't fit as well when we use the same algorithm settings as before. For Model 2, as seen below, there are runs in which the the number of failures doesn't converge to zero and the log likelihood remains low. Further, the parameter estimates for $\beta$, $\gamma$, and $\rho$ seem to converge around two different values. Finally, the number of effective samples converges to a much smaller value than the number of effective samples for Model 1.
+
+```{r model_2_diag}
+load(file = "model_2_mifs_global.Rdata")
+
+plot(mifs_global2)
+```
+
+Meanwhile, as seen below Model 3 fits much worse than Model 1 and 2. The effective sample size and conditional likelihood oscilate wildly. The log likelihood does not improve and the number of failures is constant at a non-zero values. The parameter estimates do not converge at all.
+
+```{r model_3_diag}
+load(file = "model_3_mifs_global.Rdata")
+
+plot(mifs_global3)
+```
+
+With more time, it might be possible to fit Model 2 because the parameter estimates seem to converge better if more particles are used or more particles are used in conjunction with a higher cooling fraction. However, parameter estimates for $\gamma$ seem to converge to two different values. However, it is unclear how to improve Model 3 because using larger variance and higher cooling fractions did not improve convergence. It is hard to see how the number of particles might improve the performance.
+
+##Discussion
+With more time, next steps after fitting the model might be revaluating to compute likelihoods to compare between models. I might also build profile intervals for $\beta$ and $\gamma$ because they help describe how a trend propogates and will be interesting to compare across models. Finally, I might also run simulations to see which model describes the observed data the best. 
+
+Along the lines of the last point, we can still do 10000 simulations with the mean of the 10 parameter estimates from Model 1. If so, we get the following picture:
+
+```{r print_sims}
+mle_estimates <- rowMeans(sapply(mifs_global,coef))
+x <- simulate(sir,params=mle_estimates,
+nsim=10000,states=TRUE)
+matplot(time(sir),t(x["H",1:50,]),type='l',lty=1,
+xlab="time",ylab="H",bty='l',col='blue')
+lines(time(sir),obs(sir,"num"),lwd=2,col='black')
+```
+
+While a perfect simulation does not imply that the model fitted is correct, the simulations still do reveal something interesting. The model described above does a good job capturing the increase and peak, but it doesn't model the decrease that well because the model decrease is much smaller and more prolonged than the observed decrease. Model 2 and 3 were motivated by a desire to better capture the decrease.
+
+Besides Model 2 and 3, it might be worth wondering about alternative models to better model this decrease. For example, I might imagine that there are two R components: one for those who posted ($R_1$) and one for those who did not post ($R_2$). Then, I might want to model $N_{SR_2}$, i.e. those who might have been susceptible, but ultimately lost interest, and $N_{IR_2}$, i.e those who decide not to post even though they got interested. Unfortunately, using the API only gave us information about those who posted and not who might have posted. 
+
+Indeed, because the API only gave us information about those who posted, the population size to use was a problem. Based on class notes, the population size used was 810 [@class_notes], which admittedly is small. However, using the number of Youtube subscribers or the US population is also problematic because our estimates of $\beta$, $\gamma$, and $\rho$ may be really tiny, leading to numerical issues. Because of these considerations, I do not report the point estimates for $\beta$, $\gamma$, and $\rho$. On the other hand, for an actual study, it might be good to pick a few accounts to track. It might also be helpful to not assume that the population is constant because people might create accounts to post their videos.
+
+Still, this was an interesting exploration into modeling when videos related to "Call Me Maybe" were posted using three POMP SIR models. While time definitely was a limitation, I was able to get a model to fit to the data that captured some features of the observed data. I also noticed that using more complicated mechanisms to explain the rate at which the infected become recovered negatively affected the model's convergence.

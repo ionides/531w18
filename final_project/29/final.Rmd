@@ -1,0 +1,443 @@
+---
+title: "A TS and POMP model for Tuberculosis"
+date: "4/17/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE)
+library(readr)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(ggplot2)
+library(ggthemes)
+library(knitr)
+library(astsa)
+library(pomp)
+
+```
+
+# Background
+
+Tuberculosis (TB) is an infectious disease that primarily affects a person's lungs. It can also affect organs such as bones and kidneys, which is also influenced by when the infection starts to show. TB-causing bacteria is passes from person to person through the air when an infected person coughs or sneezes. Thus, people are more likely to spread it to those they spend periodic time with, e.g. co-workers or family. The number of cases has decreased over time, like many diseases, however there are still about 1.7 million annual deaths due to TB and it is considered one of the top 10 causes of death worldwide. [1] Left untreated, a person with active TB will infect an average of between 10 to 15 people per year.
+
+Only 5 to 10 percent of healthy people who come in contact with TB bacteria tend to get sick [2]. The rest live with dormant bacteria, and thus have no symptoms and can't spread TB. However, the bacteria remains alive and could later become active as health deteriorates. This is known as a latent infection, and thus it is hard for one to pinpoint when they were infected and by who, as there might have been a significant wait period until the TB case was discovered by the host. Since healthy people tend to have immune systems that can prevent the TB bacteria from growing, one can image that many TB deaths occur in low income countries. Indeed, over 95% of TB deaths occur in low- and middle-income countries. [1] Note that even for people without strong immune systems, there is an incubation period of about two weeks to three months become the TB bacteria becomes active. 
+
+There are seven countries that account for 64% of the total TB deaths in 2016, with India leading the count. The World Health Oranization (WHO) TB statistics gives an estimate incidence figure of 2.79 million cases of TB for India [3]. In March 2017 the Government of Indea annouced a goal of eliminating EB by 2025 [4] This is a difficult problem, as Indea has more than a million 'missing' cases every year that are not notified and could remain undiagnosed or indadequately undiagnosed [4]. If this is the case, there are a number of people that can be infected by the time a host eventually discovers they have active TB. Thus, it is imperative to accurately estimate the number of TB cases and any visible trends in order to improve the search methods when finding, diagnosing, and quaranteening those with TB.
+
+# The data
+
+The data was scrapped and processed from the paper of kumar, V, et al [5] using *BeautifulSoup* in python. It represents the number of pulmonary TB cases from 2007/01/01 - 2012/12/01. A small sample of the data can be seen below
+
+```{r data-head}
+
+df <- read_csv('delhi.csv') %>% filter(Month != 'Total') 
+
+delhi <- df %>% 
+  select(-Month) %>% 
+  gather() %>%
+  mutate(month = 1:nrow(.)) %>%
+  rename(year=key,
+         cases=value)
+
+head(delhi)
+```
+
+
+```{r count_plot, echo=FALSE}
+
+ggplot(delhi, aes(month, cases)) + 
+  geom_point(aes(color=year), size = 2.5) + 
+  geom_line() + 
+  theme_bw() +
+  labs(title = "Monthly reported TB cases in Dehli", subtitle = "2007-2012",
+       x = "Months", y = 'Number of cases')
+  
+
+```
+
+We can see that the number of cases increases around February and March of each year, then goes down during the summer, and sometimes comes up a bit again during the beginning of winter. Also, the overall trend is decreasing and so is the variablility in the monthly number of cases.
+
+
+```{r logs}
+qplot(delhi$month[2:72], diff(log(delhi$cases))) +
+  geom_point(aes(color=delhi$year[2:72]), size=2.5) +
+  geom_line() +
+  theme_bw() +
+  labs(title = "Difference of logged monthly reported TB cases in Dehli", subtitle = "2007-2012",
+       x = "Months", y = 'Number of cases')
+
+```
+
+I also plot the difference of the logs, as this was a transformation that 'got rid' of some of the seasonality spike present in the previous plot. However, you can still see the pattern of increasing dramatically within the first few months of each year. Thus, I will continue with the untransformed data.
+
+### SARMA Model
+We first attempt to find a SARMA model that seems appropriate for the data followed by forecasting. Recall that a general $SARMA(p, q)(P, Q)$ for monthly data is
+
+{\quad\quad\quad}{\phi}(B){\Phi}(B^{12}) (Y_n-\mu) = {\psi}(B){\Psi}(B^{12}) \epsilon_n
+
+To find the best parameters for p, q, P and Q, we tabulate AIC values for a range of different choices. This allows us to compare likelihoods of different models by penalizing the likelihood of each model by a measure of its complexity.
+```{r aic}
+
+aic_table <- function(data,P,Q, SP, SQ){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      try(table[p+1,q+1] <- arima(data,
+                                  order=c(p,0,q),
+                                  season=list(order = c(SP, 0, SQ),
+                                              period=12))$aic)
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+season_10 <- aic_table(delhi$cases[1:66],3,3, 1, 0)
+season_11 <- aic_table(delhi$cases[1:66],3,3, 1, 1)
+kable(season_10, digits=2,
+      caption = "AIC SARMA(P, Q)x(1,0)_12")
+kable(season_11, digits=2,
+      caption = "AIC SARMA(P, Q)x(1, 1)_12")
+```
+
+Based on the AIC tables, the best model for our data seems to be $SARMA(1, 0)(1, 1)_{12}$. Our AIC table also seems to not suffer too much from numerical optimization issues. Most of AIC values increase by at most 2 when adding a single paramter which is good. Further values of $P$ and $Q$ were not tried due to struggles and apparent flaws in the numerical optimization.
+
+We now fit the model minus the last 6 points and check the diagnostic plots
+
+```{r sarma_fit, echo=TRUE, message=FALSE, warning=FALSE}
+delhi_sub <- delhi$cases[1:66]
+ts <- sarima(delhi_sub, p=1, d=0, q=0, P=1, D=0, Q=1, S=12,
+             details=FALSE)
+ts$fit
+ts$ttable
+```
+
+```{r diagnostics}
+n <- length(delhi_sub)
+qplot(1:n, ts$fit$residuals) + geom_line()
+acf(ts$fit$residuals)
+```
+
+The diagnostic plots seem to check out alright although there is still a slight pattern in the residual. Now we look at the result of the forecast. The six red points are the forecast values with error bars over the original last six points.
+
+```{r forecast, echo=TRUE, results=FALSE, include=FALSE}
+ts.forecast <- sarima.for(delhi_sub,n.ahead=6,p=1,d=0,q=0,P=1,D=0,Q=1,S=12)
+pred <- ts.forecast$pred
+se <- ts.forecast$se
+
+pred_df <- tibble(x=67:72, p=pred, s=se) %>% mutate(lb = p-1.96*se,
+                                                    ub = p+1.96*se)
+
+
+
+p <- ggplot() + geom_point(data=pred_df, aes(x,p, fill='Forecast value'), size = 2) +
+  geom_errorbar(data=pred_df, aes(x, ymin=lb, ymax=ub), width=0.2) +
+  geom_point(data=delhi, aes(month, cases, color=year), size = 2.5) + 
+  geom_line(data=delhi, aes(month, cases)) + 
+  theme_bw() +
+  labs(title = "Forecasted vs actual monthly reported TB cases",
+       subtitle = "Forecasts for the last six months",
+       x = "Month",
+       y = 'Number of cases') +
+  scale_fill_manual(name='Forecast', values='black')
+```
+
+```{r plot_forecast, echo=FALSE, warning=FALSE}
+p
+
+```
+
+The SARMA model seems to do ok. The residuals still show a slight pattern and the forecast seems to be pessimistic and overshoot the actual monthly reports, although five out of six intervals contained the true value. There are a few issues with this however:
+
+- This model did not take into account the fact the huge number of unreported cases. Essentially, we treated the data as the full number of reports which is nowhere near the truth and thus models reported cases of TB.
+- This model does not take into account any sort of latency that describes the incubation period where inactive TB bacteria becomes active
+
+This necessitates the idea of a model that assumes the data is only partially observed, and can handle compartment models. Thus, we shall try a POMP model.
+
+### POMP
+
+It is now time to build a Partially Observed Markov Process (POMP) model to take into account that the TB case data is partially observed. We simplify the analysis by assuming citizens are placed in one of four boxes/compartments. One group is for those who have inactive TB, which lasts for a few weeks at the very least. The compartments are below:
+
+- Susceptible (S): The total number of individuals in the population who are not immune to the disease, and have yet to be exposed.
+- Exposed (E): The individuals who have been exposed to tuberculosis. They are not yet infectious to others.
+- Infected (I): The individuals who have active pulmonary TB and are infectious to others.
+- Recovered (R): The individuals who are no longer infectious and have recovered from the disease.
+
+Below a diagram that represents the flow of people between departments.[6]
+
+![](https://institutefordiseasemodeling.github.io/Documentation/general/_images/SEIR-SEIRS.png)
+
+
+The models parameters are defined to be:
+
+- $\mu$: per capita death rate due to other causes than TB
+- $b$: per capita birth rate with $b \gt \mu$
+- $\beta$: infectivity contact rate
+- $\gamma$: rate of transmission from E to I
+- $\alpha$: the removal rate
+- $f$: The probability that an individual removed from the I-class recovers and acquires permanent immunity ($0 \leq f \leq 1$)
+- $1-f$: The probability that an individual dies from the disease
+
+## The Deterministic Skeleton
+Euler's Method was used to numerically approximate the Ordinary Differential Equations (ODEs) adapted by Yan and Liu [7] which can be seen below. The adaptation takes into account that people who are recovered can once again become susceptible, making this and SEIRS model.
+
+- $\frac{d}{dt}S(t) = b(S(t) + R(t) + E(t)) - \mu S(t) - \beta\frac{S(t)I(t)}{N(t)} + .75\beta\frac{R(t)I(t)}{N(t)} = N_{birthS} - N_{SDeath} - N_{SE} + N_{RS}$
+
+- $\frac{d}{dt}E(t) =  N_{SE}(t) -  N_{EI}(t) -  N_{EDeath}(t)$
+
+- $\frac{d}{dt}I(t)  =  N_{EI}(t) -  N_{IR}(t) - N_{IDeath}(t)$
+
+- $\frac{d}{dt}R(t)  = fN_{IR}(t) - N_{Rdeath}(t) - N_{RS}$
+
+Note that in the model, the infected individuals lose the ability to give birth and when an individual is removed from the I-class, they recover and acquire permanent immunity with probability $f$ or die from the disease with probability $1-f$
+
+To simplify further, we assume the quantities of $b, \mu$ are both 0 while $f$ is 1. Also, the re-infection rate is just $.75\beta$
+
+### Adding stochasticity to compartment transitions
+
+For $t = k\delta$ where $k \gt 0; k \in N$ and $\delta > 0; \delta$ fixed:
+
+$\tilde{N}_{SE}(t+\delta) = \tilde{N}_{SE}(t) + Binomial(S(t),1-e^{-\frac{\beta I(t)}{N(t)} \delta})$
+
+$\tilde{N}_{EI}(t+\delta) = \tilde{N}_{EI}(t) + Binomial(E(t),1-e^{-\gamma\delta})$
+$\tilde{N}_{IR}(t+\delta) = \tilde{N}_{IR}(t) + Binomial(I(t),  1- e^{-\alpha \delta})$
+
+$\tilde{N}_{RS}(t+\delta) = \tilde{N}_{RS}(t) + Binomial(R(t),1-e^{-.75\frac{\beta I(t)}{N(t)} \delta})$$
+
+
+Recall that the data has monthly case counts which is assumed to correspond to the individuals who go from E -> I. This data is a sample of the true number of cases. We model the case data as
+
+$C_{t} \sim Poisson (\phi (H(t) - H(t-1))$ where $H(t)$ keeps track of the number of people that went from E -> I at time $t$.
+
+## Model Fitting
+
+One immediate question is how to estimates the parameters in the model. One method is by utilizing a global search of the likelihood surface - randomly set some sensible values for the parameters then perturb them smartly to figure out which values best maximize the likelihood. Due to time constrains and the inability to properly set up the necessary computation on flux, I however merely tested many parameter values out to see which ones had close simulations to the data. This is not ideal as there is a chance to find parameters that fit the existing data but are scientifically unreasonable. Despite this issue, I progress forward just as a curtesy of acknowledging the issue but not being able to attack the parameter estimation the correct way. It's better to say what one should actually do and why one cannot do it than to stop the project halfway because of issues using flux.
+
+The paramaters chosen that seem slightly reasonable (with the exception of gamma) and result in simulations that model the data are $\beta=100$, $\gamma=.000065$, $\alpha=.8$, and $\psi=.7$. Values of $\gamma$ bigger than the current value makes the number of cases in the high thousands around the start of 2007, which cannot be correct even though it's a more scientifically sound value.
+
+Once again, I proceed with the calculations but cannot provide much commentary since I know some values are unsound.
+```{r rprocesses}
+
+sir_init <- Csnippet("
+  S = 475;
+  E = 43500;
+  I = 25;
+  R = 20000;
+  H = 0;
+")
+
+sir_step <- Csnippet("
+  double dN_SE = rbinom(S, 1-exp(-Beta*I/N*dt));
+  double dN_EI = rbinom(E, 1-exp(-gamma*dt));
+  double dN_IR = rbinom(I, 1-exp(-alpha*dt));
+  double dN_RS = rbinom(R, 1-exp(-.75*Beta/N*dt));
+
+  double dN_SD = rbinom(S, 1-exp(-mu*dt));;
+  double dN_ED = rbinom(E, 1-exp(-mu*dt));;
+  double dN_ID = rbinom(I, 1-exp(-mu*dt));;
+  double dN_RD = rbinom(R, 1-exp(-mu*dt));;
+  
+  double dN_birth = b*(S + E + R);
+
+  S += (-dN_SE - dN_SD + dN_birth + dN_RS);
+  E += (dN_SE - dN_EI - dN_ED);
+  I += (dN_EI - dN_IR - dN_ID);
+  R += (dN_IR - dN_RD);
+  H += dN_EI;
+")
+
+
+
+
+
+
+
+dmeas <- Csnippet("lik = dpois(cases, H*psi, give_log);")
+rmeas <- Csnippet("cases = rpois(H*psi);")
+
+
+seir <- pomp(delhi, time="month", t0=0,
+            rprocess = euler.sim(sir_step,delta.t=1/4),
+            initializer = sir_init,
+            paramnames=c("N","Beta","gamma", 'alpha', 'mu', 'b'),
+            statenames=c("S","E", "I","R", "H"))
+
+seir <- pomp(seir,
+             rmeasure=rmeas,
+             dmeasure=dmeas,
+             obsnames = 'cases',
+             statenames="H", zeronames="H", paramnames="psi")
+
+# plot(seir)
+
+params <- c(Beta=100,gamma=.000065,psi=.7,N=64000,
+          mu=0, b=0, alpha=.8)
+
+sims <- simulate(seir,params=params,nsim=20,
+               as.data.frame=TRUE,include.data=TRUE)
+
+avg_sim <- sims %>% filter(sim != 'data') %>%
+  group_by(time) %>% summarise_at(vars(cases, S:H), mean)
+
+ggplot(filter(sims, sim=='data')) + 
+  geom_line(aes(x=time, y=cases, color='True data'), size=1.25) +
+  geom_line(data=filter(sims, sim!='data'), aes(x=time, y=cases, group=sim, color='Sims'),
+            alpha=.7, size=.3) + 
+  geom_line(data=avg_sim, aes(x=time, y=cases, color='Avg of sims'),
+            size=.75) +
+  theme_bw() +
+  scale_color_manual(name="True vs Simulations", values = c('True data' = 'black',
+                                                          'Sims' = 'red',
+                                                          'Avg of sims' = 'blue')) 
+
+```
+
+We now run a few partice filters to get an estimate of the Monte Carlo variability.
+
+```{r ll}
+
+p <- c(Beta=100,gamma=.000065,psi=.7,N=64000,
+          mu=0, b=0, alpha=.8)
+
+pf <- replicate(10,pfilter(seir,Np=50,params=p))
+ll <- sapply(pf,logLik); ll
+logmeanexp(ll,se=TRUE)
+
+
+```
+
+We now run a basic particle filter using the parameters that created the simulations. Note that `Np=5000` and `Nmif=200` are around the values required to get stable results with an error in the likelihood of order 1 log unit in the lecture example. I would try similar values but once again, not getting this to work on flux means I should run this on my personal laptop, so I used smaller values.
+
+```{r if2_attempt}
+delhi_fromEstimationScale <- Csnippet("
+ TBeta = exp(Beta);
+ Tgamma = exp(gamma);
+ Talpha = exp(alpha);
+ Tpsi = exp(psi);
+")
+
+delhi_toEstimationScale <-Csnippet("
+ TBeta = log(Beta);
+ Tgamma = log(gamma);
+ Talpha = exp(alpha);
+ Tpsi = log(psi);
+")
+
+delhi_obsnames <- c("cases")
+delhi_statenames <- c("S","E", "I","R", "H")
+delhi_paramnames= c('Beta', 'gamma', 'psi', 'N', 'mu', 'b', 'alpha')
+stopifnot(packageVersion("pomp")>="0.75-1")
+
+seir2 <- pomp(
+  data=delhi,
+  times="month",
+  t0=0,
+  rprocess=euler.sim(
+    step.fun=sir_step,
+    delta.t=1/4
+  ),
+  rmeasure = rmeas,
+  dmeasure = dmeas,
+  fromEstimationScale = delhi_fromEstimationScale,
+  toEstimationScale = delhi_toEstimationScale,
+  obsnames = delhi_obsnames,
+  statenames=delhi_statenames,
+  paramnames=delhi_paramnames,
+  initializer=sir_init
+)
+
+delhi_mle <- c(100, .000065, .7, 64000, 0, 0, .8)
+names(delhi_mle) <- delhi_paramnames
+run_level <- 1
+switch(run_level,
+       {delhi_Np=500; delhi_Nmif=10; delhi_Neval=10; delhi_Nglobal=10; delhi_Nlocal=10})
+
+
+stew(file=sprintf("pf-%d.rda",run_level),{
+  t_pf <- system.time(
+    pf <- foreach(i=1:20,.packages='pomp',
+                  .options.multicore=mcopts) %dopar% try(
+                    pfilter(seir2,params=delhi_mle,Np=delhi_Np)
+                  )
+  )
+  
+},seed=1320290398,kind="L'Ecuyer")
+
+(L_pf <- logmeanexp(sapply(pf,logLik),se=TRUE))
+```
+
+I now carry out a local search of the likelihood surface using mif2 around the parameters I tested. I also set the `rw.sd` and the `cooling.fraction.50` algorithm parameters to match that in the lecture [6 - https://ionides.github.io/531w18/12/notes12.html]. As in the lecture, I evaluate the likelihood and standard error using replicated particle filters at each point estimate. Also, I show the geometry of the likelihood surface in a neighborhood of estimates.
+
+```{r}
+delhi_rw.sd <- 0.02
+delhi_cooling.fraction.50 <- 0.5
+library(doParallel)
+library(doMC)
+
+cores <- 4  # The number of cores on this machine 
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer")
+registerDoMC(cores=4) 
+
+
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:delhi_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        seir2,
+        start=delhi_mle,
+        Np=delhi_Np,
+        Nmif=delhi_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=delhi_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          Beta=delhi_rw.sd,
+          gamma=delhi_rw.sd,
+          psi=delhi_rw.sd
+        )
+      )
+      
+    }
+  })
+  
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+    t_local_eval <- system.time({
+    liks_local <- foreach(i=1:delhi_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(delhi_Neval, logLik(pfilter(seir2,params=coef(mifs_local[[i]]),Np=delhi_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+
+pairs(~logLik+Beta+gamma+psi,data=subset(results_local,logLik>max(logLik)-50))
+
+
+```
+
+
+### Conclusion
+The comparison between the POMP model and the SARIMA Model is inconclusive from what we see above. It's not good to compare the likelihoods as some of the parameters in the model don't make sense. The POMP approach to analyzing this data set is promising if one can handle the computations on flux and try a global search of the parameters. Also, tweaks to the deterministic skeleton are needed to take into account $\mu$, $b$, and $f$. 
+
+If I was better at flux and had more time, I would more carefully choose the parameters for the POMP model, extend the model to include the birth and death rate, and carry out a more computationally intensive search in order to get more stable results.
+
+### References
+1. http://www.who.int/mediacentre/factsheets/fs104/en/
+2. https://www.infoplease.com/science/health-and-body/tuberculosis-tuberculosis-airborne-nightmare
+3. https://www.tbfacts.org/tb-statistics-india/
+4. https://www.tbfacts.org/tb-india/ 
+5. https://www.hindawi.com/journals/trt/2014/514093/ 
+6. https://institutefordiseasemodeling.github.io/Documentation/general/model-seir.html]
+7. http://www.austms.org.au/Publ/Jamsb/V48P1/pdf/2335.pdf

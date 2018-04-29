@@ -1,0 +1,21 @@
+####  PBS preamble
+#PBS -N Project_Y76
+#PBS -m abe
+#PBS -j oe
+
+#PBS -l nodes=2:ppn=10,mem=75gb,walltime=36:00:00
+#PBS -V
+
+#PBS -A stats531w18_flux 
+#PBS -q flux
+####  End PBS preamble
+
+#  Show list of CPUs you ran on, if you're running under PBS
+if [ -n "$PBS_NODEFILE" ]; then cat $PBS_NODEFILE; fi
+
+#  Change to the directory you submitted from
+if [ -n "$PBS_O_WORKDIR" ]; then cd $PBS_O_WORKDIR; fi
+pwd
+
+#  Put your job commands after this line
+R CMD BATCH --vanilla Y76.R Y76.out

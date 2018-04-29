@@ -1,0 +1,510 @@
+---
+title: 'STATS 531 Final Project: Studying Gun Purchasing Behavior During the Obama
+  Administration'
+date: "April 25, 2018"
+output: 
+  html_document:
+    toc: true
+bibliography: bib_final.bibtex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE);
+require(seasonal); 
+require(doBy); 
+require(zoo);
+require(knitr);
+```
+
+# Introduction
+This project is a continuation of my midterm project, "The Association of the Performance of Gun Stocks with the Party of the President and Mass Shootings." In that project, I looked specifically at gun purchasing behavior during the Obama administration. In that report, I found that there was an association between the stock price of American Outdoor Brand Corporation (\$AOBC), the "family-friendly" name that Smith \& Wesson adopted in 2017, and the occurrence of mass shootings under a Democratic president. More specifically, I found that when a mass shooting recently occurred <i>and</i> the sitting president was a Democrat that stock prices would increase statistically significantly, using ARMA errors.  
+
+This project takes a closer look at the Obama presidency and actual gun-purchasing behavior. As the stock prices in the previous project suggested, there seems to be a relationship between gun-purchasing behavior, the party of the presidency, and the occurrence of mass shootings. To get more directly at gun-purchasing behavior, rather than using the price of stocks (of which there are numerous factors that go into its pricing besides how well sales are doing), I use background checks count data. Neither the United States government or the gun companies themselves release any numbers of how many gun purchases occur within the United States, which makes studying gun-purchasing behavior in the United States very difficult. But under the Brady Handgun Violence Prevention Act of 1993, the FBI releases data on the number of background checks it conducts on gun purchases through the National Instant Criminal Background Check System, or NICS [@nics]. Background check data is on a monthly state-level basis. 
+
+The counts include the number of background checks to purchase handguns, long guns (such as rifles), and multiple, a category meaning that the individual was buying multiple guns. The background checks, of course, cannot be an exact substitute for actual gun purchasing data. This data only captures when the store actually conducted a background check of the individual during the sale of a gun. Thus, it most likely underestimates the number of guns sold. Background checks are also not conducted at gun shows or private sales, so those sales are not captured by the background checks. It is also not defined exactly how many guns are sold under the "multiple" category. The category applies to individuals purchasing two guns to individuals purchasing far more than two guns. Jurgen Brauer, a professor at Georgia Regents University, argues that to use the background checks data, each handgun and long gun background check should count as 1.1 gun sales, and each multiple-gun check should count as 2 gun sales. He omitted all other categories. He arrived to this rule through his interviews with gun shop owners [@brauer]. 
+
+For this project, I do not apply such a correction to the background checks in an attempt to estimate sales. Rather, I simply take the count data as given. The background checks count data can be treated as an observed variable of some underlying latent variable, which, in this case, is the number of gun sales that occurred. I also do not focus on increases in gun purchases around the mass shootings as much; this is an issue that both the <i>New York Times</i> and <i>Buzzfeed</i> has both analyzed [@nytimesanalysis, @nytgithub, @buzzfeedanalysis]. Rather, I take advantage of the fact that the NICS background checks data separates background checks into background checks for a purchase with a single gun (handguns, long guns) and background checks for a purchase with multiple guns. The aim of my project is to design a compartmental model that is based on epidemiological compartmental models to model individuals deciding to purchase a gun, and, if so, deciding whether to purchase a single gun or multiple guns at once. I am also interested in seeing if, after purchasing a gun, they decide to stop purchasing guns. 
+
+For the time frame, I focus specifically on the Barack Obama administration. A major problem that Obama had to face during his presidency was the escalation in the both the frequency and deadliness of mass shootings. During his presidency, the deadlist shootings that took place, in decreasing order of deaths, were the Orlando nightclub shooting in 2016, the Sandy Hook Elementary School shooting in 2012, the San Bernardino attack in 2015, the Binghampton shootings in 2009, the Fort Hood shooting in 2009, the Washington Navy Yard shooting in 2013, the Aurora theater shooting in 2012, and the Umpqua Community College shooting in 2015 [@deadliestshootings]. Thus, it is important to study how gun-purchasing behavior changed throughout Obama's presidency.
+
+In summary, this project aims to study gun-purchasing behavior during Obama's presidency, using the NICS background checks count data as the observed variable of the latent variable of interest, which is the number of gun sales. Specifically, I focus on modeling behavior related to purchasing a single gun versus multiple guns. As Christopher Ingraham of the <i>Washington Post</i> found, 78\% of Americans do not own guns, 19\% of American adults own 50\% of the guns, and 3\% of American adults own the other 50\% of guns [@ingraham]. Thus, there is a severe "stockpiling" behavior that is occurring vis-a-vis the purchasing of guns, which is why I am particularly interested in the rates at which Americans purchase multiple guns at one time. 
+
+This project attempts to study gun-purchasing behavior through an epidemiological lens. Funding for research on guns in the United States is severely curtailed by the federal budget, particularly for public health agencies such as the Centers for Disease Control and Prevention. The Dickey Amendment, passed in 1996, states that "none of the funds made available for injury prevention and control at the Centers for Disease Control and Prevention (CDC) may be used to advocate or promote gun control" [@dickey]. Thus, treating gun violence in the United States as a public health issue has been an approach that many have described as being fruitful, but the lack of data has prevented major progress in the field. 
+
+## Statement of Problem and Hypotheses 
+This project seeks to answer the following research question: <b>how can we combine the NICS background checks count data with an epidemiological compartmental model to model gun-purchasing behaviors of Americans during the Obama presidency, and what are the outcomes of this model?</b> The hypotheses I have for the model are as follows: 
+
+<b>Hypothesis 1</b>: Many existing gun owners will consider purchasing a gun during the Obama presidency, but ultimately will not actually go through with a purchase. 
+
+<b>Hypothesis 2</b>: Of the gun owners considering purchasing a gun who actually go through with the purchase, most will only purchase a single gun. 
+
+<b>Hypothesis 3</b>: The proportion of individuals who purchase only one gun and then stop purchasing guns will be much higher than the proportion of individuals who purchase multiple guns and then stop purchasing guns. In other words, those who purchase multiple guns will be more likely to engage in stockpiling behavior. 
+
+# Data Preparation
+Unfortunately, the FBI makes analyzing the NICS data difficult. On their website, the FBI only makes the data available in a PDF [@nics]. Fortunately, many media companies are also eager to analyze this data for their news pieces and have already OCR'd the data; <i>Buzzfeed</i>, in particular, has made their data publicly available and is constantly updating the dataset [@buzzfeedgithub]. Thus, I take the counts data directly from <i>Buzzfeed</i>.
+
+The data is, again, available on a monthly state-level basis. I am interested in national trends, so I aggregate all state data together by month. I then only keep the data for the Obama administration plus one month before; for the purposes of analyzing gun-purchasing behavior, I start my data during November 2008, when Obama was elected president; the assumption here is that individuals who are nervous about Obama instituting gun regulations will begin purchasing guns before Obama was sworn into office. The plots of handguns background checks, long guns background checks, and multiple guns checks are below. 
+
+```{r data_prep, echo = FALSE, fig.align = "center"}
+dat_background <- read.csv("nics-firearm-background-checks.csv", stringsAsFactors = FALSE, colClasses = c("month" = "character")); 
+dat_interested <- subset(dat_background, select = c("month", "handgun", "long_gun", "multiple")); 
+aggdat <- summaryBy(handgun + long_gun + multiple ~ month, FUN=c(sum), data = dat_interested);
+aggdat$date <- as.character(aggdat$month);
+aggdat$date <- as.Date(as.yearmon(aggdat$date));
+
+final.dat <- subset(aggdat, select=c("date", "handgun.sum", "long_gun.sum", "multiple.sum")); 
+names(final.dat) <- c("date", "handgun", "long_gun", "multiple"); 
+final.dat$single <- final.dat$handgun + final.dat$long_gun; 
+  
+obama.final.dat <- final.dat[final.dat$date >= "2008-10-01" & final.dat$date <= "2017-01-01",]; 
+
+plot(obama.final.dat$date, obama.final.dat$handgun, type = "l", xlab = "Date", ylab = "Number of Background Checks (Handguns)", main = "Number of Background Checks (Handguns) by Date"); 
+plot(obama.final.dat$date, obama.final.dat$long_gun, type = "l", xlab = "Date", ylab = "Number of Background Checks (Long Guns)", main = "Number of Background Checks (Long Guns) by Date"); 
+plot(obama.final.dat$date, obama.final.dat$multiple, type = "l", xlab = "Date", ylab = "Number of Background Checks (Multiple Guns)", main = "Number of Background Checks (Multiple Guns) by Date");
+```
+
+Because we are interested in the difference between a single gun in one purchase versus multiple guns in one purchase, I combine the counts of long guns and handguns into a "single gun" category, analogous to the "multiple guns" category. I discard all other categories per the advice of Brauer [@brauer]. The graph of this newly-created "single gun" category is below. 
+```{r data_prep2, echo = FALSE, fig.align = "center"}
+plot(obama.final.dat$date, obama.final.dat$single, type = "l",xlab = "Date", ylab = "Number of Background Checks (Single Gun)", main = "Number of Background Checks (Single Gun) by Date"); 
+
+obama.final.dat$month <- as.numeric(format(obama.final.dat$date, "%m")); 
+obama.final.dat$year <- as.numeric(format(obama.final.dat$date, "%Y")); 
+obama.final.dat <- obama.final.dat[,c("date", "year", "month", "handgun", "long_gun", "single", "multiple")];
+```
+
+As we can tell in the above four graphs, there is substantial seasonality associated with the background checks. We can look at the periodograms to see that this is the case. I only look at the "single gun" background checks and the "multiple gun" background cheecks. 
+
+```{r seasonality_check, echo = FALSE, fig.align = "center"}
+spectrum(obama.final.dat$single, spans = c(3,5,3), main = "Smoothed Periodogram of Background Checks for Single Guns", xlab = "frequency (cycles/month)"); 
+spectrum(obama.final.dat$multiple, spans = c(3,5,3), main = "Smoothed Periodogram of Background Checks for Multiple Guns", xlab = "frequency (cycles/month)"); 
+```
+
+Thus, the periodograms confirm that there are multiple seasonality cycles present in the data. The authors of the <i>New York Times</i> piece, "What Happens After Calls for New Gun Restrictions? Sales Go Up," however, also noticed this and de-seasoned their data using X-13ARIMA-SEATS Seasonal Adjustment Program, a seasonal adjustment software that is produced, distributed, and maintained by the Census Bureau [@nytimesanalysis, @census]. X-13ARIMA-SEATS is the program that is used by the Census Bureau in their own analyses of time-series data. It performs seasonal adjustments by using an ARIMA-based model that automatically adjusts for factors such as the seasons, holidays, trading days (for daily data), etc. For more information on this de-seasoning methodology, see [@sax]. Thus, I also follow Aisch and Keller's suggestion and de-season the data using X-13ARIMA-SEATS. 
+
+De-seasoning the data, we get the following. 
+
+```{r deseasoning, echo = FALSE, fig.align = "center"}
+obama.ts.handgun <- ts(data = obama.final.dat$handgun, start = c(obama.final.dat$year[1], obama.final.dat$month[1]), end = c(tail(obama.final.dat$year, n = 1), tail(obama.final.dat$month, n = 1)), frequency = 12);
+obama.ts.long_gun <- ts(data = obama.final.dat$long_gun, start = c(obama.final.dat$year[1], obama.final.dat$month[1]), end = c(tail(obama.final.dat$year, n = 1), tail(obama.final.dat$month, n = 1)), frequency = 12);
+obama.ts.single <- ts(data = obama.final.dat$single, start = c(obama.final.dat$year[1], obama.final.dat$month[1]), end = c(tail(obama.final.dat$year, n = 1), tail(obama.final.dat$month, n = 1)), frequency = 12);
+obama.ts.multiple <- ts(data = obama.final.dat$multiple, start = c(obama.final.dat$year[1], obama.final.dat$month[1]), end = c(tail(obama.final.dat$year, n = 1), tail(obama.final.dat$month, n = 1)), frequency = 12);
+
+deseasoned.handgun <- final(seas(obama.ts.handgun));
+deseasoned.long_gun <- final(seas(obama.ts.long_gun)); 
+deseasoned.single <- final(seas(obama.ts.single)); 
+deseasoned.multiple <- final(seas(obama.ts.multiple)); 
+
+obama.final.dat$handgun_seasadj <- round(c(deseasoned.handgun));
+obama.final.dat$long_gun_seasadj <- round(c(deseasoned.long_gun));
+obama.final.dat$single_seasadj <- round(c(deseasoned.single)); 
+obama.final.dat$multiple_seasadj <- round(c(deseasoned.multiple));
+
+obama.final.dat$BCS <- round(c(deseasoned.single));
+obama.final.dat$BCM <- round(c(deseasoned.multiple)); 
+
+plot(obama.final.dat$date, obama.final.dat$handgun_seasadj, type = "l", xlab = "Date", ylab = "Number of Background Checks (Handguns)", main = "Number of Background Checks (Handguns) by Date, De-Seasoned"); 
+plot(obama.final.dat$date, obama.final.dat$long_gun_seasadj, type = "l", xlab = "Date", ylab = "Number of Background Checks (Long Guns)", main = "Number of Background Checks (Long Guns) by Date, De-Seasoned"); 
+plot(obama.final.dat$date, obama.final.dat$BCM, type = "l", xlab = "Date", ylab = "Number of Background Checks (Multiple Guns)", main = "Number of Background Checks (Multiple Guns) by Date, De-Seasoned");
+plot(obama.final.dat$date, obama.final.dat$BCS, type = "l",xlab = "Date", ylab = "Number of Background Checks (Single Gun)", main = "Number of Background Checks (Single Gun) by Date, De-Seasoned");
+
+obama.nics_dat <- obama.final.dat; 
+```
+
+As we can tell, the seasonality has largely been eliminated. The major spikes in the graphs come from massive increases in the gun purchases after mass shootings. Below, I draw lines at the major shootings mentioned in the Introduction. 
+
+```{r shooting_lines, echo = FALSE, fig.align = "center"}
+plot(obama.final.dat$date, obama.final.dat$BCS, type = "l",xlab = "Date", ylab = "Number of Background Checks (Single Gun)", main = "Number of Background Checks (Single Gun) by Date, De-Seasoned");
+abline(v=as.Date("2012-12-01")); #Sandy Hook
+abline(v=as.Date("2016-06-01")); #Orlando
+abline(v=as.Date("2015-12-01")); #San Bernardino
+abline(v=as.Date("2009-04-01")); #Binghampton
+abline(v=as.Date("2009-11-01")); #Fort Hood
+abline(v=as.Date("2013-09-01")); #Navy Yard
+abline(v=as.Date("2012-07-01")); #Aurora
+abline(v=as.Date("2015-10-01")); #Umpqua
+plot(obama.final.dat$date, obama.final.dat$BCM, type = "l", xlab = "Date", ylab = "Number of Background Checks (Multiple Guns)", main = "Number of Background Checks (Multiple Guns) by Date, De-Seasoned");
+abline(v=as.Date("2012-12-01")); #Sandy Hook
+abline(v=as.Date("2016-06-01")); #Orlando
+abline(v=as.Date("2015-12-01")); #San Bernardino
+abline(v=as.Date("2009-04-01")); #Binghampton
+abline(v=as.Date("2009-11-01")); #Fort Hood
+abline(v=as.Date("2013-09-01")); #Navy Yard
+abline(v=as.Date("2012-07-01")); #Aurora
+abline(v=as.Date("2015-10-01")); #Umpqua
+```
+
+Notice that the multiple background checks spike dramatically with each mass shooting (notice that I am using a the "line" option to better identify the trend, but the spike is not occurring <i>before</i> the mass shooting). This is strong evidence that the X-13ARIMA-SEATS de-seasoning procedure worked well: it is reducing the seasonality in the background checks, while still preserving the spikes in background checks after mass shootings, which is expected. This phenomenon has been studied in various pieces, and noted by articles in the <i>New York Times</i> and <i>Buzzfeed</i> [@nytimesanalysis, @buzzfeedanalysis].
+
+It is also interesting to note that the multiple guns background checks count is much more sensitive to the mass shootings than the single guns background checks count. Both counts are particularly sensitive to the Sandy Hook Elementary School shooting, which took place in December 2012, and to the San Bernardino shooting, which took place in December 2015, but we can see that there was a larger spike in multiple gun purchases compared to single gun purchases after the Orlando shooting in June 2016. The initial spikes in both graphs are from the election of Obama. As stated previously, I am particularly interested in understanding at what rate gun purchasers decided to purchase multiple guns during the Obama administration. 
+
+# Partially Observed Markov Processes (POMP) Model Analysis
+An analysis of the evolution of gun purchases during the Obama administration is well-suited for a partially observed Markov processes (POMP) model, because we wish to study a latent variable that is manifested in some observed variable [@ionidesnotes]. In this case, we wish to study the decision to purchase a gun and, if they purchase a gun, whether they purchase a single or multiple guns; what we have is count data on how many background checks were conducted for each month. In this section, I first review the epidemiological compartmental model that I designed for this POMP analysis. I then review the assumptions made in the model. I then look at the results of the analysis.
+
+It is important to keep in mind that this analysis should be treated as a very preliminary look at gun-purchasing behavior in the United States, not as a definitive answer to how many people decide to purchase guns. It should be treated as an exercise to see if such an analysis is feasible, not whether the point estimates produced are exactly correct. The goal here is to see if we can understand a little bit more about gun-purchasing behavior if we use an epidemiological approach. 
+
+## Designing the Epidemiological Compartmental Model for Gun Purchasing Behavior During the Obama Administration
+```{R model, echo = FALSE, message = FALSE, warning = FALSE}
+require(DiagrammeR);
+mermaid("
+        graph LR
+          Gunowner --> Buyer
+          Buyer --> Single
+          Buyer --> Multiple
+          Single --> Stop
+          Multiple --> Stop
+        ")
+```
+
+The model I use for my POMP analysis is very simple. The first state, "Gunowner," is the pool of gunowners---that is, individuals who may be interested in purchasing a gun during the Obama administration. One of the major assumptions of this model is that only previous gunowners before the Obama adminstration will purchase guns in this model. Obviously, this is an unrealistic assumption, but it is difficult to model individuals who never owned a gun before but may be interested in purchasing a gun. There is survey research that shows the number of people who are may be interested in purchasing a gun, but it is unrealistic to assume they all have the same propensity to purchase a gun [@pew]. Some may be on just on the fence about purchasing a gun, while others could, perhaps, see themselves owning a gun but not actually purchasing it. Thus, as a rough estimate of individuals who would potentially buy guns, I simply use the number of gunowners in America, which I take to be 22\% of the 2008 population, according to the percentage found by the <i>Washington Post</i> [@ingraham]. 
+
+The second stage is what I am calling "Buyer." It is when individuals in the first state decide they will purchase a gun. These Buyers will then either purchase a single gun or multiple guns, which feed into either stages "Single" or "Multiple," respectively. 
+
+The last stage is what I call "Stop." This is when the gun-purchasing individual stops purchasing guns. Both the "Single" and "Multiple" stages feed into the "Stop" stage, but at different rates. 
+
+To be more precise, our Markov transmission model is that each individual in "Gunowner" ($G$) transitions to "Buyer" ($B$) at rate $\beta B(t)$; each individual in $B$ transitions to stage "Multiple" (M) at rate $\gamma M(t)$; the remaining individuals who do not transition to stage $M$ transition to stage "Single" ($S$) at rate $\alpha S(t)$. Lastly, individuals in stage $M$ transition to stage "Stop" ($St$) at rate $\mu_{M,St}$; individuals in stage $S$ transition to stage $St$ at rate $\mu_{S,St}$. All rates have units $\text{month}^{-1}$. In the POMP model, I use a binomial approximation with exponential transition probabilities, which is the most numerically preferable way to implement this type of model [@ionidesnotes]. Expressing these ideas in ordinary differential equations (ODEs), and letting $N_{12}(t)$ denote the number of individuals who have transitioned from stage $1$ to $2$ (where $1$ and $2$ are replaced by the actual stages in the model above) by time $t$,  
+
+* $\frac{dN_{GB}}{dt} = \beta B(t) G(t)$ 
+* $\frac{dN_{BS}}{dt} = \alpha S(t) B(t)$
+* $\frac{dN_{BM}}{dt} = \gamma M(t) B(t)$
+* $\frac{dN_{SSt}}{dt} = \mu_{SSt} S(t)$
+* $\frac{dN_{MSt}}{dt} = \mu_{MSt} M(t)$
+
+The idea here is that gunowners will be interested in purchasing a gun when more gunowners want to buy a gun. This can manifest in form of family members discussing potentially making gun purchases, friends discussing the same topics, etc. Then, the Buyer decides whether to purchase a Single gun or Multiple gun based on the number of people who have made either single or multiple gun purchases. The transition into the Stop stage is independent of the number of people who have already stopped making purchases. In this way, we can view gun purchases as a sort of epidemiological phenomenon---those who are actively thinking about purchasing guns (as modeled by the "Buyer" stage) and those who have already purchased guns (as modeled by the "Single" and "Multiple" stages) can influence those who have a high propensity to purchasing guns. 
+
+I denote the counts of background checks of a single gun as $BCS$ and the counts of background checks of multiple gun purchases as $BCM$. These measurements are modeled as 
+\[BCS_n \sim NegBinomial(\theta_S, \rho S(t_n))\]
+\[BCM_n \sim NegBinomial(\theta_M, \rho M(t_n))\]
+Here, $\rho$ is a reporting rate, because the number of actual gun purchases may not be captured perfectly by the background check count data. I assume that this error is the same across single gun purchases and multiple gun purchases. $\theta_S$ and $\theta_M$ are the "size" parameters of the negative binomial distribution, which I assume are not equal to each other. I use the negative binomial distribution, rather than the Poisson distribution, because I am assuming that the mean and variance of the count data are not equal to each other.
+
+## Assumptions of the Model
+There are some major assumptions of the model that had to be made in order to fit the model in a realistic timespan and with the limited data that is available on gun purchases. I already discussed the assumption of drawing from the pool of gunowners in the previous section. Second, I assume that once Buyers choose between becoming either a Single buyer or a Multiple buyer, they cannot transition to the other stage in the next month. That is, it assumes that once a Buyer decides to purchase multiple guns, then that user can only purchase multiple guns in the next month (or transition to Stop). These are all, of course, unrealistic expectations. Lastly, the model assumes that once the individual stops purchasing guns, then the individual can never go back to purchasing guns again. Again, this is another problematic assumption. But what I am trying to see is if this model can give us any results that seem to match our intuition, to see whether or not such an analysis is worth pursuing. 
+
+## Building the POMP Model
+In this section, I implement the POMP model as designed above. Notice that I initiate $G(0) = 66962466$, which is 22\% of the U.S. population in 2008 [@ingraham]. I also initiate $S(0) = 739183$ and $M(0) = 16426$, which were the background check counts in October 2008, a month before Obama's election. Because I want to capture the number of potential buyers <i>during</i> the Obama administration, I set $B(0) = 0$. 
+
+```{r building_a_pomp_model, warning = FALSE, message = FALSE, fig.align = "center"}
+require(pomp);
+obama.nics_dat$time = c(1:length(obama.nics_dat$year));
+obama.nics_data <- subset(obama.nics_dat, select = c("time", "BCS", "BCM")); 
+
+obama.nics_data <- data.frame(obama.nics_data, row.names = obama.nics_dat$date); 
+
+obama.nics_statenames <- c("G", "B", "S", "M"); 
+obama.nics_paramnames <- c("Beta", "Alpha", "Gamma", "mu_SSt", "mu_MSt", "rho", "thetaS", "thetaM");
+
+obama.nics_obsnames <- colnames(obama.nics_data)[2:3]; 
+
+obama.nics_dmeasure <- "
+lik = dnbinom_mu(BCM, thetaM, rho*M, give_log);
+"
+
+obama.nics_rmeasure <- "
+BCS = rnbinom_mu(thetaS, rho*S);
+BCM = rnbinom_mu(thetaM, rho*M);
+"
+
+obama.nics_rprocess <- "
+double dN_GB = rbinom(G,1-exp(-dt*Beta*B));
+double dN_BM = rbinom(B,1-exp(-dt*Gamma*M));
+double dN_BS = rbinom(B-dN_BM,1-exp(-dt*Alpha*S));
+double dN_SSt = rbinom(S,1-exp(-dt*mu_SSt));
+double dN_MSt = rbinom(M,1-exp(-dt*mu_MSt)); 
+G -= dN_GB;
+B += dN_GB - dN_BS - dN_BM; 
+S += dN_BS - dN_SSt;
+M += dN_BM - dN_MSt; 
+"
+
+obama.nics_fromEstimationScale <- "
+TBeta = exp(Beta);
+TAlpha = exp(Alpha); 
+TGamma = exp(Gamma); 
+Tmu_SSt = exp(mu_SSt);
+Tmu_MSt = exp(mu_MSt);
+Trho = exp(rho); 
+TthetaS = exp(thetaS);
+TthetaM = exp(thetaM); 
+"
+
+obama.nics_toEstimationScale <- "
+TBeta = log(Beta);
+TAlpha = log(Alpha); 
+TGamma = log(Gamma); 
+Tmu_SSt = log(mu_SSt);
+Tmu_MSt = log(mu_MSt);
+Trho = log(rho); 
+TthetaS = log(thetaS);
+TthetaM = log(thetaM); 
+"
+
+pop_2008 = 304374846; 
+gunowners_count = 0.22*pop_2008; 
+
+obama.nics_initializer <- "
+G = 66962466; 
+B = 0; 
+S = 739183;
+M = 16426; 
+"
+
+require(pomp);
+stopifnot(packageVersion("pomp") >= "0.75-1"); 
+
+obama.nics.pomp = pomp(
+  data = obama.nics_data, 
+  times = "time",
+  t0 = 1, 
+  rprocess=euler.sim(
+    step.fun = Csnippet(obama.nics_rprocess), 
+    delta.t = 1/12
+  ),
+  rmeasure = Csnippet(obama.nics_rmeasure), 
+  dmeasure = Csnippet(obama.nics_dmeasure), 
+  fromEstimationScale = Csnippet(obama.nics_fromEstimationScale), 
+  toEstimationScale = Csnippet(obama.nics_toEstimationScale),
+  obsnames = obama.nics_obsnames,
+  statenames = obama.nics_statenames, 
+  paramnames = obama.nics_paramnames, 
+  initializer = Csnippet(obama.nics_initializer) 
+);
+```
+
+## Results of the Global Likelihood Maximization Using the IF2 Iterated Filtering Algorithm 
+Below, I fit the POMP model using the package <tt>pomp</tt> with the model I designed above. For the sake of being able to see the mechanisms of all the moving parts of the POMP model, I have included the entirety of the code below. Because I have no priors on what the initial starting values should be (very little literature on this), I jump straight into estimating the parameter values using the IF2 iterated filtering algorithm [@ionidesnotes]. In this exercise, I conduct a global search of the likelihood surface using randomized starting values. I do this because I have no strong prior belief on what the parameter values should approximately equal.  
+
+```{r POMP, warning = FALSE, message = FALSE, fig.align = "center"}
+run_level = 3; 
+switch(run_level, 
+       {obama.nics_Np = 100; obama.nics_Nmif = 10; obama.nics_Neval = 10; obama.nics_Nglobal = 10}, 
+       {obama.nics_Np = 20000; obama.nics_Nmif = 100; obama.nics_Neval = 10; obama.nics_Nglobal = 10}, 
+       {obama.nics_Np = 60000; obama.nics_Nmif = 300; obama.nics_Neval = 10; obama.nics_Nglobal = 100}
+)
+
+require(doParallel); 
+cores = 20; 
+registerDoParallel(cores); 
+mcopts = list(set.seed=TRUE); 
+set.seed(396659101, kind = "L'Ecuyer");
+
+obama.nics_rw.sd = 0.02; 
+obama.nics_cooling.fraction.50 = 0.5;
+
+obama.nics_box <- rbind(
+  Beta=c(0.001,0.05),
+  Alpha=c(0.001,0.05),
+  Gamma=c(0.001,0.05),
+  mu_SSt=c(0.5,2),
+  mu_MSt=c(0.5,2),
+  rho=c(0.5,2),
+  thetaS=c(0.05,10),
+  thetaM=c(0.05,10)
+)
+
+stew(file=sprintf("box_eval_pomp5-%d.rda",run_level),{
+  t_obama.nics <- system.time({
+    mifs_obama.nics <- foreach(i=1:obama.nics_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar% 
+      mif2(
+        obama.nics.pomp,
+        start=c(apply(obama.nics_box,1,function(x)runif(1,x[1],x[2]))),
+        Np=obama.nics_Np, 
+        Nmif=obama.nics_Nmif, 
+        cooling.type="geometric", 
+        cooling.fraction.50=obama.nics_cooling.fraction.50,
+        transform=TRUE, 
+        rw.sd=rw.sd(
+          Beta = obama.nics_rw.sd, 
+          Alpha = obama.nics_rw.sd,
+          Gamma = obama.nics_rw.sd,
+          mu_SSt = obama.nics_rw.sd,
+          mu_MSt = obama.nics_rw.sd,
+          rho = obama.nics_rw.sd,
+          thetaS = obama.nics_rw.sd,
+          thetaM = obama.nics_rw.sd
+        )
+      )
+  })
+}, seed = 1270401374, kind = "L'Ecuyer")
+
+stew(file=sprintf("lik_global_eval_pomp5_%d.rda", run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:obama.nics_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(obama.nics_Neval, logLik(pfilter(obama.nics.pomp,params=coef(mifs_obama.nics[[i]]),Np=obama.nics_Np)))
+      logmeanexp(evals, se = TRUE)
+    }
+  })
+}, seed = 442141592, kind = "L'Ecuyer")
+
+results_global <- data.frame(logLik=liks_global[,1], logLik_se = liks_global[,2],t(sapply(mifs_obama.nics,coef)));
+summary(results_global$logLik, digits = 5); 
+
+pairs(~logLik + Beta + Alpha + Gamma + mu_SSt + mu_MSt + rho + thetaS + thetaM, data = subset(results_global, logLik > max(logLik)-5000)); 
+plot(mifs_obama.nics);
+kable(results_global[which.max(results_global$logLik),]);
+```
+
+This model took approximately 13.5 hours to fit on 20 cores; above, I printed out the estimated parameters of the iteration with the highest log-likelihood. The next section analyzes the above results.
+
+## Analyzing the Results 
+We first see that the effective sample size is quite large, meaning that the particle filter is working quite effectively. We also see that 
+
+It is important to note that there is not a lot of strong agreement between the different runs in many of the parameter estimates. Some, such as $\rho$ and $\mu_{MSt}$, have much stronger agreements between the runs. This may be a signal that there is poor numerical maximization. I explore this further with profile likelihood estimations below. Although some of the parameters have poor agreement on the final estimated parameter values, some of them converge within a small range of possible values. 
+
+The most important part of this exercise, however, is that the parameter estimates from our highest log-likelihood run largely support the hypotheses I put forth in the previous sections. That is, the movement from being a potential buyer to becoming an actual buyer (measured by $\hat\beta$, $\hat\alpha$, and $\hat\gamma$) is quite low relative to the entire population of gunowners. Moreover, notice that the number of individuals who choose to become single gun purchasers (measured by $\hat\alpha$) is much higher than the number of individuals who choose to become multiple gun purchasers (measured by $\hat\gamma$). Lastly, the most interesting part of this model is the rate at which individuals exit the "Single" and "Multiple" stages. Notice that individuals exit the "Single" stage at a much faster rate than individuals who exit the "Multiple" stage.
+
+These results seem to give some preliminary evidence that the three hypotheses are correct---that is, many individuals will consider purchasing a gun, but not actually go through with it, that of those who actually go through with the gun purchase, most will only purchase a single gun, and that individuals who purchase a single gun are much more likely to "exit" the market compared to individuals who purchase multiple guns. 
+
+## Assessing the Model 
+One thing we can do is generate some profile confidence intervals for our parameters. For this project, I only had time to fit profile confidence intervals for $\hat\beta$ and $\hat\gamma$, which are the variables for which people are transitioning to thinking about purchasing a gun and the rate at which those who do buy a gun buy multiple guns at once. 
+
+To speed up the fitting process, I fixed all other parameters except for $\alpha$ and $\gamma$ when looking at the profile confidence interval for $\hat\beta$, and I fixed all other parameters except for $\alpha$ and $\beta$ when looking at the profile confidence interval for $\hat\gamma$. I also increase the cooling rate to $0.8$. Thus, these results will only be a rough idea of how well our model has fit these parameters. 
+
+```{r beta_profile, warning = FALSE, message = FALSE}
+run_level = 4; 
+switch(run_level, 
+       {obama.nics_Np = 50; obama.nics_Nmif = 10; obama.nics_Neval = 10; obama.nics_Nglobal = 10; obama.nics_Nlocal = 10}, 
+       {obama.nics_Np = 20000; obama.nics_Nmif = 100; obama.nics_Neval = 10; obama.nics_Nglobal = 10; obama.nics_Nlocal = 10}, 
+       {obama.nics_Np = 60000; obama.nics_Nmif = 300; obama.nics_Neval = 10; obama.nics_Nglobal = 100; obama.nics_Nlocal = 20},
+       {obama.nics_Np = 10000; obama.nics_Nmif = 200; obama.nics_Neval = 10; obama.nics_Nglobal = 50; obama.nics_Nlocal = 20}
+)
+
+require(doParallel); 
+cores = 20; 
+registerDoParallel(cores); 
+mcopts = list(set.seed=TRUE); 
+
+obama.nics_rw.sd = 0.02; 
+obama.nics_cooling.fraction.50 = 0.8;
+
+set.seed(481098888, kind = "L'Ecuyer");
+
+obama.nics_pd <- profileDesign(
+  Beta = seq(0.001,0.3, length.out = 15),
+  lower = c(Alpha = 0.001, Gamma = 0.001, mu_SSt = 0.22857, mu_MSt = 1.882926e-05, rho = 1.16275, thetaS = 1.747837, thetaM = 39.98109),
+  upper = c(Alpha = 0.05, Gamma = 0.05, mu_SSt = 0.22857, mu_MSt = 1.882926e-05, rho = 1.16275, thetaS = 1.747837, thetaM = 39.98109),
+  nprof = 10
+)
+
+require(reshape2); 
+require(plyr);
+
+stew(file=sprintf("profile_beta-%d.rda", run_level),{
+  t_global <- system.time({
+    beta_profile <- foreach(p = iter(obama.nics_pd, by = "row"), 
+                            .combine = rbind, 
+                            .options.multicore=mcopts) %dopar%
+                            {
+                              mif2(mif2(obama.nics.pomp,
+                                        start=unlist(p),
+                                        Np=obama.nics_Np, 
+                                        Nmif=obama.nics_Nmif, 
+                                        cooling.type="geometric", 
+                                        cooling.fraction.50=0.8,
+                                        transform=TRUE, 
+                                        rw.sd=rw.sd(
+                                          Alpha = obama.nics_rw.sd, 
+                                          Gamma = obama.nics_rw.sd)
+                              )) -> mf
+                              pf <- replicate(obama.nics_Nglobal, pfilter(mf,Np=1000))
+                              ll <- sapply(pf,logLik)
+                              ll <- logmeanexp(ll,se=TRUE)
+                              
+                              data.frame(as.list(coef(mf)), 
+                                         loglik = ll[1], 
+                                         loglik.se = ll[2])
+                            }
+  })
+}, seed = 92603888, kind = "L'Ecuyer")
+
+library(ggplot2)
+ggplot(ddply(mutate(beta_profile, Beta=signif(Beta,8)),~Beta,subset,loglik==max(loglik)), aes(x = Beta, y = loglik)) + geom_point() + geom_smooth() + theme_bw();
+
+max_beta_loglik = max(beta_profile$loglik); 
+loglik_prof = (1.92 - max_beta_loglik)*(-1); 
+CI = which(beta_profile$loglik >= loglik_prof); 
+lower = beta_profile$Beta[min(CI)]; 
+upper = beta_profile$Beta[max(CI)]; 
+print(noquote(paste("(", lower, upper, ")"))); 
+```
+
+Thus, from this, we see that the confidence interval for $\hat\beta$ is simply $(0.001, 0.3)$, which is simply the interval we defined. Thus, there definitely seems to be specification issues with the model: although it is returning sensible point estimates, it seems like the other estimated parameters are what are driving the log-likelihood.
+
+Looking at the profile confidence interval for $\hat\gamma$, we see that we have the same issue here. 
+```{r gamma_profile, warning = FALSE, message = FALSE}
+set.seed(481098888, kind = "L'Ecuyer");
+
+obama.nics_pd <- profileDesign(
+  Gamma = seq(0.0001,0.2, length.out = 15),
+  lower = c(Beta = 0.001, Alpha = 0.001, Gamma = 0.001, mu_SSt = 0.22857, mu_MSt = 1.882926e-05, rho = 1.16275, thetaS = 1.747837, thetaM = 39.98109),
+  upper = c(Beta = 0.100, Alpha = 0.05, Gamma = 0.05, mu_SSt = 0.22857, mu_MSt = 1.882926e-05, rho = 1.16275, thetaS = 1.747837, thetaM = 39.98109),
+  nprof = 10
+)
+
+require(reshape2); 
+require(plyr);
+
+stew(file=sprintf("profile_gamma-%d.rda", run_level),{
+  t_global <- system.time({
+    gamma_profile <- foreach(p = iter(obama.nics_pd, by = "row"), 
+                            .combine = rbind, 
+                            .options.multicore=mcopts) %dopar%
+                            {
+                              mif2(mif2(obama.nics.pomp,
+                                        start=unlist(p),
+                                        Np=obama.nics_Np, 
+                                        Nmif=obama.nics_Nmif, 
+                                        cooling.type="geometric", 
+                                        cooling.fraction.50=0.8,
+                                        transform=TRUE, 
+                                        rw.sd=rw.sd(
+                                          Beta = obama.nics_rw.sd,
+                                          Alpha = obama.nics_rw.sd
+                                          )
+                              )) -> mf
+                              pf <- replicate(obama.nics_Nglobal, pfilter(mf,Np=1000))
+                              ll <- sapply(pf,logLik)
+                              ll <- logmeanexp(ll,se=TRUE)
+                              
+                              data.frame(as.list(coef(mf)), 
+                                         loglik = ll[1], 
+                                         loglik.se = ll[2])
+                            }
+  })
+}, seed = 92603888, kind = "L'Ecuyer")
+
+library(ggplot2)
+ggplot(ddply(mutate(gamma_profile, Gamma=signif(Gamma,8)),~Gamma,subset,loglik==max(loglik)), aes(x = Gamma, y = loglik)) + geom_point() + geom_smooth() + theme_bw();
+
+max_gamma_loglik = max(gamma_profile$loglik); 
+loglik_prof = (1.92 - max_gamma_loglik)*(-1); 
+CI = which(gamma_profile$loglik >= loglik_prof); 
+lower = gamma_profile$Gamma[min(CI)]; 
+upper = gamma_profile$Gamma[max(CI)]; 
+print(noquote(paste("(", lower, upper, ")"))); 
+```
+
+Again, we see that the confidence interval for $\hat\gamma$ is simply at the range we set it for. Thus, this means that there must be specification issues with our proposed epidemiological model. The model might simply be asking for too much from the little amount of data that we have; the data might also not be suitable with the type of epidemiological model that we have. Moreover, the initial starting values for the various stages may also be a problem as well. 
+
+Unfortunately, because of computational constraints, these were the only profile confidence intervals that I could obtain by the due date of the project. Based on the previous diagnostic plots, most of the log-likelihood must be driven by $\mu_{MSt}$ and $\theta_M$ (the "size" parameter of the negative binomial used to model the count of the background checks of multiple guns).
+
+Since I maximized the likelihood of predicting the number of background checks of multiple guns (since that is one of my primary concerns), I can compare the number of background checks of multiple guns with a simulated number of background checks of multiple guns based on the POMP model. 
+
+```{r simulation, warning = FALSE, message = FALSE, echo = FALSE, fig.align = "center"}
+mle = as.vector(results_global[which.max(results_global$logLik),][3:length(results_global[which.max(results_global$logLik),])]); 
+mle <- c(Beta=0.06347711, Alpha=0.08121094, Gamma=0.01107897, mu_SSt = 0.22857, mu_MSt = 1.882926e-05, rho = 1.16275, thetaS = 1.747837, thetaM = 39.98109); 
+set.seed(8888888); 
+sims <- simulate(obama.nics.pomp, params = mle, nsim = 1, as=TRUE, include=TRUE);
+ggplot(sims, mapping=aes(x=time,y=BCM,group=sim,color=sim=="data")) + geom_line() + guides(color=FALSE) + ggtitle("Background Checks of Multiple Guns (Blue) and \n Predicted Background Checks of Multiple Guns (Orange)") + theme(plot.title = element_text(hjust = 0.5)); 
+```
+
+As is clear, the graph does capture some of the peaks, especially since the highest predicted peak is near the largest peak in the center. However, the POMP model also predicts much more variability in the number of background checks compard to the actual number, which means the model is not capturing some of the dynamics of the actual background checks data. Again, this may be a specification issue of the model---we may be applying too rigid a model to too little data over too long of a time span. 
+
+# Conclusion
+As stated in the introduction, our understanding of gun-purchasing behavior in the United States is very limited. This is primarily because Congress has had a longstanding tradition of banning epidemiological studies by the CDC or NIH of gun-purchasing behaviors, as such studies are considered studies supporting gun control. Thus, this project is a first attempt at trying to creatively apply a flexible model with an epidemiological compartment model to data that can be considered observed data of a latent variable of interest. Thus, this project has been more of a proof-of-concept of applying a compartmental epidemiological model to gun-purchasing behavior using background checks data from the FBI. As far as I am aware, this is the first paper to apply a POMP analysis with a specially-designed compartment model to a guns-related dataset.  
+
+Using the monthly data on background checks for gun purchases that we have publicly available, we can consider the background checks as a sort of observed variable of a latent variable of interest, which is the number of guns sold in the United States. The POMP model, with parameters of the model fitted using the iterated filtering (IF2) algorithm, produced parameters that were very much sensible and in-line with expectations: most individuals who may purchase a gun did not purchase a gun, and among those who did, most chose to purchase a single gun rather than multiple guns. We also found that those who purchased a single gun stopped purchasing guns at a much higher rate than those who purchased multiple guns.
+
+Of course, there are many problems with this approach. In particular, the assumptions made about the model are particularly problematic. There also seem to be specification issues, especially for the parameters $\hat\beta$, $\hat\alpha$, and $\hat\gamma$. This is most likely the result of the model, which may not be entirely appropriate for the model, and may also be partially due to the starting values, especially the number of initial "Buyers." The rest of the starting values, too, were heuristically chosen and thus may also be poor choices. Only the number of single background checks and multiple background checks were concrete values (taken from October 2008, one month before Obama's election), so that may also explain why the transition values from the "Single"/"Multiple" stage into the "Exit" stage seem to have better convergence. 
+
+The data may also need to be further processed. Taking differences would have improved stationarity in the data, but then the resulting data would not have had a compartmental model interpretation. Taking a log-transformation of the data may have been helpful, but I wanted the parameters of the POMP analysis to be as interpretable as possible. Thus, further transformations of the data could help improve the analysis. But the initial results from this preliminary first analysis on this type of data using a POMP analysis shows that there is significant potential in such an approach. 
+
+# References

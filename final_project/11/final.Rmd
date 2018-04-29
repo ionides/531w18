@@ -1,0 +1,337 @@
+---
+title: "Human Proximal Small Intestinal pH Model"
+date: "4/24/2018"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+```{r set up, include=FALSE, warning=FALSE,message=FALSE}
+options(
+  keep.source=TRUE,
+  stringsAsFactors=FALSE,
+  encoding="UTF-8"
+  )
+set.seed(594709947L)
+require(ggplot2)
+theme_set(theme_bw())
+require(plyr)
+require(reshape2)
+require(magrittr)
+require(foreach)
+require(doMC)
+require(pomp)
+stopifnot(packageVersion("pomp")>="0.69-1")
+require(knitr)
+require(doParallel)
+require(png)
+```
+
+--------------------------------------------------
+
+## 1. Introduction
+For the low solubility, high permeability drugs, dissolution can be the rate-limiting step of their absorption, rendering them super sensitive to environmental changes at absorptive sites, especially pH if the drugs are ionizable. Hence, a slight change of pH in the  proximal small intestine, the main absorptive site for most of the drugs, may give rise to significant variabilities in the process of drug oral uptake. Therefore, a better characterization of the pH dynamics may help better explain and/or predict the great intra- and inter- individual variabilities in the drug dissolution, solubility and absorption profiles.
+
+The SmartPill motility testing system features an ingestible capsule that measures pressure, pH, transit time and temperature as it passes through the entire gastrointestinal tract[1], making it possible for recording the pH fluctuation in the proximal small intestine. 
+
+This study is primarily aimed at building up a model reflecting the pH dynamics in the proximal small intestine based on SmartPill data via hidden Markov method.
+
+## 2. Data Exploration
+The subset individual pH data used in this study starts right after gastric emptying, and ends when the pH reaches a relative stable level. The duration is 30 mins with a sampling frequency of 5s. The summary info and plot along the time course are displayed below. The pH fluctuations are great in the beginning and dies down gradually as time goes by. The pH statstics of this person all fall into the normal scope[2].
+
+```{r data exploration, echo=FALSE}
+X202108 <- read.csv("202108.csv",header = T)
+plot(x=X202108$Time,y=X202108$pH,type="l",xlab="Time after gastric emptying (s)", ylab="pH",col="red")
+summary(X202108$pH)
+```
+
+## 3. Model Building
+The HCl (pH=1-2) is emptied from the stomach into the duodenum in a pulse packet fluid fashion and is neutralized by HCO3- (pH=7-7.5) secreted from the duodenal cluster unit, especially the pancreas. The intestinal pH is sustained at a reasonable range by the feedback machanism of human body via adjusting the entry of HCl and HCO3-[3].
+
+```{r schematic model, echo=FALSE}
+img1_path <- "Picture1.png"
+include_graphics(img1_path)
+```
+
+The model proposed in this study is:
+$$\begin{eqnarray}
+\\ S_{n}=S_{n-1}+A*N*B*C,
+\\if\ S>0,\  D=-log10(S),
+\\if\ S<0,\  D=7.5+(log10(-S)*0.07143)
+\end{eqnarray}$$
+where S denotes the concentration of HCl when it's >0 and the concentration of OH- when it's <0. 
+A can be -1 or 1, and follows a Bernoulli distribution with different probabilities based on the level of S. We can indicate the input from either Stomach or Pancreas by using A. 
+N represent the number of pulses coming from Stomach or Pancreas in a given time period and follows a Poisson process.
+B refers to the amount of H+ or OH-, and follows a normal distribution.
+C component means the amount of H+ or OH- every pulse brings is decreasing at an exponential way, as the capsule travels away from the stomach and entry hole of pancreatic secreation.
+D is state varible of pH.
+Since the pH of HCO3- falls between 7 to 7.5, I make some restriction on D to make sure it always stay in a reseanable range.
+
+```{r pomp,include=TRUE}
+sp_statenames <- c("S","D")
+sp_paramnames <- c("lambda1","lambda2","mu1","sigma1","sigma2","ub","lb","p1","p2")
+sp_obsnames <- colnames(X202108)[2]
+
+sp_test <- c(
+  lambda1 = 0.05,
+  lambda2 = 0.009,
+  mu1 = 0.055,
+  sigma1 = 0.01,
+  sigma2 = 0.01,
+  ub = 0.00000316,
+  lb = 0.000000316,
+  p1 = 0.001,
+  p2 = 0.999
+)
+
+sp_rprocess <- "
+    double dN = rpois(lambda1*dt);
+    if (S>ub){
+    S += (2*rbinom(1,p1)-1)*(dN*rnorm(mu1,sigma1)*exp(-lambda2*t));
+    }
+    else if (lb<S && S<ub){
+    S += (2*rbinom(1,0.5)-1)*(dN*rnorm(mu1,sigma1)*exp(-lambda2*t));
+    }
+    else {
+    S += (2*rbinom(1,p2)-1)*(dN*rnorm(mu1,sigma1)*exp(-lambda2*t));
+    }
+    if (S>0)
+    D=-log10(S);
+    else
+    D=7.5+(log10(-S)*0.07143);
+"
+
+sp_dmeasure <- "
+    lik = dnorm(pH,D,sigma2,give_log);
+"
+
+sp_rmeasure <- "
+    pH = rnorm(D,sigma2);
+"
+
+sp_fromEstimationScale <- "
+    Tlambda1 = exp(lambda1);
+    Tlambda2 = exp(lambda2);
+    Tmu1 = exp(mu1);
+    Tsigma1 = exp(sigma1);
+    Tsigma2 = exp(sigma2);
+    Tub = exp(ub);
+    Tlb = exp(lb);
+    Tp1 = expit(p1);
+    Tp2 = expit(p2);
+"
+
+sp_toEstimationScale <- "
+    Tlambda1 = log(lambda1);
+    Tlambda2 = log(lambda2);
+    Tmu1 = log(mu1);
+    Tsigma1 = log(sigma1);
+    Tsigma2 = log(sigma2);
+    Tub = log(ub);
+    Tlb = log(lb);
+    Tp1 = logit(p1);
+    Tp2 = logit(p2);
+"
+
+sp_initializer <- "
+    S = 0.000006;
+    D = 5.22;
+"
+
+stopifnot(packageVersion("pomp")>="0.75-1")
+sp_pomp <- pomp(
+    data=X202108,
+    times="Time",
+    t0=0,
+    rprocess=euler.sim(
+      step.fun=Csnippet(sp_rprocess),
+      delta.t=5
+    ),
+    rmeasure=Csnippet(sp_rmeasure),
+    dmeasure=Csnippet(sp_dmeasure),
+    fromEstimationScale=Csnippet(sp_fromEstimationScale),
+    toEstimationScale=Csnippet(sp_toEstimationScale),
+    obsnames = sp_obsnames,
+    statenames = sp_statenames,
+    paramnames = sp_paramnames,
+    initializer=Csnippet(sp_initializer)
+)
+
+run_level <- 3
+switch(run_level,
+       {sp_Np=100; sp_Nmif=10; sp_Neval=10; sp_Nglobal=10; sp_Nlocal=10},
+       {sp_Np=20000; sp_Nmif=100; sp_Neval=10; sp_Nglobal=10; sp_Nlocal=10}, 
+       {sp_Np=60000; sp_Nmif=300; sp_Neval=10; sp_Nglobal=100; sp_Nlocal=20}
+)
+
+```
+
+We would also like to take a look at the simulation results of our pomp model under some tentative parameters. 
+```{r simulation, include=TRUE, warning=FALSE,message=FALSE}
+simulate(sp_pomp, params=sp_test, nsim = 10000, states=TRUE) -> x
+matplot(time(sp_pomp),t(x["D",1:10,]),type='l',lty=1, xlab="Time",ylab="pH",bty='l',col='blue')
+lines(time(sp_pomp),obs(sp_pomp,"pH"),lwd=2,col='black')
+
+pf2 <- replicate(10,pfilter(sp_pomp,Np=5000,params=sp_test))
+ll <- sapply(pf2,logLik)
+ll
+logmeanexp(ll,se=TRUE)
+```
+The simulation results are acceptable, but definitely need some improvements.
+
+## 4. Model Likelihood Maximation
+
+**<big>4.1 Particle filtering</big>**
+
+Let’s check that we can indeed filter and re-estimate parameters successfully for this data.
+```{r particle filter, include=TRUE}
+cores <- 20 
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+set.seed(396658101,kind="L'Ecuyer")
+
+stew(file=sprintf("pf-%d.rda",run_level),{
+  t_pf <- system.time(
+    pf <- foreach(i=1:20,.packages='pomp',
+                  .options.multicore=mcopts) %dopar% try(
+                    pfilter(sp_pomp,params=sp_test,Np=sp_Np)
+                  )
+  )
+  
+},seed=1320290398,kind="L'Ecuyer")
+
+L_pf <- logmeanexp(sapply(pf,logLik),se=TRUE)
+```
+Obviously, the model is improved after particle filtering by looking at the standard error.
+
+**<big>4.2 A Local Search of Likelihood Surface</big>**
+
+The investigation took around 4 hours for the maixmation.These repeated stochastic maximizations can also show us the geometry of the likelihood surface in a neighborhood of this point estimate.
+```{r local search, include=TRUE}
+sp_rw.sd <- 0.02
+sp_cooling.fraction.50 <- 0.5
+
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:sp_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        sp_pomp,
+        start=sp_test,
+        Np=sp_Np,
+        Nmif=sp_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=sp_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          lambda1=sp_rw.sd,
+          lambda2=sp_rw.sd,
+          mu1=sp_rw.sd,
+          sigma1=sp_rw.sd,
+          sigma2=sp_rw.sd,
+          lb=sp_rw.sd,
+          ub=sp_rw.sd,
+          p1=sp_rw.sd,
+          p2=sp_rw.sd
+        )
+      )
+      
+    }
+  })
+  
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:sp_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(sp_Neval, logLik(pfilter(sp_pomp,params=coef(mifs_local[[i]]),Np=sp_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+
+pairs(~logLik+lambda1+lambda2+mu1+sigma1+sigma2+lb+ub+p1+p2,data=subset(results_local,logLik>max(logLik)-50))
+
+```
+
+**<big>4.2 A Global Search of the Likelihood Surface Using Randomized Starting Values</big>**
+The investigation took around 13.5 hours for the maixmation.
+
+```{r global search, include=TRUE}
+cores <- 20 
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+set.seed(396658101,kind="L'Ecuyer")
+
+sp_box <- rbind(
+  lambda1 = c(0.01,0.1),
+  lambda2 = c(0.005,0.015),
+  mu1 = c(0.04,0.06),
+  sigma1 = c(0.005,0.015),
+  sigma2 = c(0.005,0.015),
+  ub = c(0.000002,0.000005),
+  lb = c(0.0000002,0.0000005),
+  p1 = c(0.0005,0.0015),
+  p2 = c(0.8,0.9999)
+)
+
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:sp_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      mifs_local[[1]],
+      start=apply(sp_box,1,function(x)runif(1,x))
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:sp_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(sp_Neval, logLik(pfilter(sp_pomp,params=coef(mifs_global[[i]]),Np=sp_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+
+if (run_level>2) 
+  write.table(rbind(results_local,results_global),
+              file="mif_sp_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+
+pairs(~logLik+lambda1+lambda2+mu1+sigma1+sigma2+lb+ub+p1+p2,data=subset(results_global,logLik>max(logLik)-250))
+
+
+```
+However, the maximation didn't improve compared to local search.
+
+**<big>4.3 Diagnosing Success or Failure of the Maximization Procedure</big>**
+```{r diagnostics, include=TRUE, warning=FALSE}
+class(mifs_global)
+class(mifs_global[[1]])
+class(c(mifs_global[[1]],mifs_global[[2]]))
+plot(mifs_global)
+```
+As we can see in parameters don't converge for mu1, ub, lb. 
+
+## 5. Conclusion and Discussion
+The structure model was successfuly bulit for the pH dynamics in the proximal small intestine.
+However, further likelihood maximation is needed to optimize the parameter settings. The failure of global search might be due the wrong range of parameter boxes I used. Also proposing a parsimonious model is vital, since it will shorten the subsequent local and global search time. 
+
+In the next step, we will build up a hierachical model to investigate the intra- and inter- subject variance and find out some significant covariants.
+
+## Reference
+[1] http://www.givenimaging.com/en-int/Innovative-Solutions/Motility/SmartPill/Pages/default.aspx.
+[2] Mudie DM, Amidon GL, Amidon GE. Physiological parameters for oral delivery and in vitro testing. Mol Pharm 2010; 7(5): 1388-405.
+[3] Barrett KE. Gastrointestinal physiology.  McGraw-Hill's AccessMedicine. 2nd ed. New York, N.Y.: McGraw-Hill Education LLC,; 2014. p. xii, 321 p.
+
+
+
+
+

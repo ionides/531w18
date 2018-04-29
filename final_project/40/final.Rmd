@@ -1,0 +1,420 @@
+---
+  title: "Financial Volatility Analysis of Dow Jones Industrial Average"
+  subtitle: "STAT531 Final Project"
+  output: 
+    html_document:
+      toc: true
+---
+
+```{R, include=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+library(pomp)
+library(doParallel)
+library(tseries)
+```
+
+#1.Introduction
+As we all know, the investment in stock market is full of uncertainty. Especially in recent, the return of stock investment is very unpredicable. To analyze the trend of the future, we want to take a look at the daliy close price of Dow Jones Industrial Average in the past.      
+The Dow Jones Industrial Average is a stock market index that shows how 30 large publicly owned companies based in the United States have traded during a standard trading session in the stock market. The data I use in this project is the daliy close price from 2013-04-19 to 2018-04-18, and it’s downloaded from Yahoo finance website. (https://finance.yahoo.com/quote/%5EDJI?p)     
+This project aims to fit the ARMA, GARCH and POMP model to the Dow Jones index and compare the results.     
+
+#2.Data Analysis
+First, I plot the data.
+```{R, warning=FALSE, message=FALSE}
+dt = read.csv("data.csv")
+n <- nrow(dt)
+dtc <- dt$Close[1:n] 
+plot(dtc, type = "l",main = "Time plot of Dow Jones")
+```
+     
+From the plot, we notice that the data has obvious up and down trend and the variance is unstationary around 2015 to 2016. Besides, the data is stationary and the overall trend is increased.
+However, since the return is what we care mostly about, we change the origin data to the return value. And take a log scale of the return. 
+The origin data is denoted as $Y_n$, then the log return is $$Y_n^* = log(Y_{n}) - log(Y_{n-1})$$
+
+```{R,warning=FALSE, message=FALSE}
+ns_df <- diff(log(dtc))  # return 
+plot(ns_df, type = "l", main = "Plot of Return") 
+```
+  
+According to the plot of return, high volatility is shown around the 2015 and also 2018. Then I plot the acf.
+
+```{R,warning=FALSE, message=FALSE}
+acf(ns_df,main = "ACF of return", lag = 200)
+```
+     
+In ACF plot, we can see that there are only two to three violations among 200 lags, which indicates that the data are independent. 
+
+#3.Model Fitting
+##3.1 ARMA Model
+
+First, I try ARMA(p,q) model and use AIC to select the model. 
+```{R,warning=FALSE, message=FALSE}
+aic_table <- function(data, P, Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q), 
+                  seasonal = list(order = c(2,0,0), 
+                                  period = 12), method = "ML")$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+} 
+tab <- aic_table(ns_df,3,3)
+#AR 2 MA 1
+
+kable(tab, digits = 3, 
+      caption = "AIC Values of ARMA models")
+```
+    
+We can see from the AIC table, ARMA(2,1) has the lowest AIC value and its simplicity is appropraite. Thus I will fit ARMA(2,1) to the return data.
+
+```{R,warning=FALSE, message=FALSE}
+#arma
+arma21 <- arima(ns_df, order = c(2,0,1))
+arma21
+```
+   
+The log likelihood of ARMA(2,1) is 4322.1. Then I plot the residual of the data.
+
+```{R, warning=FALSE, message=FALSE}
+res = residuals(arma21)
+plot(res)
+```
+   
+The residual plot shows that the variance of the residual is not stable.
+
+```{R, warning=FALSE, message=FALSE}
+acf(res, main = "ACF of ARMA residual", lag = 200)
+```
+    
+There are a few violation in the ACF plot but overall accept the null hypothesis: the residuals are iid.
+
+```{R, warning=FALSE, message=FALSE}
+qqnorm(res)
+qqline(res)
+```
+    
+The QQ plot shows both heavy tails, which indicates that the residuls are not Gaussian distributed. 
+Based on the above result, ARMA(2,1) is not a perfect model since the residual is not a white noise. Then I move to another model.
+
+##3.2 Garch Model
+
+Another model I tried is Garch model. The Garch(p,q) model is expressed as $$
+\begin{align}
+   Y_n = \epsilon_n \sqrt{V_n} \\
+   V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2 + \sum_{k=1}^q \beta_k V_{n-k}\\
+   \epsilon_n \sim \mbox{IID } N[0,\sigma^2].
+\end{align} $$ 
+Then, I fit Garch(1,1) to the retrun data.
+
+```{R, warning=FALSE, message=FALSE}
+#garch
+fit_garch <- garch(ns_df,grad = "numerical", trace = FALSE)
+log_like <- logLik(fit_garch)
+log_like
+```
+      
+The log likelihood of Garch Model is 4347.422, which is larger than ARMA's log likelihood: 4322.1. Thus, Garch(1,1) fits better than ARMA(2,1).
+
+```{R, warning=FALSE, message=FALSE}
+summary(fit_garch)
+```
+     
+From the summary, we can see that b1 is not significant, and the p-values of Jarque Bera test and Box-Ljung test are super small, which means we reject the null hypothesis that the data is normally distributed and the data is uncorrelated. Hence, GARCH(1,1) is still not good enough.
+
+##3.3 Pomp Model
+###3.3.1 The Standard Stochastic Volatility Model
+
+The standard stochastic volatility model as introduced by Taylor (1982) is given by $$ 
+\begin{align}
+   y_t = e^{h_t/2}u_t \\
+   u_t \sim N(0,1)\\
+   h_t = \mu + \phi (h_{t-1} -  \mu) + \eta_t\\
+   \eta_t \sim N(0,\sigma_{\eta}^2)
+\end{align}$$
+where $y_t$ denotes the log return at time t, t = 1, . . . , T, and $h_t$
+is the log volatility which is assumed to follow a stationary AR(1) process with persistence parameter $|\phi|<1$. The error terms $u_t$ and $\eta_t$ are Gaussian white noise sequences.    
+From the above model, $y_t \sim N(0,e^{h_t})$. So our demeasure will be the normal density function of $N(0,e^{h_t})$.    
+We first define the varaibles of the pomp object.
+```{R, warning=FALSE, message=FALSE}
+#pomp   
+#The Standard Stochastic Volatility Model
+dj_statenames <- c("H","Y_state")
+dj_rp_names <- c("mu","phi","sigma_eta")
+dj_ivp_names <- c("H_0")
+dj_paramnames <- c(dj_rp_names,dj_ivp_names)
+dj_covarnames <- "covaryt"
+```
+
+Then, we define the two rprocess based on the standard stochastic volatility model.
+```{R}
+rproc1 <- "
+  double eta_t = rnorm(0,sigma_eta);
+  H = mu + phi * (H-mu) + eta_t;
+"
+
+rproc2.sim <-"
+  Y_state = rnorm(0,exp(H/2));
+"
+
+rproc2.filt <-"
+  Y_state = covaryt;
+"
+
+dj_rproc.sim <- paste(rproc1,rproc2.sim)
+dj_rproc.filt <- paste(rproc1,rproc2.filt)
+```
+    
+The initializer and dmeasure are defined as follow:
+```{R,warning=FALSE, message=FALSE}
+#initial value
+dj_initializer <-"
+  H = H_0;
+  Y_state = rnorm(0,exp(H_0/2));
+"
+
+dj_rmeasure <- "
+  y = Y_state;
+"
+
+dj_dmeasure <- "
+  lik = dnorm(y,0,exp(H/2),give_log);
+"
+```
+
+Then we transform the parameters so that they are defined on the whole real line. $\phi$ is defined as $|\phi|<1$ therefore a logistic scale is used. $\sigma_{\eta} > 0$ thus I use a exponential transform. $\mu$ is unbounded so it is not transformed. 
+```{R}
+dj_toEstimationScale <- "
+ Tmu = mu;
+ Tsigma_eta = log(sigma_eta);
+ Tphi = logit(phi);
+"
+
+dj_fromEstimationScale <- "
+ Tmu = mu;
+ Tsigma_eta = exp(sigma_eta);
+ Tphi = expit(phi);
+"
+
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+
+```
+
+###3.3.2 Model Performance with Specific Parameters 
+
+First we build the pomp object that will be used for filtering.
+```{R, warning=FALSE, message=FALSE}
+#pomp
+dj.filt <- pomp(data=data.frame(y=ns_df,
+                                   time=1:length(ns_df)),
+                   statenames=dj_statenames,
+                   paramnames=dj_paramnames,
+                   covarnames=dj_covarnames,
+                   times="time",
+                   t0=0,
+                   covar=data.frame(covaryt=c(0,ns_df),
+                                    time=0:length(ns_df)),
+                   tcovar="time",
+                   rmeasure=Csnippet(dj_rmeasure),
+                   dmeasure=Csnippet(dj_dmeasure),
+                   rprocess=discrete.time.sim(step.fun=Csnippet(dj_rproc.filt),delta.t=1),
+                   initializer=Csnippet(dj_initializer),
+                   toEstimationScale=Csnippet(dj_toEstimationScale), 
+                   fromEstimationScale=Csnippet(dj_fromEstimationScale)
+)
+plot(dj.filt)
+```
+
+Simulating from the model is convenient for developing and testing the code, as well as to investigate a fitted model. So we run the simulation with the testing parameters: $\mu = 9, \phi = expit(1), \sigma_{\eta} = exp(-0.7), H_0 = 0.$    
+```{R, warning=FALSE, message=FALSE}
+#simulation
+params_test <- c(
+  mu = -9,
+  phi = expit(1),       
+  sigma_eta = exp(-0.7),
+  H_0 = 0
+)
+
+sim1.sim <- pomp(dj.filt, 
+                 statenames=dj_statenames,
+                 paramnames=dj_paramnames,
+                 covarnames=dj_covarnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(dj_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=493536993,params=params_test)
+plot(sim1.sim)
+```
+    
+Then, the following plot shows the observed log-returns v.s. the simulated values.   
+```{R, warning=FALSE, message=FALSE}
+plot(Y_state~time, data=sim1.sim, xlim=c(1,1259), ylim=c(-0.1,0.1), type='l', col='red',main="Observed Log-returns vs Simulated Results", ylab="Log-returns", xlab="Time")
+lines(ns_df)
+legend(50,0.1,c("Observed Log-returns","Simulated Values"), col=c("black","red"), lty=c(1,1))
+```
+           
+We can see that the model performs reasonable by generally following the pattern of the observed return data except in some observed periods, the model doesn't grasp the high volatility.
+
+I also plot the simulation fiter as below.
+```{R, warning=FALSE, message=FALSE}
+sim1.filt <- pomp(sim1.sim, 
+                  covar=data.frame(
+                    covaryt=c(obs(sim1.sim),NA),
+                    time=c(timezero(sim1.sim),time(sim1.sim))),
+                  tcovar="time",
+                  statenames=dj_statenames,
+                  paramnames=dj_paramnames,
+                  covarnames=dj_covarnames,
+                  rprocess=discrete.time.sim(step.fun=Csnippet(dj_rproc.filt),delta.t=1)
+)
+plot(sim1.filt)
+```
+
+###3.3.3 Fitting Pomp Model 
+
+Previously we have built a pomp object for the model and the testing model performance looks reasonable. Now, we use the previous parameters as the intitial value and start a local search. I set run_level to 3.
+
+```{R, warning=FALSE, message=FALSE}
+#Fitting the Model to the Data   local search
+run_level <- 3
+dj_Np <-          c(100,1e3,2e3)
+dj_Nmif <-        c(10, 100,200)
+dj_Nreps_eval <-  c(4,  10,  20)
+dj_Nreps_local <- c(10, 20, 20)
+dj_Nreps_global <-c(10, 20, 100)
+
+cores = 20
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+set.seed(396658101,kind="L'Ecuyer")
+
+dj_rw.sd_rp <- 0.02
+dj_rw.sd_ivp <- 0.1
+dj_cooling.fraction.50 <- 0.7
+
+stew("mif1.rda",{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:dj_Nreps_local[run_level],
+                   .packages='pomp', .combine=c,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                     mif2(dj.filt,
+                          start=params_test,
+                          Np=dj_Np[run_level],
+                          Nmif=dj_Nmif[run_level],
+                          cooling.type="geometric",
+                          cooling.fraction.50=dj_cooling.fraction.50,
+                          transform=TRUE,
+                          rw.sd = rw.sd(
+                            mu  = dj_rw.sd_rp,
+                            phi      = dj_rw.sd_rp,
+                            sigma_eta = dj_rw.sd_rp,
+                            H_0       = ivp(dj_rw.sd_ivp)
+                          )
+                     )
+                   )
+    
+    L.if1 <- foreach(i=1:dj_Nreps_local[run_level],.packages='pomp',
+                     .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                     {
+                       logmeanexp(
+                         replicate(dj_Nreps_eval[run_level],
+                                   logLik(pfilter(dj.filt,params=coef(if1[[i]]),Np=dj_Np[run_level]))
+                         ),
+                         se=TRUE)
+                     }
+    
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level>1) 
+  write.table(r.if1,file="dj_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+```
+
+```{R, warning=FALSE, message=FALSE}
+pairs(~logLik+mu+phi+sigma_eta,data=r.if1)
+```
+
+From the plot, we can narrow down the interval of initial values of each parameters based on the peak of the log likelihood: \newline   
+1. $\mu$ tends to be in [-15, -9]  \newline
+2. $\phi$ has the largest log likelihood around 0.8 to 0.94. \newline
+3. $\sigma_{\eta}$'s peak is in interval [0.4, 0.7]  \newline 
+
+The previous analysis is only a local search based on given initial parameters. Practical parameter estimation involves trying many starting values for the parameters. We also need to do a global search with specifying a large box in parameter space. If an estimation method gives stable conclusions with starting values drawn randomly from this box, this gives some confidence that an adequate global search has been carried out.    
+I will still set run level to 3. And the parameter box is determined by the above local search result.    
+```{R,warning=FALSE, message=FALSE}
+#globel search
+run_level <- 3
+
+dj_box <- rbind(
+  mu    =c(-15,-9),
+  phi = c(0.8,0.94),
+  sigma_eta = c(0.4, 0.7),
+  H_0 = c(-5,5)
+)
+
+stew(file="dj_box_eval.rda",{
+t.box <- system.time({
+  if.box <- foreach(i=1:dj_Nreps_global[run_level],.packages='pomp',.combine=c,
+                    .options.multicore=list(set.seed=TRUE)) %dopar%
+    mif2(
+      if1[[1]],
+      start=apply(dj_box,1,function(x)runif(1,x))
+    )
+
+  L.box <- foreach(i=1:dj_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                   .options.multicore=list(set.seed=TRUE)) %dopar% {
+                     set.seed(87932+i)
+                     logmeanexp(
+                       replicate(dj_Nreps_eval[run_level],
+                                 logLik(pfilter(dj.filt,params=coef(if.box[[i]]),Np=dj_Np[run_level]))
+                       ),
+                       se=TRUE)
+                   }
+})
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+
+summary(r.box$logLik,digits=5)
+
+```
+
+```{R, warning=FALSE, message=FALSE}
+index <- which.max(r.box$logLik)
+print(index)
+```
+
+```{R,warning=FALSE, message=FALSE}
+print(r.box[index,])
+```
+
+From the above result, we can see that the maximum log likelihood is 4504.826, which is larger than Garch model. The parameters are: $\mu = -10.269, \phi = 0.925, \sigma_{\eta} = 0.401, H_0 = -7.052$. 
+To check the relation between parameters and log likelihood, I also plot a pair plot.
+```{R, warning=FALSE, message=FALSE}
+pairs(~logLik+mu+phi+sigma_eta+H_0,data=r.box)
+```
+
+From the plot, we can see that $\mu$ has a peak around -10. And $\phi$ has a gap in its log-likelihood but the figure acts like a half open-down parabola. $\sigma_{\eta}$ also like a half parabola. This means that $\phi$ and $\sigma_{\eta}$ are correlated with log liklihood. We also could observe that $\phi$ and $\sigma_{\eta}$ have strong correlation.     
+```{R, warning=FALSE, message=FALSE}
+plot(if.box)
+```
+    
+From the filter diagnostic graph, we could observe the efficient sample size is sufficient large except around 2016 to 2017, the efficient sample size drops down. 
+From the MIF2 convergence diagnostics graph, we can see that the log likelihood converge to 4500 and nfail is 0. $\mu$, $\phi$ and $\sigma_{\eta}$ converge after 80. 
+
+#4.Conclusion
+Based on the above analysis, we can see that Standard Stochastic Volatility Model performs better than Garch model and Garch model is better than ARMA(2,1). Standard Stochastic Volatility Model is a good fit for our data. The best log likelihood is 4504.826. The corresponding parameters are $\mu = -10.269, \phi = 0.925, \sigma_{\eta} = 0.401, H_0 = -7.052$ in model. 
+To improve the model performance in the future, we may compare across more complex model to get the better fit.
+
+#5.Reference
+Ionides, E. (n.d.). Stats 531 (2018, winter). ‘Analysis of Time Series’. Retrieved from http://ionides.github.io/531w18/ 
+
+Hautsch, N., Ou, Y. (July 2008). Discrete-Time Stochastic Volatility Models and MCMC-Based Statistical Inference. Retrieved from http://sfb649.wiwi.hu-berlin.de/papers/pdf/SFB649DP2008-063.pdf
+
+https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average
+

@@ -1,0 +1,521 @@
+---
+title: "STATS 531 Final Project"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(message = F, warning = F, cache = T)
+```
+
+```{r, echo = F}
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+```
+
+# Introduction
+
+Coursera is an online platform for Massive Open Online Courses\footnote{https://www.coursera.org/}. The University of Michigan is a leading provider of courses on this platform, and has engaged over 6.5 million students since the University of Michigan became one of the founding partners of Coursera in 2012 \footnote{Thomas (2018). \textit{University announces first online degrees through Coursera}.} The University of Michigan recently announced that it is launching a series of fully-online masters degrees on the platform, including masters degrees in Public Health and Applied Data Science through the School of Information. Michigan also offers several pre-masters options via multiple MOOC platforms, including a ``MasterTrack Certificate'' in Construction Engineering and Management, and ``MicroMasters'' degrees in User Experience through the edX MOOC platform. The improvement of learner experiences on these platforms is thus of particular interest to the University of Michigan, as well as to the millions of students who engage with the content it provides via Coursera.
+
+The Coursera platform, like any digital platform, collects detailed behavioral data on users as they navigate across course pages, interact with content (e.g. watch lecture videos or browse discussion forums), and submit both for-credit and no-credit assignments. In this course, there is a unique "in-video" programming feature which opens a Python interpreter directly in students' browser window which allows them to write and interactively run code chunks in order to produce a specified output (for example, writing a function which computes the groupwise average of values in a dataframe). This not only allows students to receive immediate, in-vivo feedback without having to deal with the technical challenges of setting up a local programming environment or IDE; it also allows learning scientists interested in understanding student behavior in digital learning platforms to observe students' programming behavior in context.
+
+This analysis is interested in evaluating learner activity patterns over time. In particular, the current work seeks to investigate whether an equivalent of an SIR model can be used to model behavioral data collected from large-scale learning environments. 
+
+Massive Open Online Courses, or MOOCs, have presented both unique promise and challenge for students and researchers alike since they became available in 2012. For students, these courses demonstrate the opportunity to engage with high-quality content produced by some of the most prestigious and well-regarded universities in the world at low or no cost (non-credit bearing courses are typically available for free, with paid access only required for official certification), without relocation, on a flexible time schedule. However, these courses suffer from notoriously low completion rates, with typical course completion rates estimated to be around 10%\footnote{Jordan (2015). \textit{MOOC Completion Rates: The Data}.}. For researchers, these courses present a unique opportunity to study a diverse and massive population of global learners who are working toward a credential with the ability to improve their educational and career trajectories. MOOC platforms collect detailed, granular behavioral data, including each ``click'' or page viewed by a user, each assignment submission, the text of their posts in discussion forums, etc.\footnote{Coursera (2013). \textit{Coursera Data Export Procedures}.} However, because learning scientists are often most interested in psychological states that are not observable within a digital environmnent, such as students' cognitive processes (learning, studying, struggling to grasp new concepts), models which are able to effectively recover this signal through the behavioral data available in MOOCs stand to provide tremendous insight into the learner process of MOOC students.
+
+The current study therefore attempts to use the granular behavioral data available from a specific MOOC in order to explore a simple, but potentially useful, hypothesized model of students' learning processed in a course. In particular, this work models the learning process as an SIR (Susceptible-Infected/Infectious-Recovered/Removed) model, discussed in detail in the following section.
+
+This work demonstrates that a relatively simple SIR model can serve as a basic model of students' progression through a data science MOOC. This case study highlights the complexity of estimating all parameters of the SIR model directly from MOOC data, particularly when the time series is relatively short, but shows that a reasonable model fit can be achieved using parameters derived via an iterative method based on (i) likelihood slices of individual parameters, (ii) local searches using the IF2 algorithm\footnote{Ionides et al. (2015)}, and (iii) global searches using the IF2 algorithm. This case study provides an initial analysis of the parameters, which provide some information about transition rates between the various states of the model, as well as directions for future work.
+
+## Data
+
+The data for this project are made available through a research pertnership with the University of Michigan Office of Academic Innovation\footnote{http://ai.umich.edu/}. In particular, the data for this specific analysis come from the popular Coursera course "Introduction to Data Science in Python," taught by Dr. Chris Brooks at the School of Information.\footnote{https://www.coursera.org/specializations/data-science-python} This is the first of a popular five-course series on the Coursera platform which was launched in the fall of 2016; the series is evolving into the School of Information's online Master of Applied Data Science degree. This analysis evaluates the third session of the course, which began on October 24, 2016. This was the third session of the course (I selected the third session in order to capture the large "early adopter" population which enrolled in the course early, but skipped the first two sections of the course in order to account for any technical difficulties, students who had pre-registered for the series before it launched, and students who joined the first or second session simply to explore the course). 22,819 unique students registered for this session of the course, and there were a total of 15,159,152 activities recorded in the categories used in this analysis alone.
+
+The original dataset contains a variety of different interactions with the platform, which include page navigation, video lecture viewing and playback actions (rewind, play, pause, increase/decrease speed), posting in discussion forums, and the submission of several types of course assignments. While each individual event is recorded with a timestamp, the events are aggregated to daily counts for this analysis. An sample of the data are shown below, along with a plot showing the prevalence of six different activity types in the course. This analysis focuses on *graded programming* events, but the other event types are shown to demonstrate how large a share of total student activity is dedicated to graded programming assignments.
+
+```{r, echo = FALSE}
+activity_data = read.csv("./data/data.csv")
+# set begin and end thresholds and print time difference
+begin_cutoff_date = as.Date("2016-10-21")
+end_cutoff_date = as.Date("2016-12-01")
+end_cutoff_date - begin_cutoff_date 
+activity_data %<>% 
+    mutate(activity_date = as.Date(activity_date)) %>%
+    dplyr::filter(activity_date <= end_cutoff_date, activity_date >= begin_cutoff_date)
+knitr::kable(head(activity_data), caption = "Sample of raw input data. Only 'graded programming' actions were used for this analysis.")
+```
+
+```{r, echo = FALSE}
+activity_data %>%
+    ggplot(aes(x = activity_date, 
+               y = count, 
+               group = course_item_type_desc, 
+               color = course_item_type_desc=="graded programming")) + 
+  geom_line() + 
+  xlab("Activity Date") +
+  ylab("Count") + 
+  facet_wrap("course_item_type_desc") + 
+  ggtitle("Figure 1: Course Activity Patterns By Activity Type") + 
+  guides(color=FALSE)
+```
+
+Graded programming events, the focus of this study, consist of submission of in-browser programming activities. Because this is a course in Python for data science, the course including a feature (which was new to the Coursera platform at the time of its launch and developed by Coursera specifically for this course). This feature paused lecture videos at a specific time point, after a question was posted to the student, and created a pop-up Python interpreter directly in the browser for students to write and run Python code to solve small problems. This popular feature allowed students to achieve immediate experience and feedback solving course problems, instead of only passively watching videos. As Figure 1 shows, this was a very popular feature; graded programming events are more common than any other event (besides simple page viewing). 
+
+![An example graded programming assignment submission page. This screen appears in a video lecture, which pauses for the student to complete the exercise, and contains a complete, live Python interpreter. Each submission of the assignment using the `Run' button captures a graded programming event.](programming_assignment.png)
+
+In particular, this analysis seeks to leverage the popularity of students' observable graded programming activity in order to form a simple model of students' learning processes. We describe this model in the next section, but we simply note here that the data suggest that the graded programming assignments are an integral part of students' learning and engagement in the course -- far more important than even the course lecture videos, which are traditionally considered the core of the course -- and it seems plausible that activity in these programming assignments could serve as a proxy for student learning as they grapple with the content in the course. 
+
+## Prior Work
+
+MOOCs have been studied extensively over the course of their short history (2012, the year Coursera, edX, and Udacity, the three major MOOC platforms, all launched is widely considered the ``Year of the MOOC''\footnote{Pappano (2012). \textit{The Year of the MOOC.}}) Research has explored several dimensions of MOOC data, including wide-ranging research on models attempting to model and predict student success\footnote{Gardner and Brooks (2018). \textit{Student Success Prediction in MOOCs.}} as well as analysis of student learning in MOOCs\footnote{E.g. Ren et al. (2016). \textit{Predicting performance on MOOC assessments using Multi-Regression models}.}. Nonlinear State Space Models have been used to predict student dropout, but primarily as a black-box machine learning method\footnote{Wang and Chen (2016). \textit{A nonlinear state space model for identifying At-Risk students in open online courses.}}. However, little research has attempted to understand and model explicitly students' \textit{learning} processes in MOOCs, or how students transitions between different psychological states which are difficult to measure directly (struggle, practice, mastery) can be measured by their observable behaviors. Additionally, temporal models in particular have seen little usage in MOOC research, with simpler, non-time series supervised learning approaches being much more common for modeling of MOOC learner behavior.\footnote{Gardner and Brooks (2018). \textit{Student Success Prediction in MOOCs.}}
+
+While there is broad intuitive support for the three-stage Learning/Exploring, Practicing, Mastered/Complete model proposed in this paper as an analog of the epidemiological SIR model of Breto et. al., we note that this is not explicitly based on an existing psychological model. Future work could likely develop more sophisticated cognitive models and incorporate their structure into a relevant POMP model; this work represents an initial foray into such an investigation.
+
+# The Compartment Model: An Application to Learning Data
+
+```{r, echo = F}
+library(pomp)
+```
+
+This section describes the core case study of this report. It investigates the use of a stochastic representation of an SIR (Susceptible-Infected/Infectious-Recovered/Removed) model\footnote{Breto et al. (2009), \textit{Time Series Analysis via Mechanistic Models}. 2009}. This model supposes that, within a population of fixed size, individuals progress through the stages shown in Figure 2, according to a rate associated with each compartment-to-compartment transition. In this model, then, there exists a rate $\mu_{SI}(t)$ which describes the rate at which individuals in the ``Learning'' compartment transition to the ``Practicing'' compartment, and a rate $\mu_{IR}(t)$ which describes the transition from ``Practicing'' to ``Mastered'', the state in which students stop practicing because they have ``mastered'' the content of the course.
+
+We also estimate a parameter $\beta$, known in the epidemiological setting as a \textit{contact rate}, which allows the rate of infection to vary over time because they are related by the equation $\mu_{SI}(t) = \beta I(t)$.
+
+The model implemneted in this work tracks the transitions between compartments, as well as the number of individuals in each compartment at time $t$, by using $N_{SI}(t)$ to count the number of individuals who have transitioned from S to I by time $t$, and $N_{IR}(t)$ to count individuals who have transitioned from I to R by $t$. This work uses a discrete population compartment model, so the flow counting process at each time step is non-decreasing and integer-valued.
+
+![The variant of the SIR compartment model used in this case study.](SIR.png)
+```{r, echo=FALSE}
+fignum = 3
+```
+
+
+In this case study, our task will be to attempt to estimate the parameters of an SIR fit to the time series data  representing graded programming assignment submissions, and in so doing, to determine whether or not the SIR model fits the data well enough to be considered a reasonable (if simplistic) model for the data.
+
+## Case Study Using The Compartment Model
+
+This section explores the fit of an SIR model to the graded programming assignment activity data described above. Here we assime that the learning process follows the compartment model shown in Figure 2, where students enter the course in the Learning/Exploring state, transition to the ``Practicing'' state with \textit{force of infection} $\lambda = \beta \frac{I}{N}$, and then move into the Mastered/Complete class at rate $\gamma$.
+
+Note that this model seems an intuitively plausible basic description of the dynamic system it describes. When students enter a course, it is (typically) because they do not have knowledge that they seek to gain from the course content; students thus begin in the ``Learning/Exploring'' phase which consists of browsing course content, consuming lecture and supplementary material, and attempting to understand the concepts presented in order to apply them on future assignments. Next, once students are ready to apply their knowledge, they transition to the ``Practicing'' state, wherein they apply their newfound knowledge to the graded programming assignments in the course in order to strengthen their understanding, receive feedback, and work toward completion of the course. Finally, after (and only after) practicing this content, students transition to the final state, ``Mastery'', where they have demonstrated understanding of the course content and will no longer submit graded programming assignments. If this is a reasonable model for the data, then we might choose to use an SIR model to capture these transitions over time.
+
+```{r, output = FALSE, echo = FALSE}
+## reformat data
+gradedprogramming = activity_data %>% 
+    dplyr::filter(course_item_type_desc == "graded programming") %>% 
+    mutate(day = rank(activity_date)) %>%
+    dplyr::select(c("day", "count"))
+# make sure exactly one observation per date
+assertthat::assert_that(nrow(gradedprogramming) == length(unique(gradedprogramming$day)))
+```
+
+In the modeling variant used in this work, the recovery rate $\mu_{IR}$ is assumed to be constant (a fairly strong assumption, considering that different students may learn at different rates). The ``contact rate'', however, the rate at which students transition from ``Learning'' to ``Practicing'', has a time-varying form $\mu_{SI}(t) = \beta(t)$. This captures the reasonable idea that students might be more likely to move toward practice later in the course, perhaps, but might do so more slowly at the beginning or end of the course.
+
+The model tracks the number of students within each compartment at any given time, beginning with $S(0) = N-1$ and $I(0)=1$ (one student ``infected'' and all others ``susceptible'' at time zero; this does not have a direct analog in the educational context but is required to seed the model properly). The model parameters $N_{SI}(t)$ and $N_{IR}(t)$ track the counts of students who have transitioned from S to I and I to R, respectively, at a given time. Together, these yield the model
+
+\begin{align}
+S(t) &= S(0) - N_{SI}(t) \\
+I(t) &= I(0) + N_{SI}(t) \\
+R(t) &= R(0) + N_{IR}(t) \\
+\end{align}
+
+Of course, collectively, these equations contain the assumption that the total population is fixed over time; that is, the entire course population is either in the S (Learining/Exploring) phase, I (Practicing), or R (Mastered/Complete) phase.
+
+We model $\Delta N_{SI} \sim$Binomial($S, 1-e^{-\lambda \Delta t}$), where $\lambda = \beta*I/N$, and $\Delta N_{IR} \sim$Binomial($I, 1-e^{-\gamma \Delta t}$). 
+
+We model the log density as Poisson(Count, $\rho*R+c$), where `count` is the count of graded assignment submissions observed at a given time $t$ and $c$ is a small constant (here, 0.01) to avoid zero-density values.
+
+We begin by exploring an initial plot of simulated data (shown in red) from an SIR model whose parameters are derived via a maximum likelihood exploration using likelihood-slicing, described in the following section.
+
+```{r, echo = FALSE}
+sir_statenames = c("H","S","I","R")
+sir_paramnames = c("Beta","gamma","rho","N")
+sir_zeronames = "H"
+# Let’s restrict our attention for the moment to the count variable.
+sir_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+  double dN_IR = rbinom(I,1-exp(-gamma*dt));
+  S -= dN_SI;
+  I += dN_SI - dN_IR;
+  R += dN_IR;
+  H += dN_IR;
+")
+
+sir_init <- Csnippet("
+  S = nearbyint(N)-1;
+  I = 1;
+  R = 0;
+  H = 0;
+")
+
+# previosly dmeas was:
+dmeas <- Csnippet("lik = dpois(count,rho*R+1e-1,give_log);") ## 1e-1 increased frmo 1e-6 previously
+rmeas <- Csnippet("count = rbinom(H,rho);")
+
+pomp(gradedprogramming,times="day",t0=1,
+     rprocess=euler.sim(sir_step,delta.t=1/5),
+     initializer=sir_init,rmeasure=rmeas,dmeasure=dmeas,
+     zeronames=sir_zeronames,statenames=sir_statenames,
+     paramnames=sir_paramnames) -> sir
+
+## generate simulated trajectories at some particular point in parameter space.
+my_N=25000000
+my_params =c(Beta=1.75,gamma=0.5,rho=0.35,N=my_N)
+
+## Sequential Monte Carlo in pomp
+sims <- simulate(sir,params=my_params,nsim=200,
+                 as.data.frame=TRUE,include.data=TRUE)
+
+fignum <- fignum+1
+ggplot(sims,mapping=aes(x=time,y=count,group=sim,color=sim=="data")) +
+  geom_line(alpha = 0.5) + 
+  guides(color=FALSE) +
+  ggtitle(sprintf("Figure %s: Simluated Data From Initial SIR Model", fignum))
+
+pf <- pfilter(sir,Np=5000,params=my_params)
+logLik(pf)
+
+## R a few particle filters to get an estimate of the Monte Carlo variability:
+pf <- replicate(10,pfilter(sir,Np=5000,params=my_params))
+ll <- sapply(pf,logLik); ll
+logmeanexp(ll,se=TRUE)
+```
+
+Note that, based on the above, the unbiased Monte Carlo estimate of the log likelihood of this initial model is -1620.1172520, with a standard error of 0.1978784. The models we will consider below will improve on this by using more sophisticated parameter estimation/exploration methods; this is merely an inital proposed model to demonstrate that the SIR analog considered here can produce a reasonable fit to the data. 
+
+Note also that the log-likelihood estimates above were averages on the unit scale, not on the logarithmic stale, to ensure that we avoid a biased estimate of the log-likelihood. Additionally, we can note that the simulated values with these parameters roughly match the data in the timing and magnitude of the peak values, but lag slightly behind the data in terms of timing. Additionally, the data are skewed in a way not reflected in the simulated data, with a slow onset and a sudden drop-off near the end of the course (the course is intended to last for roughly 4 weeks, which would equate to 28 days, but the timeline is flexible and students can complete assignments at their own pace).
+
+## Likelihood Evaluation
+
+In this section, we explore some unidimensional ``likelihood slices'', which were used to derive the initial parameter estimates shown in the model above. These slices essentially hold all other parameters fixed, and demonstrate how the model log-likelihood, estimated using 5,000 iterations of a particle filter, varies over different values of the parameter of interest. Of course, this method is quite limited, in that it only displays a cross-section of what is actually a complex, high-dimensional likelihood surface. 
+
+In particular, the plots below, combined with the later analysis, show how difficult likelihood slicing can be when the mutlidimensional likelihood surface is jagged. Furthermore, the problem may be magnified by the relatively small data avialbale in this analysis. 
+
+```{r, echo = FALSE}
+
+N_CORES = 40 ## global parameter for number of cores to use
+
+slice_param_names = c("Beta","gamma")
+sliceDesign(
+  c(my_params),
+  Beta=rep(seq(from=0.5,to=10,length=40),each=3),
+  gamma=rep(seq(from=0.5,to=10,length=40),each=3)) -> p
+
+require(foreach)
+require(doMC)
+
+registerDoMC(cores=N_CORES)        
+## number of cores 
+## usually the number of cores on your machine, or slightly smaller
+
+set.seed(998468235L,kind="L'Ecuyer")
+mcopts <- list(preschedule=FALSE,set.seed=TRUE)
+
+# To get an idea of what the likelihood surface looks like in the neighborhood of the default parameter set supplied by sir, we can construct a likelihood slice.
+
+# We’ll make slices in the beta and gamma directions. Both slices will pass through the default parameter set.
+foreach (theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts) %dopar% 
+ {
+   pfilter(sir,params=unlist(theta),Np=5000) -> pf
+   theta$loglik <- logLik(pf)
+   theta
+ } -> p
+```
+
+
+```{r, echo = FALSE}
+## plot beta-gamma slices
+plist = list()
+foreach (v=slice_param_names) %do% 
+{
+  x <- subset(p,slice==v)
+  other_param_name = ifelse(slice_param_names[1]!=v, slice_param_names[1], slice_param_names[2])
+  # plot(x[[v]],x$loglik,xlab=v,ylab="loglik", main = sprintf("Loglik. slice for %s \n%s fixed at %s", v, other_param_name, x[1,other_param_name]))
+  plist[[v]] = ggplot(x, aes_string(v, "loglik")) + geom_point() + geom_smooth(span=0.2) + ggtitle(sprintf("Log-likelihood slice for %s \n%s fixed at %s", v, other_param_name, x[1,other_param_name]))
+  x[which.max(x[["loglik"]]),]
+}
+fignum <- fignum+1
+gridExtra::grid.arrange(plist[[slice_param_names[1]]], plist[[slice_param_names[2]]], ncol = 2, bottom = sprintf("Figure %s: Parameter Likelihood Slices", fignum))
+```
+
+```{r, echo = FALSE}
+## rho-N slices
+slice_param_names = c("N","rho")
+# logarithmic spaced sequence
+# from https://stackoverflow.com/questions/23901907/create-a-log-sequence-across-multiple-orders-of-magnitude
+lseq <- function(from=1, to=100000, length.out=6) {
+  exp(seq(log(from), log(to), length.out = length.out))
+}
+
+sliceDesign(
+  c(my_params),
+  N=rep(lseq(from=1e4,to=1e9,length.out=40),each=3),
+  rho=rep(seq(from=0.01,to=0.99,length=40),each=3)) -> p
+
+set.seed(998468235L,kind="L'Ecuyer")
+
+foreach (theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts) %dopar% 
+ {
+   pfilter(sir,params=unlist(theta),Np=5000) -> pf
+   theta$loglik <- logLik(pf)
+   theta
+ } -> p
+```
+
+```{r, echo = FALSE}
+## plots
+plist = list()
+foreach (v=c("N", "rho")) %do% 
+{
+  x <- subset(p,slice==v)
+  other_param_name = ifelse(slice_param_names[1]!=v, slice_param_names[1], slice_param_names[2])
+  # plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+  x[which.max(x[["loglik"]]),]
+  plist[[v]] =  ggplot(x, aes_string(v, "loglik")) + geom_point() + geom_smooth(span=0.3) + ggtitle(sprintf("Log-likelihood slice for %s \n%s fixed at %s", v, other_param_name, x[1,other_param_name]))
+  x[which.max(x[["loglik"]]),]
+}
+fignum <- fignum+1
+gridExtra::grid.arrange(plist[[slice_param_names[1]]], plist[[slice_param_names[2]]], ncol = 2, bottom = sprintf("Figure %s: Parameter Likelihood Slices", fignum))
+```
+
+The univariate likelihood slices above show how the model log-likelihood varies with various parameters, but largely fail to provide a ``bigger picture'' of how those parameters vary together. Additioally, finding reasonable ranges for these likelihood plots can be difficult, and required extensive initial exploratory analysis, combined with reasoning about the relationship between the various parameters, in order to produce reasonable values to search across (e.g. the final size equation $R_0 = -\frac{log(1-f)}{f}$ where $f$ is the final size of the epidemic, combined with the knowledge that $f \approx 0.1$ because roughly only 10% of students submit the required assignments). Also note that the gamma slice, for example ,shows how a cross-section of the "ridge" in the log-likelohood surface, demonstrated below, can look when sliced along a specific parameter.
+
+
+```{r, echo = FALSE}
+loglik_window = 250 # threshold for "greyed out" tiles in loglikelihood plot
+expand.grid(Beta=seq(from=0.1,to=10,length=100),
+            gamma=seq(from=0.1,to=10,length=100),
+            rho=0.5,
+            N=my_N) -> p
+
+foreach (theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts) %dopar% 
+ {
+   pfilter(sir,params=unlist(theta),Np=1000) -> pf
+   theta$loglik <- logLik(pf)
+   theta
+ } -> p
+pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-loglik_window,loglik,NA))
+fignum <- fignum+1
+ggplot(data=pp,mapping=aes(x=Beta,y=gamma,z=loglik,fill=loglik))+
+  geom_tile(color=NA)+
+  geom_contour(color='black',binwidth=3)+
+  scale_fill_gradient(low="snow", high="dodgerblue")+
+  labs(x=expression(beta),y=expression(gamma)) + 
+  ggtitle(sprintf("Figure %d: Likelihood Surface", fignum))
+```
+
+The plot of the likelihood surface above shows the model log-likelihood as a function of model parameters $\beta$ and $\gamma$, with $\rho = 0.5$ and N fixed at 25000000, as in the previous simulation above. This likelihood surface plot demonstrates that maximizing the likelihood of the parameters for this model will be challgenging: it is a fairly ``rough'' likelihood surface with at least one large and narrow ``ridge'', which can make it difficult for random-walk parameter estimation algorithms (such as the MIF2 local search algorithm used below) to accurately explore the parameter space. The ridge shown in the plot above extends for a large distance in the curved shape shown; exploring a larger likelihood surface simply extended the shape (which is similar to a mountain range, with plains to the ``west'' and a long plateau to the ``east''). 
+
+However, the surface visualization also demonstrates that there are non-trivial differences in the log-likelihood of several of the parameter configurations considered in this model, so an attempt to find the likelihood-maximizing parameters might indeed be worthwhile in terms of a positive return on model fit.
+
+While this project, and the above plot, explores a restricted parameter space, most particularly ranges of $\beta \in [0, 10]$, $\gamma \in [0, 10]$, note that this analysis consisted of an iterative process of exploring a much larger parameter space, and the final version of this report displays only the restricted, most interesting subset of those parameters. More extreme values of the parameters, particularly values of $\beta >> 10$ and values of $\gamma >> 10$ were explored, but yielded a downward ``plateau'' in the likelihood surface, suggesting a long, gradual decrease in likelihood and that the likelihood-maximizing values of these parameters lay within the ranges presented in this final report. Additionally, I note here that some of the instability or ``roughness'' in the likelihood surface across the parameter space may be due to the modest size of the data presented here. It is possible that a time series of slightly longer length (although not ``too'' long; perhaps a few hunred time poiints) might be more useful. However, achieving such a dataset was not possible in this case, as extending the time series simply led to a longer series of zeroes (note that this time series was actually hundreds of time points long, but was truncated to the shorter series here in order to avoid large sections of zeroes), and increasing the frequency of the time series binning (e.g. recording at an hourly instead of daily frequency) led to hourly seasonality which this simple SIR model was unable to capture.
+
+# Exploring the Parameter Space: A Local Search of Parameter Estimates
+
+In the previous section, we explored some relatively basic methods for achieving initial reasonable estimates for the parameters of a compartment model fit to the Coursera graded programming assignment activity data. Now that we have obtained a reasonable set of maximum likelihood estimates for the model parameters $\beta$, $\gamma$, $\rho$, and $N$, we can conduct a local search using the iterated filtering algorithm of Ionides et al.\footnote{Ionides et al. (2015), \textit{
+Statistical Inference for Partially Observed Markov Processes via the R Package pomp}} using `mif2` around this maximum likelihood estimate. This section demonstrates this local parameter search, and then in the following section we consider a larger, global search after verifying that the local search is exploring a reasonable parameter space.
+
+In the IF2 algorithm, a particle filter is carried out with the parameter vector, which performs a random walk beginning at the MLE from the previous section. At the end of the time series, the collection of parameter vectors is ``recycled'' and becomes the starting parameters for a new particle filter. The random walk variance slowly ``cools'' or reduces over time. Theoretically, this algorithm converges on parameter estimates which maximize the likelihood of the parameters. In this relatively simple SIR model, which is the same as the model used in the previous sections, we do not treat any of the model parameters as fixed and instead estimate the entire parameter vector using the MIF2 algorithm.
+
+
+```{r, echo = FALSE, results = FALSE}
+library(tidyr)
+## reformat data so there is a column for graded programming, and a column for lecture viewing
+## reformat data
+gradedprogramming_lecture = activity_data %>% 
+    dplyr::filter(course_item_type_desc %in% c("graded programming", "lecture")) %>% 
+    dplyr::select(c("activity_date", "course_item_type_desc", "count")) %>%
+    tidyr::spread(key = course_item_type_desc, value = count) %>%
+    mutate(day = rank(activity_date)) %>%
+    dplyr::select(c("day", "lecture", "graded programming"))
+names(gradedprogramming_lecture) <- c("day", "L", "GP") # L = "lecture"; GP = "graded programming"
+# make sure exactly one observation per date
+assertthat::assert_that(nrow(gradedprogramming) == length(unique(gradedprogramming$day)))
+# knitr::kable(head(gradedprogramming_lecture))
+```
+
+Below, we show the different ``run levels'' considered in this analysis; run level 3 was not used due to the prohibilitively high computation time required to execute that analysis, but we note in the future work section in the conclusions of this report that more computationally-intensive exploration of the model considered in this work might resolve some of the convergence issues noted in the later sections.
+
+```{r}
+run_level <- 2
+switch(run_level,
+       {bsflu_Np=10; bsflu_Nmif=10; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+       {bsflu_Np=7000; bsflu_Nmif=150; bsflu_Neval=10; bsflu_Nglobal=45; bsflu_Nlocal=15}, 
+       {bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=100; bsflu_Nlocal=20}
+)
+```
+
+Before the apply the iterated filtering algorithm, we first carry out replicated particle filters on the previously computed point estimate from the prior section.
+
+```{r}
+require(doParallel)
+cores <- N_CORES
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+
+set.seed(396658101,kind="L'Ecuyer")
+stew(file=sprintf("pf_coursera-%d.rda",run_level),{
+  t_pf <- system.time(
+    pf <- foreach(i=1:20,.packages='pomp',
+                  .options.multicore=mcopts) %dopar% try(
+                    pfilter(sir,params=my_params,Np=bsflu_Np)
+                  )
+  )
+},seed=1320290398,kind="L'Ecuyer")
+t_pf
+(L_pf <- logmeanexp(sapply(pf,logLik),se=TRUE))
+```
+
+This produces an unbiased likelihood estimate of -1621.1138019 with Monte Carlo standard error 0.3612455. Now, we proceed with a local search of the likelihood surface using MIF2 around the MLE parameter vector from the previous section. The cooling parameter used here is 0.6; increasing the cooling rate was found to lead to quicker convergence without affecting the log-likelihood estimate. 
+
+The `rw.sd` parameter, which controls $v^2$, the random walk variability of each parameter, was adjusted based on the results of previous analyses, as well as an iterative exploratory process, to ensure that each parameter explored a sufficiently large search space. Using different values of `rw.sd` achieved better exploration of the space than using a single value for all parameters. The values of $v^2$ for each parameter used were $v_{\beta}^2=0.02$, $v_{\gamma}^2=0.001$, $v_{\rho}^2=0.0025$, $v_N^2=1000$.
+
+
+```{r, echo = FALSE}
+my_cooling.fraction.50 <- 0.6
+
+stew(file=sprintf("local_search_coursera-%d.rda",run_level),{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        sir,
+        start=my_params,
+        Np=bsflu_Np,
+        Nmif=bsflu_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=my_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          Beta=0.02,
+          gamma=0.001,
+          rho=0.0025,
+          N=1000
+        )
+      )
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+```
+
+```{r, echo = FALSE}
+stew(file=sprintf("lik_local_coursera-%d.rda",run_level),{
+    t_local_eval <- system.time({
+    liks_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(bsflu_Neval, logLik(pfilter(sir,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+```
+
+Although the filtering carried out by `mif2` in the final filtering iteration generates an approximation to the likelihood at the resulting point estimate, this is usually insufficient for reliable inference and can be subject to the random perturbations induced by the algorithm itself, both because of the randomness in the final iteration of the `mif2` algorithm and because mif2 typically uses a smaller number of particles than is necessary for reliable estimation of the true likelihood.
+
+Because the errors in `mif2` average out over many iterations of the filtering, we can evaluate the likelihood and estimate its standard error using replicated particle filters at each point estimate. We do so below, and provide a pairwise plot of the parameters.
+
+```{r, echo = FALSE}
+loglik_pairplot_threshold = 500
+fignum <- fignum+1
+pairs(~logLik+Beta+gamma+rho+N,data=subset(results_local,logLik>max(logLik)-loglik_pairplot_threshold), main = sprintf("Figure %s: Pair Plot of Local Parameter Estimates via MFF2 Exploration", fignum))
+```
+
+The plot above demonstrates that some parameter exploration appears is happening, although the procedure does not seem to be exploring the full spectrum of likely values for the parameters, as demonstrated by the plot of the log-likelihood surface shown previously. This might be due to the fact that, as observed in the likelihood surface plot (Figure 7) above, there is a sharp, narrow ridge in the likelihood surface. This makes it difficult for a random walk to ``walk'' along this ridge, because the random perturbations can easily pull it away from the ridge and produce low-likelihood estimates with only small changes in the parameters.
+
+Based on the parameter exploration that we do see here, it appears that $\beta$ is most strongly associated with the overall model log-likelihood, with $\gamma$ only showing a slight correlation with the log-likelihood and $rho$ and $N$ showing no clear discernable relationship (or a correlation of zero with the log-likelihood, which would imply that changes of these parameters, within the limits considered, does not affect the log-likelihood of this particular model specification). Interestingly, there does appear to be a relationship between $\beta$ and $rho$ in the high-log-likelihood estimates shown in the pairwise plot, although what that might imply for the model itself is not clear.  
+
+Generally, however, the main conclusion from this figure and the local parameter search is that a larger, global search might be more effective due to the sharp peaks in the likelihood surface.
+ 
+# Expanding the Parameter Space with MIF2: A Global Search of Parameter Estimates
+
+After exploring a local maximum likelihood parameter estimation using the MIF2 algorithm, we can now explore a more expansive search of the global search space (or, the space of potentially reasonable parameter values). In particular, such a search is useful here because the maximum likelihood/slicing approach and the local search method (which was based on the inital estimates from the slicing method) both largely failed to produce clearly-optimal models. A broader search of the parameter space might allow our algorithm to explore a larger portion of the ``ridge'' observed along the $\gamma, \beta$ plane in Figure 7 previously.
+
+In this section, we explore a parameter search based on a ``box'' of reasonable parameter estimates; notably $\beta \in [1.1, 10]$, $\gamma \in [0.75, 3]$, $\rho \in [0.2,0.65]$, $N \in [1 \times 10^5,1 \times 10^9]$. While values of these parameters down to zero are theoretically possible (except in the case of N), these values have low likelihood and can cause errors in the MIF2 algorithm if negative values are encountered in random walk.
+
+The MIF2 algorithm randomly samples from within this parameter box, using a uniform distribution across each parameter value. As noted above, the approximate likelihood evaluation generated by mif2 in the final filtering iteration is not usually good enough for reliable inference. Therefore, we evaluate the likelihood, together with a standard error, using replicated particle filters at each point estimate, which is printed out below. A detailed copy of the parameters evaluated from this estimation are also saved along with this script; the full results are not reproduced here.
+
+Evaluation of the best result of this search gives a likelihood of -1612 with a standard error of 0.0676. This analysis completed in 5026 seconds for the maximization procedure, and 599.7 seconds for the evaluation. Plotting these diverse parameter estimates can help to give a feel for the global geometry of the likelihood surface, and is shown below. It shows a clear relationship between the $\beta$ parameter and the $\rho$, which is likely due to the structure of the model, as well as evidence that the log-likelihood in the larger search space is most sensitive to the $\gamma$ value. This matches what we saw in the two-dimensional likelihood surface plot in Figure 7 above, where a range of $\beta$ values were plausible but only a narrow band of $\gamma$ values produced high likelihood.
+
+```{r, echo = FALSE}
+coursera_box <- rbind(
+  Beta=c(1.1, 10), ## w
+  gamma=c(0.75, 3),
+  rho = c(0.2,0.65),
+  N = c(1e5,1e9)
+)
+```
+
+
+```{r, echo = FALSE}
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      mifs_local[[1]],
+      start=c(apply(coursera_box,1,function(x)runif(1,x[1],x[2])))
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+```
+
+
+
+```{r, echo = FALSE}
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(bsflu_Neval, logLik(pfilter(sir,params=coef(mifs_global[[i]]),Np=bsflu_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+```
+
+```{r, echo = FALSE}
+# It is good practice to build up a file of successful optimization results for subsequent investigation:
+if (run_level>=2) 
+  write.table(rbind(results_local,results_global),
+              file="coursera_sir_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+```
+
+
+```{r, echo = FALSE}
+loglik_plot_thresh = 500
+fignum <- fignum+1
+pairs(~logLik+Beta+gamma+rho+N,data=subset(results_global,logLik>max(logLik)-loglik_plot_thresh), main = sprintf("Figure %d: Pair Plot of Global/Boxed Parameter Estimates via MIF2 Exploration", fignum))
+```
+
+Optimization attempts from somewhat diverse starting points yield comparable likelihoods, even when the parameter values are scattered over a relatively broad range; this provides at least some evidence that our maximization procedure is finding high-likelihood parameter combinations and maximizing the likelihood within the search space.
+
+Below, we note that the convergence diagnostics for this model suggest that many of the MCMC chains did not fully converge. In particular, the log-likelihood shows signed of convergence, as does the $\beta$ parameter, but there is substantial variability in the $\gamma$, $\rho$, and $N$ parameters that may have led to more desirable convergence had more MIF iterations been conducted. This lack of observed convergence could be due to model specification issues, but more likely, it is due to the MCMC simulations needing to be run for longer. However, even incremental increases in the MCMC sampling parameters in the `run_level` code above led to intractable computational time, so these were not practical for the scope of this project. Longer simluations are noted as an important future direction below.
+
+```{r, echo = FALSE, fig.width=3.75}
+# Now, we can look at the diagnostics.
+plot(mifs_global)
+```
+
+# Conclusions and Future Work
+
+## Conclusions: The SIR Model As A Model of Learning
+
+This analysis provides limited, initial evidence that a variant of an SIR model can be used as a heuristic for modeling how groups of learners in a MOOC transition between various learning states. While it does not suggest, assume, or imply that learning is ``contagious'', it models the way individuals can transition between different states, and how these dynamics might be present in time series data at the aggregated group level over time. The case study demonstrates that a reasonable model fit can be achieved even with a relatively simple model, but that the parameter estimation process is difficult, complex, and sensitive to the initial values; only a global parameter search produced reasonable maximization procedures. Other parameter estimation procedures tended to be constrained to exploring small local minima in the likelihood surface.
+
+This work intended to be a first look at how SIR models, and POMP models more broadly, can contribute to our understanding of latent, unobservable psychological states through observable behavioral data; while it is relatively limited in scope, I believe it makes a valuable contribution  as a proof of concept of a viable modeling technique that stands to contribute to the field.
+
+##Future work
+
+There is a great deal of future work implied by this analysis; it largely separates into (i) depening the existing analysis (ii) expanding the analysis by exploring other modeling types; and (iii) directly incorporating more psychologically-grounded models of learning.
+
+In the case of (i), as mentioned above, computational resources for conducting this analysis were constrained by high traffic on the course computing cluster, which made running large, long MCMC simulations impractical. In the future, this analysis should be extended by looking at more MIF iterations, more iterations of the particle filters used to evaluate the log-likelihood, and more expansive searches of the local and global parameter space. The model couls also be extended by exploring other additions to the SIR model, such as incoroporating *dropout* -- a common phenomena in MOOCs -- by allowing individuals to ``leave'' the different compartments without proceeding to the next (this is referred to as *mortality* in SIR models). Future models could also incorporate covariates, such as the number of lecture view or forum posts observed at each time point, as a way to further model the relationship between different activity types and how each contributes to learning.
+
+For (ii), future analyses could explore other models beyond the simple SIR model evaluated here. This could include more complex, multi-stage SIR models (S-I-R1-R2 model, etc.), or it could include more sophisticated compartment models such as that of Martinez-Bakker et al. (2015)\footnote{Martinez-Bakker et al. (2015). \textit{Unraveling the Transmission Ecology of Polio}.}
+
+Finally, for (iii), this analysis certainly would benefit from more incorporation of psychological theory. Work more specifically grounded in theories of psychology, individual behavior in large-scale learning environments, and the interplay between passive consumption of learning content (e.g. lecture viewing), practice (graded programming assignments), and mastery could greatly inform the structure of future POMP models. Such work would undoubtedly produce more sophisticated models, and this work simply represents a first exploration of the possibilities for POMP models of learner behaviro in MOOCs. A more ambitious, more psychologically-informed work was also far beyond the scope of this paper, but would be a promising direction for future work in this area.
+

@@ -1,0 +1,430 @@
+---
+title: "STATS 531 Final Project: POMP Model on Brazilian Industrial Production Index"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\I}{\mathbbm{1}} % indicator function
+
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+
+\newcommand{\eg}{e.g.}
+\newcommand{\ie}{i.e.}
+
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\estimate[1]{\data{#1}}
+\newcommand\params{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\eqspace{\quad\quad\quad}
+\newcommand\lik{\mathscr{L}}
+\newcommand\loglik{\ell}
+\newcommand\profileloglik[1]{\ell^\mathrm{profile}_#1}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\AR{\Phi}
+\newcommand\MA{\Psi}
+
+---
+
+```{r knitr-opts,include=FALSE,purl=FALSE,cache=FALSE}
+prefix <- "finalproj"
+library(knitr)
+opts_chunk$set(
+  progress=TRUE,
+  prompt=FALSE,tidy=FALSE,highlight=TRUE,
+  strip.white=TRUE,
+  warning=FALSE,
+  message=FALSE,
+  error=FALSE,
+  echo=TRUE,
+  cache=TRUE,
+  cache.extra=rand_seed,
+  results='markup',
+  fig.show='asis',
+  size='small',
+  fig.lp="fig:",
+  fig.path=paste0("figure/",prefix,"-"),
+  cache.path=paste0("cache/",prefix,"-"),
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=4,fig.width=6.83,
+  dpi=300,
+  dev='png',
+  dev.args=list(bg='transparent')
+  )
+
+```
+```{r opts,include=FALSE,cache=FALSE}
+options(
+  keep.source=TRUE,
+  stringsAsFactors=FALSE,
+  encoding="UTF-8"
+  )
+```
+
+```{r prep, warning=T, message=F, echo=F}
+set.seed(594709947L)
+require(ggplot2)
+theme_set(theme_bw())
+require(plyr)
+require(reshape2)
+require(doParallel)
+num_cores=4
+registerDoParallel(cores=num_cores)
+require(foreach)
+require(doMC)
+registerDoMC(cores=num_cores)
+require(pomp)
+stopifnot(packageVersion("pomp")>="0.75-1")
+```
+
+##Introduction
+
+* In this project, we continue the work from midterm project to analyze a monthly economic time series (specifically, Industrial Production Index, or IPI for short) from the Brazilian economy.
+
+* IPI is an economic indicator that measures the real production output of manufacturing, mining, and utilities. The monthly IPI is usually used to reflect short-term changes in industrial production. The growth in IPI from month to month indicates the growth in the industry. ("Industrial Production Index", n.d.)
+
+* In the midterm project, we focus on ARMA model and SARIMA model. In this project, we will use partially observed Markov process (POMP) model with geometric Brownian Motion (GBM).
+
+* The question of interests is that whether POMP model with GBM is suitable for IPI data.
+
+##Data Exploration
+
+* The dataset comes from the website (West, n.d.), which in turn comes from the article by Huerta and Lopes, 1999.
+
+* The dataset contains monthly IPI in Brazil from January 1980 to December 1997, 216 months in total.
+
+```{r load data, echo=F}
+dt = read.table(file="dt.csv", header=TRUE)
+dt$Date = 1:216
+IPI = dt[,2]
+summary(IPI)
+```
+
+* The above is a brief summary of IPI over 216 months. There are no missing values.
+
+```{r plot data,echo=F}
+plot(IPI, type="l", main="Time Series Plot of IPI")
+```
+
+* From the time series plot above, there seems to be some evidences for an increasing trend, especially in the later months. However, the evidences are not strong. There are also considerable fluctuations.
+
+##Work from Midterm Project
+
+* In midterm project, we find SARIMA$(0,1,1)\times(0,1,1)_{12}$ model fits the data pretty closely, which outperforms ARMA(4,3) model and SARIMA$(1,0,0)\times(0,1,0)_{12}$ model.
+
+```{r midterm,echo=F}
+IPI_sarima1 = arima(IPI, order=c(0,1,1), seasonal=list(order=c(0,1,1),period=12))
+IPI_sarima1
+plot(seq(1,216), IPI, type='l', main="SARIMA(0,1,1)x(0,1,1)_12 model", col="blue", xlab="Index", ylab="IPI")
+legend(0,130, c("original","fitted"), cex=0.8, col=c("blue","red"), pch=21:22, lty=1:2);
+lines(seq(1,216),IPI-IPI_sarima1$residuals, type="l", col='red', pch=22, lty=2)
+```
+
+* The log likelihood for SARIMA$(0,1,1)\times(0,1,1)_{12}$ model is about -616.27.
+
+* We see from the plot above that this model fits the data very well. The model not only captures most of the fluctuations, but also fits the peaks closely.
+
+##POMP Model Description
+
+###Background
+
+* There are some observations of Gross Domestic Product (GDP) being a GBM. (Conover, n.d.) Since IPI is closely related to GDP, it is reasonable to use GBM to model IPI.
+
+* A GBM $\{S_t\}$ is an exponentiated
+Brownian motion defined through
+$$\frac{dS_t}{S_t} = \mu dt + \sigma dW_t$$
+where $W_t$ is a Brownian motion. (Avdiu, n.d.)
+
+* There is a recursive procedure for simulating
+values of $\{S_t\}$:
+$$S_{t+1} = S_t \exp( (\mu-\frac{1}{2}\sigma^2) (t_{i+1} - t_i) + \sigma \sqrt{t_{i+1} - t_i} Z_i)$$
+with $0 < t_0 < t_1 < ...$ and $Z_i \sim N(0,1)$. (Avdiu, n.d.)
+
+###Our Model
+
+* In our monthly data, $t_{i+1} - t_i = 1$.
+
+* We present a POMP model with GBM as
+$$S_{n+1} = S_n \exp((\mu-\frac{1}{2}\sigma^2) + \sigma E_n)$$
+where $S$ and $E$ are state variables, and $E_n \sim N(0, \phi^2)$.
+
+* The measurement model is
+$$IPI_n | S_n \sim N(0,S_n)$$.
+
+* We initialize $S_0 = 1$ and $E_0 = 0$.
+
+* The following is the corresponding pomp implementation.
+
+```{r construct pomp,}
+ipi_statenames <- c("S","E")
+ipi_paramnames <- c("mu","sigma","phi")
+ipi_obsnames <- "IPI"
+
+ipi_step <- Csnippet("
+E = rnorm(0,phi);
+S = S*exp((mu-sigma*sigma/2)+sigma*E);
+")
+
+ipi_init <- Csnippet("
+S=1;
+E=0;
+")
+
+ipi_fromEstimationScale <- "
+ Tmu = exp(mu);
+ Tsigma = exp(sigma);
+ Tphi = exp(phi);
+"
+
+ipi_toEstimationScale <- "
+ Tmu = log(mu);
+ Tsigma = log(sigma);
+ Tphi = log(phi);
+"
+
+dmeas <- Csnippet("lik = dnorm(IPI,0,S,give_log);")
+rmeas <- Csnippet("IPI = rnorm(0,S);")
+
+pomp(dt,times="Date",t0=0,
+     rprocess=discrete.time.sim(step.fun=ipi_step,delta.t=1),
+     initializer=ipi_init,rmeasure=rmeas,dmeasure=dmeas,
+     statenames=ipi_statenames,
+     paramnames=ipi_paramnames,
+     fromEstimationScale=Csnippet(ipi_fromEstimationScale),
+    toEstimationScale=Csnippet(ipi_toEstimationScale)
+     ) -> ipi_pomp
+```
+
+###Run Level
+
+* We use three run levels to develop and refine the model.
+
+```{r run level, echo=T}
+run_level <- 3
+switch(run_level,
+       {ipi_Np=100; ipi_Nmif=10; ipi_Neval=10; ipi_Nglobal=10; ipi_Nlocal=10}, 
+       {ipi_Np=20000; ipi_Nmif=100; ipi_Neval=10; ipi_Nglobal=10; ipi_Nlocal=10}, 
+       {ipi_Np=60000; ipi_Nmif=300; ipi_Neval=10; ipi_Nglobal=100; ipi_Nlocal=20}
+)
+```
+
+###Likelihood Slice
+
+* To have an idea of what the likelihood surface looks like, we design the following slice.
+
+```{r design slice, eval=T, echo=T}
+sliceDesign(
+  c(mu=0.1,sigma=0.2,phi=0.5),
+  mu=rep(seq(from=-0.5,to=0.5,length=50),each=3),
+  sigma=rep(seq(from=0,to=4,length=50),each=3),
+  phi=rep(seq(from=0,to=4,length=50),each=3)
+  ) -> p
+```
+
+```{r lik slice, eval=T, echo=F}
+set.seed(998468235L,kind="L'Ecuyer")
+mcopts <- list(preschedule=FALSE,set.seed=TRUE)
+
+foreach (theta=iter(p,"row"),.combine=rbind,
+         .inorder=FALSE,.options.multicore=mcopts) %dopar% 
+ {
+   pfilter(ipi_pomp,params=unlist(theta),Np=5000) -> pf
+   theta$loglik <- logLik(pf)
+   theta
+ } -> p
+```
+
+```{r slice plot mu, eval=T, echo=F}
+v = "mu"
+x <- subset(p,slice==v)
+plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+```
+
+* Along $\mu$ direction, the log likelihood is maximized when $\mu$ is about 0.1.
+
+```{r slice plot sigma, eval=T, echo=F}
+v = "sigma"
+x <- subset(p,slice==v)
+plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+```
+
+* Along $\sigma$ direction, the log likelihood is maximized when $\sigma$ is about 0.5.
+
+```{r slice plot phi, eval=T, echo=F}
+v = "phi"
+x <- subset(p,slice==v)
+plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+```
+
+* Along $\phi$ direction, the log likelihood is maximized when $\phi$ is about 2.
+
+###Running a Partical Filter
+
+* Using $\mu=0.1$, $\sigma=0.5$ and $\phi=2$ as point estimate, we run a basic particle filter.
+
+```{r pf test mle, eval=T, echo=F}
+ipi_test_mle = c(S.0=1,E.0=0,mu=0.1,sigma=0.5,phi=2)
+
+mcopts <- list(set.seed=TRUE)
+set.seed(396658101,kind="L'Ecuyer")
+
+stew(file=sprintf("pf-%d.rda",run_level),{
+  t_pf <- system.time(
+    pf <- foreach(i=1:20,.packages='pomp',
+                  .options.multicore=mcopts) %dopar% try(
+                    pfilter(ipi_pomp,params=ipi_test_mle,Np=ipi_Np)
+                  )
+  )
+  
+},seed=1320290398,kind="L'Ecuyer")
+
+(L_pf <- logmeanexp(sapply(pf,logLik),se=TRUE))
+```
+
+* The log likelihood estimate is about -1453.78 with a Monte Carlo standard error of 0.08.
+
+###Local Search
+
+```{r local search, eval=T, echo=F}
+ipi_rw.sd <- 0.002
+ipi_cooling.fraction.50 <- 0.1
+
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:ipi_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+      mif2(
+        ipi_pomp,
+        start=ipi_test_mle,
+        Np=ipi_Np,
+        Nmif=ipi_Nmif,
+        cooling.type="geometric",
+        cooling.fraction.50=ipi_cooling.fraction.50,
+        transform=TRUE,
+        rw.sd=rw.sd(
+          mu=ipi_rw.sd,
+          sigma=ipi_rw.sd,
+          phi=ipi_rw.sd
+        )
+      )
+      
+    }
+  })
+  
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+    t_local_eval <- system.time({
+    liks_local <- foreach(i=1:ipi_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
+      evals <- replicate(ipi_Neval, logLik(pfilter(ipi_pomp,params=coef(mifs_local[[i]]),Np=ipi_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+if (run_level>=3)
+  write.table(results_local,
+              file="ipi_local_params.csv",append=TRUE,col.names=TRUE,row.names=FALSE)
+
+summary(results_local$logLik,digits=5)
+pairs(~logLik+mu+sigma+phi,data=subset(results_local,logLik>max(logLik)-250))
+```
+
+* A local search gives a max log likelihood of -1422.
+
+* The figure shows the geometry of the likelihood surface in a neighborhood of this point estimate.
+
+###Global Search
+
+* We now perform a global search in a parameter box defined below, hoping to improve the log likelihood.
+
+```{r global search box, eval=T, echo=T}
+ipi_box <- rbind(
+  mu=c(0,0.5),
+  sigma=c(0.2,4),
+  phi = c(0.5,4)
+)
+```
+
+```{r global search, eval=T, echo=F}
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:ipi_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+      mifs_local[[1]],
+      start=apply(ipi_box,1,function(x)runif(1,x))
+    )
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:ipi_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+      evals <- replicate(ipi_Neval, logLik(pfilter(ipi_pomp,params=coef(mifs_global[[i]]),Np=ipi_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+if (run_level>=3)
+  write.table(results_global,
+              file="ipi_global_params.csv",append=TRUE,col.names=TRUE,row.names=FALSE)
+
+summary(results_global$logLik,digits=5)
+pairs(~logLik+mu+sigma+phi,data=subset(results_global,logLik>max(logLik)-250))
+```
+
+* The global search gives a max log likelihood of -1420, which is an improvement over that from the local search, though not much.
+
+###Diagnostic
+
+* The fact that both local search and global search give similar max log likelihood shows confidence in our maximization procedure.
+
+* We also look at the diagnostic plots.
+
+```{r diag, eval=T}
+plot(mifs_global)
+```
+
+* The diagnostic plots show that the parameter estimations are quite stable.
+
+##Conclusion
+
+* In this project, we fit POMP model with GBM on Brazilian monthly IPI data.
+
+* The POMP model gives a max log likelihood of -1420, and the log likelihood is stable, which means the method is suitable for the data.
+
+* However, the max log likelihood from the POMP model is still quite small, compared with that from SARIMA model studied in the midterm project.
+
+##Acknowledgment
+
+* The concepts and implementations of POMP model is based on Professor Ionides' notes for STATS 531 (Winter 2018) at the University of Michigan. (Ionides, n.d.)
+
+##Reference
+
+[1] Avdiu, K. Brownian Motion & Geometric Brownian Motion. Retrieved April 26, 2018, from http://homepage.univie.ac.at/kujtim.avdiu/dateien/BrownianMotion.pdf.
+
+[2] Conover, J. Historical Economics. Retrieved April 26, 2018, from http://www.johncon.com/john/historical.economics/.
+
+[3] Huerta, G., Lopes, H. F. 1999. Bayesian forecasting and inference in latent structure for the Brazilian GDP and Industrial Production Index. Retrieved April 26, 2018, from ftp://ftp.stat.duke.edu/pub/WorkingPapers/99-08.html.
+
+[4] Industrial Production Index. Retrieved April 26, 2018, from https://fred.stlouisfed.org/series/INDPRO.
+
+[5] Ionides, E. Stats 531 (Winter 2018) ‘Analysis of Time Series’. Retrieved April 26, 2018, from https://ionides.github.io/531w18/.
+
+[6] West, M. SOME TIME SERIES DATA SETS. Retrieved April 26, 2018, from http://www2.stat.duke.edu/~mw/ts_data_sets.html.
