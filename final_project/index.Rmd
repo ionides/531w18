@@ -21,7 +21,7 @@ output:
 
 1. [Financial Volatility of Google Stock](https://ionides.github.io/531w18/final_project/1/final.html)
 
-2. [Modeling Crisis Call Volume in Ann Arbor](https://ionides.github.io/531w18/final_project/2/final.html)
+2. [Investigation on Financial Volatility of NASDAQ](https://ionides.github.io/531w18/final_project/2/final.html)
 
 3. [Relationship between CNH to USD Exchange Rate and S&P 500 Index](https://ionides.github.io/531w18/final_project/3/final.html)
 

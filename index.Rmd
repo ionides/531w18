@@ -123,11 +123,11 @@ There are further POMP case studies, in a similar style, on [Ebola modeling](htt
 
 * [Homework 6](hw06/hw06.html), due in class on Wednesday 3/14. [Solution](hw06/sol06.html).
 
-* [Homework 7](hw07/hw07.html), due 11:59pm on Monday 3/26.
+* [Homework 7](hw07/hw07.html), due 11:59pm on Monday 3/26. [Solution](hw07/sol07.html).
 
 * [Homework 8](hw08/hw08.html), to be carried out by Monday 4/2.
 
-* [Homework 9](hw09/hw09.html), due on Monday 4/16. 
+* [Homework 9](hw09/hw09.html), due on Monday 4/16. [Solution](hw09/sol09.html).
 
 ------------
 
