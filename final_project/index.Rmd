@@ -14,6 +14,7 @@ output:
 
 * Here are the projects. In most cases, source code and data are available from [https://github.com/ionides/531w18/tree/master/final_project](https://github.com/ionides/531w16/tree/master/final_project). For computationally expensive analysis, results saved as .rda files may or may not be available.
 
+* Some projects with confidential data are not posted.
 
 ----------
 
@@ -33,7 +34,7 @@ output:
 
 7. [POMP modeling of temperature effects on population dynamics of a parasitoid–host system](https://ionides.github.io/531w18/final_project/7/final.html)
 
-8. [SV in Mean Model for NASDAQ Index](https://ionides.github.io/531w18/final_project/8/final.html)
+8. [SV in Mean Model for NASDAQ Index](https://ionides.github.io/531w18/final_project/8/final.html). 
 
 9. [Variations of the Ricker POMP model of <i>Lactobacillus crispatus</i> bacterial counts in the vaginal microbiota](https://ionides.github.io/531w18/final_project/9/final.html)
 
@@ -89,7 +90,7 @@ output:
 
 35. [Analyzing the Volatility of Bitcoin Market Price](https://ionides.github.io/531w18/final_project/35/final.html)
 
-36. [Financial Volatility Analysis](https://ionides.github.io/531w18/final_project/36/final.html)
+36. [Financial Volatility Analysis](https://ionides.github.io/531w18/final_project/36/final.html). Note: This project received a low grade. It builds on a [previous project](https://ionides.github.io/531w16/final_project/Project08/Final/Stats_531_Final_Project.html) which is not cited.
 
 37. [Shigellosis Transmission in South Korea from 2001 to 2016](https://ionides.github.io/531w18/final_project/37/final.html)
 
