@@ -1,0 +1,423 @@
+---
+title: "Investigation on Financial Volatility of NASDAQ"
+date: "4/24/2018"
+output: 
+    html_document:
+        toc: true
+        theme: flatly
+---
+
+# 1 Introduction
+* Volatility is a statistical measure of the dispersion of returns for a given security or market index.In other word, volatility refers to the amount of uncertainty or risk about the size of changes in a security's value.[1] Therefore, volatility is an important factor in the stock market and investors show great interest on it. 
+
+* The project aims at finding the best model on financial volatility of NASDAQ. This project mainly focus on two popular models on the investigation of the volatility: Garch model and model of Carles Bretó[2]. 
+
+*For Garch model, we basically just use the garch function in the R and for model of Carles Bretó, we are going to use pomp to study its performance. 
+
+* We use the smallest value of AIC (Akaike Information Criterion), which defined as $-2loglikelihood + 2k$ ($k$ is the number of parameters) to choose the model that describes the data best. Since in most cases, k is quite a small number compared with value of the loglikehood, we just only need to compare the loglikelihood value between these three models and in the meanwhile, diagnostics should be performed on different models to determine their correctness.
+ 
+# 2 Data Description 
+The dataset is downloaded from https://finance.yahoo.com/.[3] It contains 524 observations of weekly adjusted closing price from 2003 to 2013. The plots are shown below and the red lines refer as the mean of the data. From the plot of the original price and the log price, we can both observe the increasing trends overall except there was a big drop in 2008, which can be explained by the occurrence of the finanical crisis. Then I get the log return of the dataset and it is shown that the mean of it is slightly larger than zero. I get the demeaned returns as the main dataset to study later by eliminating the mean. The graph of the demeaned returns shows that it is a random pertubation around 0. And it could also be found out that the variance of the process is quite different during the different periods, but high volatility usually clusters together. 
+```{r}
+NASDAQ <-read.csv("IXIC.csv")
+N <- dim(NASDAQ)[1]
+
+par(mfrow=c(1,2))
+plot(as.Date(NASDAQ$Date),NASDAQ$Adj.Close,type="l",xlab="Date",ylab="Price($)",main="Daily adjusted closing price")
+abline(h=mean(NASDAQ$Adj.Close),col="red")
+plot(as.Date(NASDAQ$Date),log(NASDAQ$Adj.Close),type="l",xlab="Date",ylab="Log price($)",main="Log price")
+abline(h=mean(log(NASDAQ$Adj.Close)),col="red")
+
+par(mfrow=c(1,2))
+plot(as.Date(NASDAQ$Date)[2:N-1],diff(log(NASDAQ$Adj.Close)),type="l",xlab="Date",ylab="",main="Returns of price")
+abline(h=mean(diff(log(NASDAQ$Adj.Close))),col="red")
+ret <- diff(log(NASDAQ$Adj.Close))
+ret.de <- ret-mean(ret)
+plot(as.Date(NASDAQ$Date)[2:N-1],ret.de,type="l",xlab="Date",ylab="",
+     main="Demeaned returns")
+abline(h=mean(ret.de),col="red")
+```
+
+# 2 Garch Model
+The GARCH models have become widely used for financial time series modeling. Here, we follow Cowpertwait and Metcalfe (2009) to introduce these models and corresponding computations in R.
+## 2.1 Definition of the Model
+Denote the return and volatility at time n as $y_n$ and $\sigma_n^2$. 
+The Garch(p,q) model has the form: $$ y_n = \sigma_n\epsilon_n $$ where $$ \sigma_n^2 = \alpha_0 + \sum_{j=1}^p \alpha_j y_{n-j}^2 + \sum_{k=1}^q \beta_k \sigma_{n-k}^2 $$ and $\epsilon_{1:n}$ is white noise.
+
+By calculating the covariance between the returns $y_{1:n}$ following the equations of the model, we can find out that the covariance between returns at different times is 0, which means that $y_n$ are uncorrelated. But since $\sigma_n$ depend on $y_{n-1}$, the Garch model suggests that $y_n^2$ are correlated. And these phenomenon can be proved by the ACF plot of the returns. 
+
+```{r}
+acf(ret.de, main = 'ACF plot of return')
+acf(ret.de^2, main = 'ACF plot of return^2')
+```
+
+Looking at the acf plot of return, all lines are below the dash lines except those at lag=14 and lag=27 but these two lines don't exceed a lot. I would regard these two happen randomly. From the acf plot of the square of the returns, many lines exceed the dash lines so they are highly correlated. 
+
+## 2.2 Fitting the Garch Model
+The next step is to select the appropriate garch model with the minimum AIC (Akaike Information Criterion) value, which defined as $-2loglikelihood + 2k$ ($k$ is the number of parameters). 
+
+```{r}
+library(tseries)
+Table_For_GARCH_AIC <- function(data,P,Q){
+  table <- matrix(NA,(P),(Q))
+  for(p in 1:P) {
+    for(q in 1:Q) {
+      temp.fit = garch(x = data, order = c(p,q), grad = "numerical", trace = FALSE)
+      table[p,q] <- 2*length(temp.fit$coef) - 2*as.numeric(logLik(temp.fit))
+    }
+  }
+  dimnames(table) <- list(paste("<b> p",1:P, "</b>", sep=""),paste("q",1:Q,sep=""))
+  table
+}
+NASDAQ_aic_table <- Table_For_GARCH_AIC(ret.de,5,5)
+require(knitr)
+kable(NASDAQ_aic_table,digits=2)
+```
+
+From the table, it is shown that Garch(2,2) and Garch(1,2) have the smallest value. So there are preferred by the criterion. And their values are pretty close to each other and follow the principal of selecting the simpler model, I would pefer Garch(1,2). I also plotted the $±1.96\sigma_n$ as the 95% confidence of return together with its real value. And since by the benchmark, garch(1,1) is a popular choice and I would like to get the fitted results of garch(1,1) as well. 
+
+```{r}
+require(fGarch) 
+fit.garch <- garchFit(~garch(1,2), ret.de, trace = F)
+summary(fit.garch)
+```
+From the summary, we can find out that the loglik of garch(1,2) is 1171.97. And there is one important reason that this garch(1,2) is not a good fitted model: p-value for beta2 is larger than 0.05, which makes it statistically unsignificant.
+
+```{r}
+fit.garch2 <- garchFit(~garch(1,1), ret.de, trace = F)
+u2 = fit.garch2@sigma.t
+plot(as.Date(NASDAQ$Date)[2:N-1],ret.de,ylab="Returns", xlab = 'Date',type = 'l', main = 'Garch(1,1)', lwd = 1)
+lines(as.Date(NASDAQ$Date)[2:N-1],-1.96*u2, lty=2, col='grey', lwd = 1.5)
+lines(as.Date(NASDAQ$Date)[2:N-1],1.96*u2, lty=2, col='grey', lwd = 1.5)
+legend('topright', c('return','+- 1.96*sqrt(volatility)'), col = c('black','grey'), lty = c(1,2), lwd = c(1,1.5))
+```
+
+```{r}
+summary(fit.garch2)
+```
+
+The summary shows that the loglikehood value of garch(1,1) is 1171.471, which is quite close to the loglik of garch(1,2). And all the parameters are statistically significant. And also looking at the Ljung-Box Test for both residuals and square of residuals, all the p-values are higher than 0.05, which means that we fail to reject that hypothesis that residuals and the square of the residuals are all uncorrelated. And this matches the defintion of the model in which $\epsilon_{1:n}$ is independent. But the Jarque-Bera Test and Shapiro-Wilk Test shows the statistic signifance, which means that the normality of the residuals will be rejected and I will further discuss it using QQ plot. 
+
+```{r}
+qqnorm(ret.de)
+qqline(ret.de)
+```
+
+This shows that the residuals have a heavy-tailed distribution. So the normality of the residuals failed. But except for not having the property of normality, overall garch(1,1) is a good model to predict the financial volatility of NASDAQ.
+```{r}
+a0 = as.numeric(fit.garch2@fit$coef[2])
+a1 = as.numeric(fit.garch2@fit$coef[3])
+b1 = as.numeric(fit.garch2@fit$coef[4])
+print(fit.garch2@fit$coef)
+set.seed(1)
+```
+And above we get the values of the parameters for the garch(1,1) model. $$ y_n = \sigma_n\epsilon_n $$ where $$ \sigma_n^2 = 7.603746e-05 + 1.685305e-01 \times y_{n-1}^2 + 7.296873e-01\times \sigma_{n-1}^2 $$ and $\epsilon_{1:n}$ is white noise and $\sigma_n$ here is the volatility we want to predict. 
+
+## 2.3 Predict Future Volatilities
+Next I would like to use the garch(1,1) to make the prediction of future data 20 weeks afterward and the data of the last 20 weeks. By the definition of the volatility, we know that it is dispersion of the returns and actually we don't want to get the exact predticted returns as they are in the real life. Instead, we just want to see whether the predicted data behaves the same as the original data: when the original data vibrates sharply, the predicted data can be obeserved that phenomenon too; when the oiginal data tends to be smooth, the predicted data shouldn't change much either. 
+```{r}
+pred.u = c()
+pred.y = c()
+u.pre = u2[(length(u2)-20)]
+y.pre = ret.de[(length(ret.de)-20)]
+for(ahead in 1:40){
+  cur.u = sqrt(a0+a1*y.pre^2+b1*u.pre^2)
+  cur.y = rnorm(1, 0, cur.u)
+  pred.u = c(pred.u,cur.u)
+  pred.y = c(pred.y,cur.y)
+  u.pre = cur.u
+  y.pre = cur.y
+}
+```
+
+```{r}
+plot.y = c(ret.de, rep(NA,20))
+plot.predy = c(rep(NA, (length(ret.de)-20)), pred.y)
+plot.u2 = c(u2, rep(NA,20))
+plot.predu = c(rep(NA, (length(u2)-20)), pred.u)
+nn = length(plot.y)
+
+plot(plot.y[(nn-399):nn],ylim = c(-0.10,0.15),ylab="Returns", xlab = 'time', type = 'l', 
+     main = 'Garch(1,1) - Calibration and Prediction', lwd = 1.5)
+lines(-1.96*plot.u2[(nn-399):nn], lty=2, col='grey', lwd = 1.5)
+lines(1.96*plot.u2[(nn-399):nn], lty=2, col='grey', lwd = 1.5)
+lines(plot.predy[(nn-399):nn], col = 'red', lwd = 1.5)
+lines(-1.96*plot.predu[(nn-399):nn], lty = 2, col = 'blue', lwd = 1.5)
+lines(1.96*plot.predu[(nn-399):nn], lty = 2, col = 'blue', lwd = 1.5)
+abline(v = (length(plot.y[(nn-399):nn]) - 21), lty = 2, lwd = 1.5)
+legend('topleft',c('return','predicted return','+- 1.96*sqrt(volatility)', '+- 1.96*predicted volatility'),
+       col = c('black', 'red','grey','blue'), lty = c(1,1,2,2), lwd = c(1.5,1.5,1.5,1.5))
+```
+
+It shows that the Garch model can give us a good prediction for the volatilities. They are bascially following the same trends although the predicted data go up or down a little bit faster than the reality. 
+
+# 3 POMP Model
+## 3.1 Random-walk Leverage
+Leverage is the phenomenon that negative shocks to a stockmarket index are assciated with a subsequent increase in volatility. We formally define leverage, $R_n$ on day n as the correlation between index return on day n−1 and the increase in the log volatility from day n−1 to day n.[5]
+
+We present a pomp implementation of Bretó (2014), which models $R_n$ as a random walk on a transformed scale, $$R_n=\frac{exp{\{2G_n\}}-1}{exp{\{2G_n\}}+1}$$ where $\{G_n\}$ is the usual, Gaussian random walk.[6]
+
+* A special case of the model is the fixed leverage which means that the Gaussian random walk has zero standard deviation but since leverage is time-varying in most cases, the fixed leverage would not be an interesting factor in this study. 
+
+## 3.2 Stochastic Volatility Model with Random-walk Leverage
+### 3.2.1 Description of the Model
+Following the notation and model representation in the equations of Bretó (2014), we propose a model:[7]
+$$\begin{align} Y_n = \exp{\{H_n/2\}}\epsilon_n, \\ H_n = \mu_h(1-\phi) + \phi H_{n-1} + \beta_{n-1}R_n\exp{\{-H_{n-1}/2\}} + \omega_n,\\ G_n= G_{n-1}+\nu_n, \end{align} $$
+where $ \beta_n = Y_n\sigma_\eta\sqrt{1-\phi^2}$ $\sigma_\omega= \sigma_\eta\sqrt{1-\phi^2}\sqrt{1-R_n^2}$ $\epsilon_n \overset{iid}\sim N[0,1]$ $\nu_n \overset{iid}\sim N[0,\sigma_{\nu}^2]$ $\omega_n \overset{iid}\sim N[0,\sigma_\omega^2]$
+State space variables: observable ${Y_n}$, latent ${G_n},{H_n}$. 
+Parameters: $\mu_h,\phi,\sigma_{\eta},\sigma_{\nu}$. 
+${R_n}$: leverage on time $n$ as correlation between return on time $n-1$ and the increase in the log volatility from time $n-1$ to $n$.It is a random walk on a transformed scale $[-1,1]$. ${G_n}$: usual Gaussian random walk leverage, unobservable. 
+${Y_n}$: demeaned return on time $n$, observable. 
+${H_n}$: log volatility, unobservable. 
+${\epsilon_n}$: return shock.
+
+### 3.2.2 Building a POMP Model
+```{r}
+require(pomp)
+```
+
+```{r}
+NASDAQ_statenames <- c("H","G","Y_state")
+NASDAQ_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+NASDAQ_ivp_names <- c("G_0","H_0")
+NASDAQ_paramnames <- c(NASDAQ_rp_names,NASDAQ_ivp_names)
+NASDAQ_covarnames <- "covaryt"
+```
+
+```{r}
+rproc1 <- "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H =   mu_h*(1 - phi) +phi*H + beta * tanh(G) * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+NASDAQ_rproc.sim <- paste(rproc1,rproc2.sim)
+NASDAQ_rproc.filt <- paste(rproc1,rproc2.filt)
+```
+
+```{r}
+NASDAQ_initializer <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+
+NASDAQ_rmeasure <- "
+   y=Y_state;
+"
+
+NASDAQ_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+```
+
+```{r}
+NASDAQ_toEstimationScale <- "
+  Tsigma_eta = log(sigma_eta);
+  Tsigma_nu = log(sigma_nu);
+  Tphi = logit(phi);
+"
+
+NASDAQ_fromEstimationScale <- "
+  Tsigma_eta = exp(sigma_eta);
+  Tsigma_nu = exp(sigma_nu);
+  Tphi = expit(phi);
+"
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+```
+
+```{r}
+NASDAQ.filt <- pomp(data=data.frame(y=ret.de,
+                     time=1:length(ret.de)),
+              statenames=NASDAQ_statenames,
+              paramnames=NASDAQ_paramnames,
+              covarnames=NASDAQ_covarnames,
+              times="time",
+              t0=0,
+              covar=data.frame(covaryt=c(0,ret.de),
+                     time=0:length(ret.de)),
+              tcovar="time",
+              rmeasure=Csnippet(NASDAQ_rmeasure),
+              dmeasure=Csnippet(NASDAQ_dmeasure),
+              rprocess=discrete.time.sim(step.fun=Csnippet(NASDAQ_rproc.filt),delta.t=1),
+              initializer=Csnippet(NASDAQ_initializer),
+              toEstimationScale=Csnippet(NASDAQ_toEstimationScale), 
+              fromEstimationScale=Csnippet(NASDAQ_fromEstimationScale)
+)
+```
+
+
+### 3.2.3 Fitting the Stochastic Leverage Model to NASDAQ Data with Time-varying Leverage
+We apply the IF2 algorithm from Ionides[8] to get the maximum likelihood which helps us to compare that from the Garch model. There will be some diagnotics of the model shown at the end of this section about the convergence of the parameters $G_n$, $\mu_h$, $\phi$, $\sigma_\eta$, $\sigma_\nu$, $H_n$ and the value of the loglikelihood. Then we can further discuss the success and the failure of the maximization procedure. 
+```{r}
+params_test <- c(
+     sigma_nu = 0,
+     mu_h = -4,       
+     phi = 0.75,     
+     sigma_eta = 10,
+     G_0 = 0,
+     H_0=0
+  )
+```
+
+```{r}
+run_level <- 3
+NASDAQ_Np <-          c(100,1e3,5e3)
+NASDAQ_Nmif <-        c(10, 100,200)
+NASDAQ_Nreps_eval <-  c(4,  10,  20)
+NASDAQ_Nreps_local <- c(10, 20, 20)
+NASDAQ_Nreps_global <-c(10, 20, 100)
+```
+
+```{r}
+require(doParallel)
+registerDoParallel()
+```
+
+```{r}
+NASDAQ_rw.sd_rp <- 0.02
+NASDAQ_rw.sd_ivp <- 0.1
+NASDAQ_cooling.fraction.50 <- 0.5
+
+stew("mif1.rda",{
+   t.if1 <- system.time({
+   if1 <- foreach(i=1:NASDAQ_Nreps_local[run_level],
+                  .packages='pomp', .combine=c,
+                  .options.multicore=list(set.seed=TRUE)) %dopar% try(
+                    mif2(NASDAQ.filt,
+                         start=params_test,
+                         Np=NASDAQ_Np[run_level],
+                         Nmif=NASDAQ_Nmif[run_level],
+                         cooling.type="geometric",
+                         cooling.fraction.50=NASDAQ_cooling.fraction.50,
+                         transform=TRUE,
+                         rw.sd = rw.sd(
+                            sigma_nu  = NASDAQ_rw.sd_rp,
+                            mu_h      = NASDAQ_rw.sd_rp,
+                            phi       = NASDAQ_rw.sd_rp,
+                            sigma_eta = NASDAQ_rw.sd_rp,
+                            G_0       = ivp(NASDAQ_rw.sd_ivp),
+                            H_0       = ivp(NASDAQ_rw.sd_ivp)
+                         )
+                    )
+                  )
+    
+    L.if1 <- foreach(i=1:NASDAQ_Nreps_local[run_level],.packages='pomp',
+                      .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
+                      {
+                        logmeanexp(
+                          replicate(NASDAQ_Nreps_eval[run_level],
+                                    logLik(pfilter(NASDAQ.filt,params=coef(if1[[i]]),Np=NASDAQ_Np[run_level]))
+                          ),
+                          se=TRUE)
+                      }
+  })
+},seed=20160427,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+if (run_level>1) 
+  write.table(r.if1,file="NASDAQ_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+```
+
+The maximum likelihood is 1175, which is a little bit larger than that of Garch model whose value is 1171.471. Since we want to seek the model with the smallest AIC value, I think both of the models are good fit to predict the financial volatility of NASDAQ since the their loglikelihood values are close to each other. But next, I would like to do the diagnostics on the Pomp Model. 
+
+```{r}
+plot(if1)
+```
+
+Looking at the convergence diagnostics, $\sigma_{\nu}$, $\phi$, $\sigma_{\eta}$, $\mu_h$ and $G_0$ we predicted are stable and shrinkage after several interations and convergent.   $H_0$ are not shrinkage.But since $H_0$ is just the starting point of the model, it won't influence a lot so I don't worry much about it. And by looking at the filter diagnostics of the last iteration, all lines are following the same pattren. So currently, I would say that we have successfully maximized the likelihood. 
+
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.if1,logLik>max(logLik)-50))
+```
+
+By Looking at the both graphs, we can find out the values of the parameters: when the loglikehood reaches its maximum, $\sigma_{\nu}$ is zero, $\mu_h$ is something around -8, $\phi$ is at [-0.8,-0.85], $\sigma_{\eta}$ is a little bit larger than zero, the value of $G_0$ is between -0.4 and -0.5. 
+
+
+## 3.3 Likelihood maximization using randomized starting values
+Instead of using the deterministic initial values, next I would like to try many starting values for the parameters since from pervious experience, some parameters will show strong agreement between the different mif runs from different starting values while others will not. And I would like to test this. 
+
+We can still get some diagnostics plots of the model as above to determine the success and the failure of the maximization procedure and randomized starting values will give us a clearer view of the relationship between different parameters and the range of the parameters. Although we have depicted these on Section 3.2, the convergence diagnostics and the pair plot above are presented with some sparse lines and points and we can have a better understanding in this section. 
+
+```{r}
+NASDAQ_box <- rbind(
+sigma_nu=c(0.005,0.01),
+ mu_h    =c(-0.4,0),
+ phi = c(0.95,0.99),
+ sigma_eta = c(0.8,1),
+ G_0 = c(-1,1),
+ H_0 = c(-0.5,0.5)
+)
+```
+
+We have already carried out likelihood maximizations from diverse starting points. To simplify the code, we can reset only the starting parameters from if1[[1]] since the rest of the call to mif2 can be read in from if1[[1]]. We also evaluate the likelihood, together with a standard error, using replicated particle filters at each point estimate to enhance the reliable inference of the final filtering iteration. [9]
+```{r}
+stew(file="box_eval.rda",{
+  t.box <- system.time({
+    if.box <- foreach(i=1:NASDAQ_Nreps_global[run_level],.packages='pomp',.combine=c,
+                  .options.multicore=list(set.seed=TRUE)) %dopar%  
+    mif2(
+        if1[[1]],
+        start=apply(NASDAQ_box,1,function(x)runif(1,x))
+      )
+    L.box <- foreach(i=1:NASDAQ_Nreps_global[run_level],.packages='pomp',.combine=rbind,
+                      .options.multicore=list(set.seed=TRUE)) %dopar% {
+                        set.seed(66666+i)
+                        logmeanexp(
+                          replicate(NASDAQ_Nreps_eval[run_level],
+                                    logLik(pfilter(NASDAQ.filt,params=coef(if.box[[i]]),Np=NASDAQ_Np[run_level]))
+                          ), 
+                          se=TRUE)
+                      }
+  })
+},seed=12345678,kind="L'Ecuyer")
+
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="NASDAQ_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+```
+
+```{r}
+plot(if.box)
+```
+
+We can find out that from the convergence plots, logliklihood, $\sigma_{\nu}$ and $G_0$ are convergent while $\sigma_{\eta}$, $\phi$ , $\mu_h$ and $H_0$ are not convergent. Actually from the section 3.2, we fit the model with deterministic starting values, only $H_0$ isn't convergent. The reason that we will observe these disagreements between the plots is that I didn't select the appropriate ranges as the randomized starting values. Looking from the NASDAQ_box, I set the ranges of the predicted parameters to be too small in size and I believe that if I change them as $\sigma_{\nu}=c(0,0.08)$, $\mu_h=c(-8,8)$, $\phi = c(0.75,0.99)$, $\sigma_{\eta}= c(0,100)$, $G_0 = c(-1,1)$,$H_0 = c(-10,10)$. I should get the similiar convergent plots for logliklihood, $\sigma_{\nu}$, $G_0$, $\sigma_{\eta}$, $\phi$ , and $\mu_h$ as I got from section 3.2. $H_0$ is still not convergent but it won't affect the results. 
+
+And from this plot, we can still predict the values of some parameters and although some of them are seen as inconvergent, but they have the tendency to converge to some values if the appropriate ranges are set. The maximum loglikelihood is 1177, which is a little bit larger than the model with fixed starting values and also a little bit larger than that of the garch(1,1). The value of $\sigma_{\nu}$ is 0, $\phi$ is between 0.8 and 0.85, $\sigma_{\eta}$ is something larger than zero, $G_0$ is between -0.5 and 0. The prediction of these parameters are quite close to those above. 
+
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.box,logLik>max(logLik)-50))
+```
+
+# 4 The Garch Model VS The Pomp Model(Conclusion)
+* Comparing the maximum loglikehood between the Garch model and the Pomp model, the values of the loglikelihood are close to each other. If we would like to choose the model based on the minimum AIC, which is $-2loglikelihood + 2k$, I would conclude that both of them are good choices of model to predict the financial volatility of NASDAQ. 
+
+* From the diagnostics of the Garch(1,1) model, one thing we need to concern about the Garch Model is that it violates the assumption that the residuals should have normality. This actually should have further discussion and this violation might have something to do with the sample size. The size of the data might not be effective so that the residuals don't follow the assmption of normality. 
+
+*  From the diagnostics of the stochastic volatility model, almost all the parameters are convergent except $H_0$ but since it is just a starting points of the model, it won't influence the results a lot. So overall the pomp model is a good model to predict the financial volatility of NASDAQ. 
+
+# 5 References
+[1] http://www.investopedia.com/terms/v/volatility.asp 
+[2] Carles Bretó. On idiosyncratic stochasticity of financial leverage effects. Statistics & Probability Letters, Volume 91, August 2014, Pages 20–26.
+[3] http://finance.yahoo.com
+[5] http://ionides.github.io/531w18/notes14/notes14.html
+[6] http://ionides.github.io/531w18/notes14/notes14.html
+[7] http://ionides.github.io/531w18/notes14/notes14.html
+[8] http://ionides.github.io/531w18/notes14/notes14.html
+[9] http://ionides.github.io/531w18/notes13/notes13.html
+
+
+
+
