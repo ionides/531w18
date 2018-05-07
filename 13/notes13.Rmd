@@ -127,7 +127,7 @@ Produced with R version `r getRversion()` and **pomp** version `r packageVersion
 * When the process leading to  ${z_{1:N}}$ is not external to the system generating it, we must be alert to the possibility of **reverse causation** and **confounding variables**.
 Further discussion of this issue, in the context of a time series analysis, is given in the case study on [An association between unemployment and mortality?](http://ionides.github.io/531w16/notes10/notes10.html#conclusions). 
 
-* Isses involved in inferring causation from fitting statistical models are essentially the same whether the model is linear and Gaussian or not.
+* Issues involved in inferring causation from fitting statistical models are essentially the same whether the model is linear and Gaussian or not.
 
 <br>
 

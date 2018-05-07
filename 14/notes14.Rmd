@@ -488,7 +488,7 @@ stew(file=sprintf("pf1.rda",run_level),{
 (L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
 ```
 
-* In  `r round(t.pf1["elapsed"],1)` seconds, we obtain an unbiased likelihood estimate of `r round(L.pf1[1],2)` with a Monte standard error of `r round(L.pf1[2],2)`. Notice that the replications are averaged using the `logmeanexp` function.
+* In  `r round(t.pf1["elapsed"],1)` seconds, we obtain a log likelihood estimate of `r round(L.pf1[1],2)` with a Monte standard error of `r round(L.pf1[2],2)`. Notice that the replications are averaged using the `logmeanexp` function, since the likelihood estimate is unbiased on the natural scale but not the log scale.
 
 * We could test the numerical performance of an iterated filtering likelihood maximization algorithm on simulated data. 
 
@@ -633,7 +633,7 @@ pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,data=subset(r.box,logLik>max(
 
 * That is likely because we are studying only a subset of the 1988 to 2012 dataset analyzed by @breto14. 
 
-* Also, it might help to refine our inference be computing a likelihood profile over $\sigma_nu$.
+* Also, it might help to refine our inference be computing a likelihood profile over $\sigma_\nu$.
 
 <br>
 

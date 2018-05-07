@@ -437,7 +437,7 @@ registerDoParallel()</code></pre>
 <pre><code>##                          se 
 ## -3.658756e+03  9.708603e-02</code></pre>
 <ul>
-<li><p>In 6.5 seconds, we obtain an unbiased likelihood estimate of -3658.76 with a Monte standard error of 0.1. Notice that the replications are averaged using the <code>logmeanexp</code> function.</p></li>
+<li><p>In 6.5 seconds, we obtain a log likelihood estimate of -3658.76 with a Monte standard error of 0.1. Notice that the replications are averaged using the <code>logmeanexp</code> function, since the likelihood estimate is unbiased on the natural scale but not the log scale.</p></li>
 <li><p>We could test the numerical performance of an iterated filtering likelihood maximization algorithm on simulated data.</p></li>
 <li><p>We could also study the statistical performance of maximum likelihood estimators and profile likelihood confidence intervals on simulated data.</p></li>
 <li><p>However, here we are going to cut to the chase and start fitting models to data.</p></li>
@@ -563,7 +563,7 @@ summary(r.box$logLik,digits=5)</code></pre>
 <ul>
 <li><p>This preliminary analysis does not show clear evidence for the hypothesis that <span class="math inline">\(\sigma_\nu &gt; 0\)</span>.</p></li>
 <li><p>That is likely because we are studying only a subset of the 1988 to 2012 dataset analyzed by <span class="citation">Bretó (2014)</span>.</p></li>
-<li><p>Also, it might help to refine our inference be computing a likelihood profile over <span class="math inline">\(\sigma_nu\)</span>.</p></li>
+<li><p>Also, it might help to refine our inference be computing a likelihood profile over <span class="math inline">\(\sigma_\nu\)</span>.</p></li>
 </ul>
 <p><br></p>
 <hr />

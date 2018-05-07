@@ -314,7 +314,7 @@ $$\begin{eqnarray}
 \lik(\theta)&=&f_{Y_{1:N}}(y^*_{1:N}\params \theta)
 \\
 &=&
-\prod_{n}\,f_{Y_N|Y_{1:N-1}}(y^*_n|y^*_{1:n-1}\params\theta) 
+\prod_{n}\,f_{Y_n|Y_{1:n-1}}(y^*_n|y^*_{1:n-1}\params\theta) 
 \\
 &=&
 \prod_{n}\,\int f_{Y_n|X_n}(y^*_n|x_n\params\theta)\,f_{X_n|Y_{1:n-1}}(x_n|y^*_{1:n-1}\params\theta)\, dx_{n}.
