@@ -12,7 +12,7 @@ output:
 
 * Everyone has the opportunity to have your name attached to your project, if you like, after the course is over and the class grades are assigned.
 
-* Here are the projects. In most cases, source code and data are available from [https://github.com/ionides/531w18/tree/master/final_project](https://github.com/ionides/531w16/tree/master/final_project). For computationally expensive analysis, results saved as .rda files may or may not be available.
+* Here are the projects. In most cases, source code and data are available from [https://github.com/ionides/531w18/tree/master/final_project](https://github.com/ionides/531w18/tree/master/final_project). For computationally expensive analysis, results saved as .rda files may or may not be available.
 
 * Some projects with confidential data are not posted.
 
